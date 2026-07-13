@@ -333,7 +333,7 @@ function iniciarLogin() {
     const msg     = document.getElementById('loginMessage');
 
     if (!pontoEl || !senhaEl) return;
-    const ponto = pontoEl.value.trim().replace(/\./g, '');
+    const ponto = pontoEl.value.replace(/\D/g, '');
     const senha = senhaEl.value.trim();
 
     if (!ponto || !senha) {
