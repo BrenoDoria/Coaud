@@ -1,0 +1,15 @@
+/* importa o design system completo */
+@import url('style.css');
+/* sobrescritas específicas do escanear já cobertas pelo style.css */
+#inventarioHeader {
+    background: rgba(0,176,79,0.1);
+    border: 1px solid rgba(0,176,79,0.2);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    margin-bottom: 10px;
+}
+#inventarioHeader h2 { color: var(--verde); margin: 0 0 3px; font-size: 13px; }
+.actions-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; align-items: center; }
+.actions-bar-bottom { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; align-items: center; }
+.btn-export { background: rgba(26,95,168,0.25); color: #93c5fd; border: 1px solid rgba(26,95,168,0.3); }
+.btn-export:hover { background: rgba(26,95,168,0.4); }

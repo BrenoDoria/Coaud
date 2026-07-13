@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COAUD — Localizador e Transferência</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='4' fill='%2300b04f'/><text y='22' x='5' font-size='17' fill='white' font-family='Arial' font-weight='bold'>C</text></svg>">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="sidebar-init.js" defer></script>
+    <style>
+        .aba-info-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .3px;
+            margin-right: 4px;
+        }
+        .chip-sigmas { background: rgba(96,165,250,0.15); color: #60a5fa; border: 1px solid rgba(96,165,250,0.3); }
+        .chip-coaud  { background: rgba(0,176,79,0.15); color: #4ade80; border: 1px solid rgba(0,176,79,0.3); }
+
+        .ficha-resultado {
+            background: rgba(0,0,0,0.2);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-sm);
+            padding: 14px 16px;
+            margin-bottom: 8px;
+        }
+        .ficha-resultado .campo {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 6px;
+            font-size: 13px;
+            align-items: baseline;
+        }
+        .ficha-resultado .campo strong {
+            color: var(--verde);
+            font-weight: 700;
+            min-width: 110px;
+            text-transform: uppercase;
+            font-size: 10px;
+            letter-spacing: .4px;
+        }
+        .ficha-resultado .campo span {
+            color: var(--text);
+            flex: 1;
+        }
+
+        .editor-section {
+            background: rgba(0,176,79,0.06);
+            border: 1px solid rgba(0,176,79,0.2);
+            border-radius: var(--radius);
+            padding: 16px 18px;
+            margin-top: 14px;
+        }
+        .editor-section h3 {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--verde);
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            margin-bottom: 12px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid rgba(0,176,79,0.15);
+        }
+
+        .novo-patrimonio-form {
+            background: rgba(26,95,168,0.08);
+            border: 1px solid rgba(26,95,168,0.2);
+            border-radius: var(--radius);
+            padding: 16px 18px;
+            margin-top: 14px;
+            display: none;
+        }
+        .novo-patrimonio-form h3 {
+            font-size: 12px;
+            font-weight: 700;
+            color: #60a5fa;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            margin-bottom: 12px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid rgba(26,95,168,0.2);
+        }
+
+        #responsavel-list, #novo-responsavel-list {
+            list-style: none;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-sm);
+            background: rgba(0,0,0,0.25);
+            margin-top: 8px;
+            padding: 0;
+            display: none;
+        }
+        #responsavel-list li, #novo-responsavel-list li {
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 12px;
+            color: var(--text);
+            border-bottom: 1px solid var(--border-light);
+        }
+        #responsavel-list li:hover, #novo-responsavel-list li:hover {
+            background: rgba(0,176,79,0.12);
+            color: #4ade80;
+        }
+        #responsavel-list li:last-child, #novo-responsavel-list li:last-child { border-bottom: none; }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        @media(max-width:600px) {
+            .form-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-layout">
+
+        <!-- ══ SIDEBAR ═══════════════════════════════════ -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-brand">
+                <div class="brand-row">
+                    <div class="brand-icon">C</div>
+                    <div>
+                        <div class="brand-name">CÂMARA DOS DEPUTADOS</div>
+                        <div class="brand-sub">COAUD</div>
+                    </div>
+                </div>
+            </div>
+            <div class="sidebar-user">
+                <div class="user-avatar" id="user-avatar">?</div>
+                <div class="user-info">
+                    <div class="user-name" id="user-name">Carregando...</div>
+                    <div class="user-role" id="user-role"></div>
+                </div>
+            </div>
+            <nav class="sidebar-nav">
+                <div class="nav-section-title">Sistemas</div>
+                <a class="nav-item" id="nav-escanear" href="index-escanear.html">
+                    <span class="nav-icon">📷</span> Sistema de Escaneamento
+                </a>
+                <a class="nav-item" id="nav-comparador" href="index-comparador.html">
+                    <span class="nav-icon">🔍</span> Comparador de Patrimônios
+                </a>
+
+                <!-- Localizador com subgrupo -->
+                <a class="nav-item nav-parent active" id="nav-localizador" href="index_Local.html">
+                    <span class="nav-icon" >📍</span> Localizador e Transferência
+                </a>
+                <div class="nav-subgroup">
+                    <a class="nav-subitem" id="tab-sigmas" onclick="mudarAba('SIGMAS');return false;" href="#">
+                        <span class="nav-sub-icon">↳</span> SIGMAS (todos)
+                    </a>
+                    <a class="nav-subitem" id="tab-coaud" onclick="mudarAba('COAUD');return false;" href="#">
+                        <span class="nav-sub-icon">↳</span> COAUD (responsáveis)
+                    </a>
+                </div>
+
+                <a class="nav-item" id="nav-almoxarifado" href="index-almoxarifado.html">
+                    <span class="nav-icon">📋</span> Controle de Almoxarifado
+                </a>
+                <a class="nav-item" href="index.html">
+                    <span class="nav-icon">🏠</span> Portal
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <button class="btn-logout" onclick="fazerLogout()">
+                    <span>⎋</span> Sair do sistema
+                </button>
+            </div>
+        </aside>
+
+        <!-- ══ ÁREA PRINCIPAL ════════════════════════════ -->
+        <div class="main-area">
+
+            <div class="topbar">
+                <button class="btn-menu" onclick="toggleSidebar()">☰</button>
+                <div>
+                    <div class="topbar-title">Localizador e Transferência</div>
+                    <div class="topbar-sub">
+                        Aba atual: <span id="aba-atual-label" style="color:var(--verde);font-weight:700">SIGMAS</span>
+                    </div>
+                </div>
+                <div class="topbar-right">
+                    <div id="spinner" class="spinner" style="margin:0"></div>
+                    <p id="progressText" style="font-size:11px;color:var(--text-muted);margin:0"></p>
+                </div>
+            </div>
+
+            <div class="page-content">
+
+                <!-- Login -->
+                <div id="login-section" style="text-align:center;padding:32px 0">
+                    <button onclick="solicitarToken()">🔐 Fazer Login com Google</button>
+                </div>
+
+                <!-- ═══ REGRA (info) ═══ -->
+                <div id="regras-info" class="alert alert-info" style="display:none">
+                    <div>
+                        <strong>ATENÇÃO:</strong><br>
+                        <span style="font-size:11px">
+                            • <strong>SIGMAS</strong>: contém <em>todos</em> os patrimônios.
+                            Nunca é apagado, apenas alterado.<br>
+                            • <strong>COAUD</strong>: Apenas dos responsáveis
+                            (ALBERTO, PAULO, JOSE HENRIQUE). Se o responsável mudar
+                            para outro, o patrimônio sai de COAUD (permanece em SIGMAS).
+                        </span>
+                    </div>
+                </div>
+
+                <!-- ═══ BUSCA ═══ -->
+                <div id="busca-section" class="card" style="display:none">
+                    <div class="card-title">Buscar Patrimônio</div>
+
+                    <div class="field-block" style="margin-bottom:12px">
+                        <label for="patrimonioInput">NRP do Patrimônio</label>
+                        <input type="text" id="patrimonioInput"
+                            placeholder="Digite o NRP e pressione Enter"
+                            onkeypress="if(event.key==='Enter') buscarPatrimonio()">
+                    </div>
+
+                    <button onclick="buscarPatrimonio()">🔍 Buscar</button>
+                </div>
+
+                <!-- ═══ RESULTADO ═══ -->
+                <div id="result-container" style="display:none">
+                    <div class="card">
+                        <div class="card-title">Patrimônio Encontrado</div>
+                        <div id="ficha-resultado"></div>
+                    </div>
+
+                    <!-- Editor -->
+                    <div id="editor-section" class="editor-section" style="display:none">
+                        <h3>✏ Editar Patrimônio</h3>
+
+                        <div class="form-grid">
+                            <div class="field-block">
+                                <label for="novoLocal">Nova Localização</label>
+                                <input type="text" id="novoLocal">
+                            </div>
+                            <div class="field-block">
+                                <label for="responsavelInput">Responsável</label>
+                                <input type="text" id="responsavelInput"
+                                    placeholder="Digite 3 letras para buscar..."
+                                    autocomplete="off"
+                                    oninput="filtrarResponsavel()">
+                                <ul id="responsavel-list"></ul>
+                            </div>
+                        </div>
+
+                        <div id="resp-selecionado-info" style="font-size:11px;color:var(--verde);margin-bottom:10px;display:none"></div>
+
+                        <div style="display:flex;gap:8px;flex-wrap:wrap">
+                            <button onclick="salvarAlteracoes()">✔ Salvar</button>
+                            <button class="cancelButton" onclick="cancelarEdicao()">✕ Cancelar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ═══ INSERIR NOVO ═══ -->
+                <div id="novo-patrimonio-container" class="novo-patrimonio-form">
+                    <h3>+ Inserir Novo Patrimônio</h3>
+
+                    <div class="form-grid">
+                        <div class="field-block">
+                            <label for="novoNRP">NRP</label>
+                            <input type="text" id="novoNRP" readonly>
+                        </div>
+                        <div class="field-block">
+                            <label for="novoMaterial">Material</label>
+                            <input type="text" id="novoMaterial" placeholder="Descrição do material">
+                        </div>
+                    </div>
+
+                    <div class="form-grid">
+                        <div class="field-block">
+                            <label for="novaLocalizacao">Localização</label>
+                            <input type="text" id="novaLocalizacao">
+                        </div>
+                        <div class="field-block">
+                            <label for="novoResponsavelInput">Responsável</label>
+                            <input type="text" id="novoResponsavelInput"
+                                placeholder="Digite 3 letras para buscar..."
+                                autocomplete="off"
+                                oninput="filtrarNovoResponsavel()">
+                            <ul id="novo-responsavel-list"></ul>
+                        </div>
+                    </div>
+
+                    <div id="novo-resp-info" style="font-size:11px;color:#60a5fa;margin-bottom:10px;display:none"></div>
+
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <button onclick="inserirNovoPatrimonio()">✔ Inserir</button>
+                        <button class="cancelButton" onclick="cancelarNovoPatrimonio()">✕ Cancelar</button>
+                    </div>
+                </div>
+
+            </div>
+
+            <footer class="site-footer">
+                © 2025 BrenoDoria — Câmara dos Deputados / COAUD
+            </footer>
+        </div>
+    </div>
+
+    <script>
+    // ══ SIDEBAR / LOGOUT ═════════════════════════════════
+    // ══ FILTRA SIDEBAR CONFORME PERMISSÃO ═════════════════
+// ══ Preenche dados do usuário na sidebar ═══════════════
+function preencherUsuarioSidebar() {
+    const u = JSON.parse(localStorage.getItem('usuarioLogado'));
+    if (!u) { window.location.href = 'index.html'; return; }
+
+    const initials = nome => nome
+        ? nome.split(' ').slice(0,2).map(n=>n[0]).join('').toUpperCase()
+        : '?';
+
+    const avatarEl = document.getElementById('user-avatar');
+    const nameEl   = document.getElementById('user-name');
+    const roleEl   = document.getElementById('user-role');
+
+    if (avatarEl) avatarEl.textContent = initials(u.nome);
+    if (nameEl)   nameEl.textContent   = u.nome || 'Usuário';
+    if (roleEl)   roleEl.textContent   = u.permissao || '';
+}
+
+// Executa quando o DOM estiver pronto
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', preencherUsuarioSidebar);
+} else {
+    preencherUsuarioSidebar();
+}
+
+    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
+    function fazerLogout() {
+        localStorage.removeItem('usuarioLogado');
+        localStorage.removeItem('access_token');
+        window.location.href = 'index.html';
+    }
+    function setProgress(msg) {
+        const el = document.getElementById("progressText");
+        if (el) el.textContent = msg;
+    }
+
+    // ══ CONFIGURAÇÃO ══════════════════════════════════════
+    const CLIENT_ID = '286050228811-cv6vsd075480anb1i6auuc421enuaf8q.apps.googleusercontent.com';
+    const FILE_ID   = '1iNeSf0wakQ6j9Eg_qOCzVNKcIVVIsukeThL0Phpd5LE';
+
+    // Responsáveis considerados "da COAUD"
+    const RESPONSAVEIS_COAUD = [
+        "ALBERTO CESAR SOUZA ALMEIDA (5302)",
+        "PAULO FERNANDO VOLPE (5933)",
+        "JOSE HENRIQUE FERREIRA DA SILVA (7913)"
+    ];
+
+    let tokenClient;
+    let accessToken               = null;
+    let sigmasData                = [];
+    let coaudData                 = [];
+    let sheetIds                  = {};
+    let abaAtual                  = "SIGMAS";
+    let patrimonioEditando        = null;   // { emSigmas, emCoaud, rowSigmas, rowCoaud, idxSigmas, idxCoaud }
+    let responsavelSelecionado    = null;
+    let novoResponsavelSelecionado = null;
+
+    function solicitarToken() {
+        if (tokenClient) tokenClient.requestAccessToken();
+    }
+
+    function mudarAba(aba) {
+        abaAtual = aba;
+        document.getElementById('aba-atual-label').textContent = aba;
+        document.getElementById('tab-sigmas').classList.toggle('active', aba === 'SIGMAS');
+        document.getElementById('tab-coaud').classList.toggle('active', aba === 'COAUD');
+        setProgress(`Aba ativa: ${aba}. Nova busca considerará esta aba.`);
+        // Fecha resultados anteriores
+        document.getElementById('result-container').style.display = 'none';
+        document.getElementById('novo-patrimonio-container').style.display = 'none';
+    }
+
+    window.addEventListener('load', () => {
+        // Aba inicial: SIGMAS
+        mudarAba('SIGMAS');
+
+        const inicializarGoogle = () => {
+            if (typeof google === 'undefined' || !google.accounts) {
+                setTimeout(inicializarGoogle, 300);
+                return;
+            }
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: 'https://www.googleapis.com/auth/spreadsheets',
+                callback: (tokenResponse) => {
+                    if (tokenResponse.error) {
+                        setProgress("Erro: " + tokenResponse.error);
+                        return;
+                    }
+                    accessToken = tokenResponse.access_token;
+                    localStorage.setItem("access_token", accessToken);
+                    mostrarConteudo();
+                    carregarDados();
+                }
+            });
+
+            const savedToken = localStorage.getItem("access_token");
+            if (savedToken) {
+                accessToken = savedToken;
+                mostrarConteudo();
+                setProgress("Carregando dados...");
+                carregarDados();
+            }
+        };
+        inicializarGoogle();
+    });
+
+    function mostrarConteudo() {
+        document.getElementById("login-section").style.display = "none";
+        document.getElementById("busca-section").style.display = "block";
+        document.getElementById("regras-info").style.display   = "flex";
+    }
+
+    // ══ CARREGAR AMBAS AS ABAS ═══════════════════════════
+    async function carregarDados() {
+        document.getElementById("spinner").style.display = "inline-block";
+        setProgress("Consultando servidor...");
+
+        try {
+            // sheet IDs
+            const meta = await fetch(
+                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}`,
+                { headers: { 'Authorization': `Bearer ${accessToken}` } }
+            );
+            if (!meta.ok) throw new Error("Erro ao obter metadados.");
+            const metaData = await meta.json();
+            metaData.sheets.forEach(s => { sheetIds[s.properties.title] = s.properties.sheetId; });
+
+            // SIGMAS
+            const r1 = await fetch(
+                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/SIGMAS!A:D`,
+                { headers: { 'Authorization': `Bearer ${accessToken}` } }
+            );
+            if (!r1.ok) { const e = await r1.json(); throw new Error(e.error?.message); }
+            sigmasData = (await r1.json()).values || [];
+
+            // COAUD
+            const r2 = await fetch(
+                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/COAUD!A:D`,
+                { headers: { 'Authorization': `Bearer ${accessToken}` } }
+            );
+            if (!r2.ok) { const e = await r2.json(); throw new Error(e.error?.message); }
+            coaudData = (await r2.json()).values || [];
+
+            setProgress(`✅ SIGMAS: ${sigmasData.length-1} registros | COAUD: ${coaudData.length-1} registros.`);
+            document.getElementById("spinner").style.display = "none";
+            document.getElementById("patrimonioInput").focus();
+        } catch (error) {
+            if (error.message.includes("401")) {
+                localStorage.removeItem("access_token");
+                accessToken = null;
+                document.getElementById("login-section").style.display = "block";
+                document.getElementById("busca-section").style.display = "none";
+                document.getElementById("regras-info").style.display   = "none";
+                solicitarToken();
+                return;
+            }
+            setProgress("Erro: " + error.message);
+            document.getElementById("spinner").style.display = "none";
+        }
+    }
+
+    function normalizeNRP(nrp) {
+        if (!nrp) return "";
+        return nrp.toString().replace(/^0+/, "").trim();
+    }
+
+    // ══ BUSCA (procura em ambas, mostra onde está) ═══════
+    function buscarPatrimonio() {
+        const nrp = document.getElementById("patrimonioInput").value.trim().replace(/\./g, "");
+        if (!nrp) { setProgress("Digite um NRP."); return; }
+        const n = normalizeNRP(nrp);
+
+        // Procura em SIGMAS
+        let idxS = -1, rowS = null;
+        for (let i = 1; i < sigmasData.length; i++) {
+            if (normalizeNRP(sigmasData[i][0]) === n) {
+                idxS = i; rowS = sigmasData[i]; break;
+            }
+        }
+        // Procura em COAUD
+        let idxC = -1, rowC = null;
+        for (let i = 1; i < coaudData.length; i++) {
+            if (normalizeNRP(coaudData[i][0]) === n) {
+                idxC = i; rowC = coaudData[i]; break;
+            }
+        }
+
+        // Esconde tudo
+        document.getElementById("result-container").style.display = "none";
+        document.getElementById("editor-section").style.display    = "none";
+        document.getElementById("novo-patrimonio-container").style.display = "none";
+
+        if (!rowS && !rowC) {
+            const ok = confirm(`Patrimônio "${nrp}" não encontrado em nenhuma aba.\n\nDeseja cadastrá-lo agora em SIGMAS?`);
+            if (ok) {
+                document.getElementById("novoNRP").value = nrp;
+                document.getElementById("novoMaterial").value = "";
+                document.getElementById("novaLocalizacao").value = "";
+                document.getElementById("novoResponsavelInput").value = "";
+                document.getElementById("novo-resp-info").style.display = "none";
+                novoResponsavelSelecionado = null;
+                document.getElementById("novo-patrimonio-container").style.display = "block";
+            }
+            return;
+        }
+
+        // Se está em ambos, mostra dados de SIGMAS (mais completo/fonte)
+        const rowExibida = rowS || rowC;
+
+        patrimonioEditando = {
+            emSigmas: !!rowS, emCoaud: !!rowC,
+            rowSigmas: rowS, rowCoaud: rowC,
+            idxSigmas: idxS, idxCoaud: idxC,
+            nrp: rowExibida[0]
+        };
+
+        const chipsHTML = [
+            rowS ? '<span class="aba-info-chip chip-sigmas">📘 SIGMAS</span>' : '',
+            rowC ? '<span class="aba-info-chip chip-coaud">📗 COAUD</span>' : ''
+        ].join('');
+
+        document.getElementById("ficha-resultado").innerHTML = `
+            <div style="margin-bottom:10px">${chipsHTML}</div>
+            <div class="ficha-resultado">
+                <div class="campo"><strong>NRP</strong><span>${rowExibida[0] || '-'}</span></div>
+                <div class="campo"><strong>Material</strong><span>${rowExibida[1] || '-'}</span></div>
+                <div class="campo"><strong>Localização</strong><span>${rowExibida[2] || '-'}</span></div>
+                <div class="campo"><strong>Responsável</strong><span>${rowExibida[3] || '-'}</span></div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+                <button onclick="abrirEditor()">✏ Editar</button>
+            </div>
+        `;
+        document.getElementById("result-container").style.display = "block";
+        setProgress(`✅ Encontrado. Presente em: ${rowS?'SIGMAS':''}${rowS&&rowC?' + ':''}${rowC?'COAUD':''}.`);
+    }
+
+    function abrirEditor() {
+        if (!patrimonioEditando) return;
+        const p = patrimonioEditando.rowSigmas || patrimonioEditando.rowCoaud;
+        document.getElementById("novoLocal").value = p[2] || "";
+        document.getElementById("responsavelInput").value = "";
+        document.getElementById("responsavel-list").innerHTML = "";
+        document.getElementById("responsavel-list").style.display = "none";
+        responsavelSelecionado = p[3] || null;
+        document.getElementById("resp-selecionado-info").textContent =
+            responsavelSelecionado ? `Atual: ${responsavelSelecionado}` : "Sem responsável atual";
+        document.getElementById("resp-selecionado-info").style.display = "block";
+        document.getElementById("editor-section").style.display = "block";
+    }
+
+    function cancelarEdicao() {
+        document.getElementById("editor-section").style.display = "none";
+        responsavelSelecionado = null;
+        setProgress("Edição cancelada.");
+    }
+
+    function cancelarNovoPatrimonio() {
+        document.getElementById("novo-patrimonio-container").style.display = "none";
+        novoResponsavelSelecionado = null;
+        setProgress("Cadastro cancelado.");
+    }
+
+    // ══ FILTRO DE RESPONSÁVEIS ═══════════════════════════
+    function filtrarResponsavel() {
+        const busca = document.getElementById("responsavelInput").value.trim().toLowerCase();
+        const lista = document.getElementById("responsavel-list");
+        lista.innerHTML = "";
+        if (busca.length < 3) { lista.style.display = 'none'; return; }
+
+        // Coleta todos os responsáveis únicos da base SIGMAS
+        const todosResp = [...new Set(sigmasData.slice(1).map(r => r[3]).filter(Boolean))];
+        const filtrados = todosResp.filter(r => r.toLowerCase().includes(busca));
+
+        if (!filtrados.length) {
+            const li = document.createElement("li");
+            li.textContent = 'Nenhum responsável encontrado.';
+            li.style.color = 'var(--text-muted)';
+            lista.appendChild(li);
+        } else {
+            filtrados.forEach(nome => {
+                const li = document.createElement("li");
+                const isCoaud = RESPONSAVEIS_COAUD.includes(nome);
+                li.innerHTML = `${nome} ${isCoaud ? '<span class="aba-info-chip chip-coaud" style="font-size:9px;margin-left:4px">COAUD</span>' : ''}`;
+                li.onmousedown = () => {
+                    responsavelSelecionado = nome;
+                    document.getElementById("responsavelInput").value = nome;
+                    document.getElementById("resp-selecionado-info").textContent = `Selecionado: ${nome}`;
+                    lista.style.display = 'none';
+                };
+                lista.appendChild(li);
+            });
+        }
+        lista.style.display = 'block';
+    }
+
+    function filtrarNovoResponsavel() {
+        const busca = document.getElementById("novoResponsavelInput").value.trim().toLowerCase();
+        const lista = document.getElementById("novo-responsavel-list");
+        lista.innerHTML = "";
+        if (busca.length < 3) { lista.style.display = 'none'; return; }
+
+        const todosResp = [...new Set(sigmasData.slice(1).map(r => r[3]).filter(Boolean))];
+        const filtrados = todosResp.filter(r => r.toLowerCase().includes(busca));
+
+        if (!filtrados.length) {
+            const li = document.createElement("li");
+            li.textContent = 'Nenhum responsável encontrado.';
+            li.style.color = 'var(--text-muted)';
+            lista.appendChild(li);
+        } else {
+            filtrados.forEach(nome => {
+                const li = document.createElement("li");
+                const isCoaud = RESPONSAVEIS_COAUD.includes(nome);
+                li.innerHTML = `${nome} ${isCoaud ? '<span class="aba-info-chip chip-coaud" style="font-size:9px;margin-left:4px">COAUD</span>' : ''}`;
+                li.onmousedown = () => {
+                    novoResponsavelSelecionado = nome;
+                    document.getElementById("novoResponsavelInput").value = nome;
+                    document.getElementById("novo-resp-info").textContent = `Selecionado: ${nome}`;
+                    document.getElementById("novo-resp-info").style.display = 'block';
+                    lista.style.display = 'none';
+                };
+                lista.appendChild(li);
+            });
+        }
+        lista.style.display = 'block';
+    }
+
+    // ══ SALVAR (APLICA AS REGRAS) ════════════════════════
+    async function salvarAlteracoes() {
+        if (!patrimonioEditando) return;
+
+        const novoLocal = document.getElementById("novoLocal").value.trim();
+        const novoResp  = responsavelSelecionado || "";
+        const p         = patrimonioEditando;
+
+        if (!novoLocal) { alert("Digite a nova localização."); return; }
+
+        document.getElementById("spinner").style.display = "inline-block";
+        setProgress("Aplicando regras e salvando...");
+
+        try {
+            const material = (p.rowSigmas || p.rowCoaud)[1];
+            const nrp      = p.nrp;
+            const linhaNova = [nrp, material, novoLocal, novoResp];
+            const isNovoRespCoaud = RESPONSAVEIS_COAUD.includes(novoResp);
+
+            // ── SIGMAS: sempre atualiza (nunca apaga) ──
+            if (p.emSigmas) {
+                await atualizarLinha('SIGMAS', p.idxSigmas + 1, linhaNova);
+                sigmasData[p.idxSigmas] = linhaNova;
+            }
+
+            // ── COAUD: aplica regras ──
+            if (isNovoRespCoaud) {
+                // Deve estar em COAUD
+                if (p.emCoaud) {
+                    // Já está: atualiza
+                    await atualizarLinha('COAUD', p.idxCoaud + 1, linhaNova);
+                    coaudData[p.idxCoaud] = linhaNova;
+                } else {
+                    // Não está: cria
+                    await appendLinha('COAUD', linhaNova);
+                    coaudData.push(linhaNova);
+                }
+            } else {
+                // NÃO deve estar em COAUD
+                if (p.emCoaud) {
+                    // Está mas não deveria: remove
+                    await deletarLinha('COAUD', p.idxCoaud);
+                    coaudData.splice(p.idxCoaud, 1);
+                }
+                // Se não estava, não faz nada
+            }
+
+            setProgress(`✅ Alterações salvas. ${isNovoRespCoaud?'Presente em SIGMAS + COAUD.':'Presente apenas em SIGMAS.'}`);
+            document.getElementById("editor-section").style.display = "none";
+            document.getElementById("patrimonioInput").value = nrp;
+            buscarPatrimonio();
+
+        } catch (error) {
+            setProgress("Erro: " + error.message);
+            console.error(error);
+        } finally {
+            document.getElementById("spinner").style.display = "none";
+        }
+    }
+
+    async function atualizarLinha(aba, linha, valores) {
+        const r = await fetch(
+            `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/${aba}!A${linha}:D${linha}?valueInputOption=RAW`,
+            { method: 'PUT',
+              headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ values: [valores] }) }
+        );
+        if (!r.ok) { const e = await r.json(); throw new Error(`Erro em ${aba}: ${e.error?.message}`); }
+    }
+
+    async function appendLinha(aba, valores) {
+        const r = await fetch(
+            `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/${aba}!A:D:append?valueInputOption=RAW`,
+            { method: 'POST',
+              headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ values: [valores] }) }
+        );
+        if (!r.ok) { const e = await r.json(); throw new Error(`Erro append ${aba}: ${e.error?.message}`); }
+    }
+
+    async function deletarLinha(aba, idx) {
+        const r = await fetch(
+            `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}:batchUpdate`,
+            { method: 'POST',
+              headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ requests: [{
+                deleteDimension: { range: {
+                    sheetId: sheetIds[aba], dimension: 'ROWS',
+                    startIndex: idx, endIndex: idx + 1
+                }}
+              }]}) }
+        );
+        if (!r.ok) { const e = await r.json(); throw new Error(`Erro delete ${aba}: ${e.error?.message}`); }
+    }
+
+    // ══ INSERIR NOVO ══════════════════════════════════════
+    async function inserirNovoPatrimonio() {
+        const nrp        = document.getElementById("novoNRP").value.trim();
+        const material   = document.getElementById("novoMaterial").value.trim();
+        const localizacao = document.getElementById("novaLocalizacao").value.trim();
+        const responsavel = novoResponsavelSelecionado || "";
+
+        if (!nrp || !material || !localizacao) {
+            alert("Preencha NRP, Material e Localização.");
+            return;
+        }
+
+        document.getElementById("spinner").style.display = "inline-block";
+        setProgress("Inserindo em SIGMAS...");
+
+        try {
+            const linha = [nrp, material, localizacao, responsavel];
+
+            // Sempre em SIGMAS
+            await appendLinha('SIGMAS', linha);
+            sigmasData.push(linha);
+
+            // Se responsável é COAUD, também em COAUD
+            if (RESPONSAVEIS_COAUD.includes(responsavel)) {
+                await appendLinha('COAUD', linha);
+                coaudData.push(linha);
+                setProgress(`✅ Patrimônio ${nrp} inserido em SIGMAS + COAUD.`);
+            } else {
+                setProgress(`✅ Patrimônio ${nrp} inserido em SIGMAS.`);
+            }
+
+            document.getElementById("novo-patrimonio-container").style.display = "none";
+            document.getElementById("patrimonioInput").value = nrp;
+            buscarPatrimonio();
+
+        } catch (error) {
+            setProgress("Erro: " + error.message);
+        } finally {
+            document.getElementById("spinner").style.display = "none";
+        }
+    }
+    </script>
+</body>
+</html>

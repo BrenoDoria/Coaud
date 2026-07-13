@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COAUD — Ficha de Retirada/Empréstimo</title>
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 10pt;
+            margin: 0;
+            padding: 0;
+            background: #f0f0f0;
+            color: #111;
+        }
+
+        .pagina-wrapper {
+            max-width: 210mm;
+            margin: 20px auto;
+            background: #fff;
+            padding: 14mm 14mm 12mm;
+            box-shadow: 0 2px 16px rgba(0,0,0,0.15);
+        }
+
+        @page {
+            size: A4 portrait;
+            margin: 14mm 12mm 14mm;
+        }
+
+        @media print {
+            body { background: #fff; }
+            .pagina-wrapper {
+                margin: 0; padding: 0;
+                box-shadow: none; max-width: 100%;
+            }
+            .no-print { display: none !important; }
+        }
+
+        /* ── CABEÇALHO ── */
+        .header-content {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #1a5fa8;
+            margin-bottom: 10px;
+        }
+        .brasao { width: 58px; height: auto; flex-shrink: 0; }
+        .header-text p { margin: 1px 0; font-size: 9pt; }
+        .header-text .inst-nome { font-size: 11pt; font-weight: bold; color: #1a3a6e; }
+        .header-text .ficha-titulo { font-size: 9pt; font-weight: bold; color: #2d8c3e; margin-top: 3px; }
+
+        /* ── TÍTULOS DE BLOCO ── */
+        .bloco-titulo {
+            font-weight: bold;
+            font-size: 9pt;
+            text-align: center;
+            padding: 5px 0;
+            margin: 10px 0 6px;
+            letter-spacing: 0.6px;
+            color: #fff;
+            border-radius: 3px;
+        }
+        .azul   { background: #1a5fa8; }
+        .verde  { background: #2d8c3e; }
+        .cinza  { background: #555555; }
+        .laranja { background: #b5590a; }
+
+        /* ── TABELA DE MATERIAIS ── */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 9.5pt;
+            margin-bottom: 6px;
+            page-break-inside: avoid;
+        }
+        thead th {
+            background: #e8f0fb;
+            color: #1a3a6e;
+            font-weight: bold;
+            padding: 5px 8px;
+            border: 1px solid #b0c4de;
+            text-align: left;
+            font-size: 9pt;
+        }
+        tbody td {
+            padding: 5px 8px;
+            border: 1px solid #c8c8c8;
+            vertical-align: top;
+        }
+        tbody tr:nth-child(even) td { background: #f7f9ff; }
+
+        /* ── BLOCOS DE INFORMAÇÃO ── */
+        .info-bloco {
+            border: 1px solid #c8d8f0;
+            border-radius: 4px;
+            padding: 8px 12px;
+            margin-bottom: 8px;
+        }
+        .info-bloco.azul-claro { background: #f0f4fb; border-color: #b0c4de; }
+        .info-bloco.verde-claro { background: #f0faf3; border-color: #b8dfc4; }
+        .info-bloco.amarelo-claro { background: #fffdf0; border-color: #e0d080; }
+
+        /* ── GRID DE DADOS ── */
+        .dados-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px 20px;
+        }
+        .dados-grid.full { grid-template-columns: 1fr; }
+        .dados-grid.tres { grid-template-columns: 1fr 1fr 1fr; }
+
+        .dado {
+            display: flex;
+            align-items: baseline;
+            gap: 5px;
+            padding: 3px 0;
+            border-bottom: 1px dotted #ccc;
+        }
+        .dado-label {
+            font-weight: bold;
+            color: #1a3a6e;
+            font-size: 8pt;
+            white-space: nowrap;
+            min-width: 78px;
+        }
+        .dado-valor {
+            font-size: 9.5pt;
+            color: #111;
+            flex: 1;
+        }
+
+        /* ── ÁREA DE ASSINATURA ── */
+        .assinatura-area {
+            border: 1px solid #b0c4de;
+            border-radius: 4px;
+            padding: 10px 14px;
+            margin-top: 6px;
+            background: #fafcff;
+        }
+        .assinatura-area.verde-borda {
+            border-color: #88c49a;
+            background: #f5fbf6;
+        }
+        .assinatura-instrucao {
+            font-size: 8pt;
+            color: #555;
+            font-style: italic;
+            margin-bottom: 6px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .assinatura-campos {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 6px 16px;
+            margin-bottom: 8px;
+        }
+        .campo-linha {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+        .campo-linha label {
+            font-size: 7.5pt;
+            font-weight: bold;
+            color: #1a3a6e;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .campo-linha .linha {
+            border-bottom: 1.5px solid #444;
+            min-height: 18px;
+        }
+        .assinatura-linha-box {
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 1px dashed #bbb;
+        }
+        .assinatura-linha-box label {
+            font-size: 7.5pt;
+            font-weight: bold;
+            color: #1a3a6e;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            display: block;
+            margin-bottom: 3px;
+        }
+        .assinatura-linha-box .linha-assinatura {
+            border-bottom: 1.5px solid #444;
+            min-height: 28px;
+            width: 80%;
+        }
+
+        /* ── TERMO ── */
+        .termo-texto {
+            font-size: 8.5pt;
+            color: #333;
+            line-height: 1.55;
+            text-align: justify;
+            margin: 4px 0 8px;
+        }
+
+        /* ── BOTÕES ── */
+        .no-print {
+            max-width: 210mm;
+            margin: 0 auto;
+            display: flex;
+            gap: 10px;
+            padding: 16px 14mm;
+        }
+        .no-print button {
+            padding: 10px 22px;
+            border: none;
+            border-radius: 7px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .btn-print  { background: #2d8c3e; color: #fff; }
+        .btn-print:hover  { background: #247534; }
+        .btn-voltar { background: #f0f0f0; color: #444; border: 1px solid #ccc !important; }
+        .btn-voltar:hover { background: #e4e4e4; }
+
+        @media screen and (max-width: 600px) {
+            .pagina-wrapper { padding: 8mm 6mm; margin: 8px; }
+            .dados-grid, .dados-grid.tres { grid-template-columns: 1fr; }
+            .assinatura-campos { grid-template-columns: 1fr; }
+            .no-print { padding: 12px 6mm; }
+        }
+    </style>
+</head>
+<body onload="carregarFicha()">
+
+    <div class="no-print">
+        <button class="btn-print"  onclick="window.print()">🖨 Imprimir</button>
+        <button class="btn-voltar" onclick="window.location.href='fichas.html'">← Voltar</button>
+    </div>
+
+    <div class="pagina-wrapper">
+
+        <!-- ══ CABEÇALHO INSTITUCIONAL ══════════════════════ -->
+        <div class="header-content">
+            <img src="brasao_republica_brasil.jpg"
+                 class="brasao"
+                 alt="Brasão da República Federativa do Brasil">
+            <div class="header-text">
+                <p class="inst-nome">CÂMARA DOS DEPUTADOS</p>
+                <p>Coordenação de Engenharia de Telecomunicações e Audiovisual — COAUD</p>
+                <p>Seção de Apoio aos Auditórios e Comissões — SAUDI/SAPCO</p>
+                <p class="ficha-titulo">
+                    FICHA DE RETIRADA / EMPRÉSTIMO DE MATERIAL PARA EVENTO
+                </p>
+            </div>
+        </div>
+
+        <!-- ══ LISTA DE MATERIAL ═════════════════════════════ -->
+        <div class="bloco-titulo azul">LISTA DE MATERIAL COM PATRIMÔNIO</div>
+        <table id="listaMaterial">
+            <thead>
+                <tr>
+                    <th style="width:120px">Patrimônio (NRP)</th>
+                    <th>Descrição do Material</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+
+        <!-- ══ DADOS DO EVENTO E OPERAÇÃO ═══════════════════ -->
+        <div class="bloco-titulo azul">DADOS DA RETIRADA</div>
+        <div class="info-bloco azul-claro">
+            <div class="dados-grid tres">
+                <div class="dado">
+                    <span class="dado-label">Nº Ficha:</span>
+                    <span class="dado-valor" id="ficha"></span>
+                </div>
+                <div class="dado">
+                    <span class="dado-label">Data:</span>
+                    <span class="dado-valor" id="data"></span>
+                </div>
+                <div class="dado">
+                    <span class="dado-label">Hora:</span>
+                    <span class="dado-valor" id="hora"></span>
+                </div>
+            </div>
+            <div class="dados-grid full" style="margin-top:4px">
+                <div class="dado">
+                    <span class="dado-label">Evento:</span>
+                    <span class="dado-valor" id="evento"></span>
+                </div>
+                <div class="dado">
+                    <span class="dado-label">Local:</span>
+                    <span class="dado-valor" id="local"></span>
+                </div>
+            </div>
+            <div class="dados-grid" style="margin-top:4px">
+                <div class="dado">
+                    <span class="dado-label">Operador COAUD:</span>
+                    <span class="dado-valor" id="nome"></span>
+                </div>
+                <div class="dado">
+                    <span class="dado-label">Ponto:</span>
+                    <span class="dado-valor" id="pontoOperador1"></span>
+                </div>
+                <div class="dado">
+                    <span class="dado-label">Almoxarife:</span>
+                    <span class="dado-valor" id="nomeOperador2"></span>
+                </div>
+                <div class="dado">
+                    <span class="dado-label">Ponto:</span>
+                    <span class="dado-valor" id="pontoOperador2"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══ CONFIRMAÇÃO DE RECEBIMENTO (servidor solicitante) ══ -->
+        <div class="bloco-titulo laranja">
+            CONFIRMAÇÃO DE RECEBIMENTO — SERVIDOR SOLICITANTE
+        </div>
+        <div class="assinatura-area">
+            <p class="assinatura-instrucao">
+                ⚠ O servidor que solicitou o equipamento por e-mail ou recebeu deve preencher
+                e assinar este campo no ato do recebimento.
+            </p>
+            <div class="assinatura-campos">
+                <div class="campo-linha">
+                    <label>Nome completo do servidor solicitante</label>
+                    <div class="linha"></div>
+                </div>
+                <div class="campo-linha">
+                    <label>Ponto funcional</label>
+                    <div class="linha"></div>
+                </div>
+            </div>
+            <div class="assinatura-campos">
+                <div class="campo-linha">
+                    <label>Setor / Gabinete</label>
+                    <div class="linha"></div>
+                </div>
+                <div class="campo-linha">
+                    <label>Data e hora do recebimento</label>
+                    <div class="linha"></div>
+                </div>
+            </div>
+            <div class="assinatura-linha-box">
+                <label>Assinatura do servidor solicitante</label>
+                <div class="linha-assinatura"></div>
+            </div>
+        </div>
+
+        <!-- ══ TERMO DE RESPONSABILIDADE ════════════════════ -->
+        <div class="bloco-titulo cinza" style="margin-top:10px">
+            TERMO DE RESPONSABILIDADE
+        </div>
+        <p class="termo-texto">
+            Conforme legislação vigente, o servidor acima identificado e qualificado
+            se responsabiliza pela guarda, zelo e devolução em perfeito estado do
+            material relacionado nesta ficha, classificado como bem permanente de
+            carga patrimonial da Seção de Apoio aos Auditórios e Comissões —
+            SAUDI/SAPCO, da Coordenação de Engenharia de Telecomunicações e
+            Audiovisual — COAUD / Câmara dos Deputados.
+        </p>
+
+        <!-- ══ DEVOLUÇÃO ═════════════════════════════════════ -->
+        <div class="bloco-titulo verde">DEVOLUÇÃO DO MATERIAL</div>
+        <div class="assinatura-area verde-borda">
+            <p class="assinatura-instrucao">
+                ✅ A ser preenchido pelo operador da COAUD no momento em que o material
+                for devolvido.
+            </p>
+            <div class="assinatura-campos">
+                <div class="campo-linha">
+                    <label>Recebido por (OPERADOR COAUD)</label>
+                    <div class="linha"></div>
+                </div>
+                <div class="campo-linha">
+                    <label>Ponto funcional</label>
+                    <div class="linha"></div>
+                </div>
+            </div>
+            <div class="assinatura-campos">
+                <div class="campo-linha">
+                    <label>Data da devolução</label>
+                    <div class="linha"></div>
+                </div>
+                <div class="campo-linha">
+                    <label>Hora da devolução</label>
+                    <div class="linha"></div>
+                </div>
+            </div>
+            <div class="campo-linha" style="margin-top:6px">
+                <label>Observações sobre o estado do material</label>
+                <div class="linha"></div>
+                <div class="linha" style="margin-top:6px"></div>
+            </div>
+            <div class="assinatura-linha-box">
+                <label>Assinatura do almoxarife</label>
+                <div class="linha-assinatura"></div>
+            </div>
+        </div>
+
+        <!-- Identificação da ficha no rodapé -->
+        <div style="margin-top:10px;text-align:right;font-size:7.5pt;color:#888;border-top:1px solid #eee;padding-top:4px">
+            COAUD / SAUDI/SAPCO — Ficha nº <strong id="fichaRodape"></strong>
+            &nbsp;|&nbsp; Emitida em: <strong id="dataRodape"></strong>
+        </div>
+
+    </div><!-- /pagina-wrapper -->
+
+    <div class="no-print" style="padding-bottom:24px">
+        <button class="btn-print"  onclick="window.print()">🖨 Imprimir</button>
+        <button class="btn-voltar" onclick="window.location.href='fichas.html'">← Voltar</button>
+    </div>
+
+<script>
+const operadoresPontos = {
+    "Adson Miranda dos Anjos": "914.262",
+    "Afonso Viana de Mesquita Filho": "5.947",
+    "Alberto Cesar Souza Almeida": "5.302",
+    "Alexander Rafael Carvalho Paim": "882.420",
+    "Alexandre Alves de Siqueira": "919.956",
+    "Alison Silva de Oliveira": "914.799",
+    "Allan Cosseti Ardisson": "919.895",
+    "Ana Clara Cardoso de Oliveira": "92444",
+    "Altamir Araujo da Silva": "881.758",
+    "Antonio Batista Ângelo": "999.134",
+    "Antonio Rodrigues Siqueira Filho": "917.486",
+    "Arley Carvalho Alves": "915.546",
+    "Breno Doria Felicio": "922.083",
+    "Bruno Fernandes Braga": "881.842",
+    "Bruno Rodrigues do Prado": "919.894",
+    "Bruno Vieira Rodrigues": "922.084",
+    "Carlos César Ferreira de Sousa": "5.250",
+    "Carlos Cesar José da Silva": "920.074",
+    "Carlos Eduardo Guedes da Silva": "882.174",
+    "Carlos Roberto de Paiva Miranda dos Santos": "922.498",
+    "Cinthia Neves Carvalho Barbosa": "5.476",
+    "Cláudio Marcelo do Nascimento": "882.421",
+    "Davi Aragão de Paula Gonçalves": "921.627",
+    "Douglas Batista da Silva": "920.077",
+    "Emmanuel do Amaral Idelfonso": "920.076",
+    "Emanuel Silveira Costa": "922.931",
+    "Enzo Risso Conturbia": "920.438",
+    "Eric Samuel do Ouro": "920.359",
+    "Erika Fedosseeff Auler": "921.672",
+    "Eromilson Monteiro dutra Chaves": "882.134",
+    "Evellyn Mendes de Souza Nunes": "915.974",
+    "Fausto Barbosa de Oliveira": "888.223",
+    "Felipe Omena Vasconcellos de Assis": "919.593",
+    "Fernando de Sousa Vasconcelos": "914.382",
+    "Flávio Lima Câmara": "882.218",
+    "Francisco de Assis da Silva Sales": "888.744",
+    "Francisco de Sousa Filho": "5.953",
+    "Francisco Juniel Sousa e Silva": "915.547",
+    "Geraldo Ribeiro de Souza Filho": "888.010",
+    "Gildo Marques da Silva": "920.092",
+    "Gilson Gomes da Silva": "882.541",
+    "Gilson Gustavo de Paiva Oliveira": "5.254",
+    "Gleisson Carlos Pereira da Silva": "914.815",
+    "Guilherme Malheiro da Rocha Pinto": "4.224",
+    "Helisson Rafael de O. Leite": "881.759",
+    "Helyeber Feitosa Ferreira": "919.899",
+    "Hilton Severiano Ferreira": "922.678",
+    "Huelisson Amancio de Moraes Silva": "881.596",
+    "Igor Mendes dos Santos": "921.292",
+    "Isaias Pereira Soares": "919.903",
+    "Joel Luiz de Sá Silva": "920.353",
+    "Joel Pereira Santos": "882.652",
+    "Joilson Santos de Jesus": "920.123",
+    "Jônatas Soares de Andrade": "881.598",
+    "Jose Henrique Ferreira da Silva": "7.913",
+    "José Nilton Abraão de Sousa": "920.352",
+    "Joval Bastos Freitas Júnior": "882.702",
+    "Juliano Gustavo Pedro de Oliveira": "882.053",
+    "Kely Berlinck Freire": "919.896",
+    "Kleber de Araújo Moura": "888.397",
+    "Leandro Calixto da Silva": "917.992",
+    "Leandro Silva Lima Alves": "921.291",
+    "Leonardo Augusto de Freitas": "882.688",
+    "Letícia Santana Araújo": "920.816",
+    "Lívia Maria de Souza": "916.391",
+    "Lucas Lima Lira": "919.897",
+    "Lucas Ribeiro dos Santos": "919.904",
+    "Luciano de Freitas Silva": "881.452",
+    "Luis Eduardo Campos Moreira": "919.898",
+    "Luiz Henrique Reis de Lima": "888.226",
+    "Marcelo Bruno Rezende Costa": "882.728",
+    "Marcelo Gomes da Silva": "918.923",
+    "Marco Antonio Baldresca Lambert de Brito": "5.261",
+    "Marco Antônio Felício Júnior": "915.553",
+    "Marcos Borges de Souza": "920.075",
+    "Marcus Aurélius Fernandes de Moura": "888.219",
+    "Massilon Alves de Sousa Filho": "919.905",
+    "Mateus da Silva Lima": "922.278",
+    "Matheus Gabriel Damasceno Dias": "920.354",
+    "Matheus Henrique Felix Barbosa": "922.082",
+    "Múcio Homero Rocha Pires de Oliveira": "5.297",
+    "Orlando Villavicencio Venegas": "882.673",
+    "Paulo Fernando Volpe": "5.933",
+    "Paulo Roberto Pereira": "888.227",
+    "Paulo Soares da Costa": "888.228",
+    "Pedro Henrique Candido Boaventura": "920.124",
+    "Péricles Cruz da Silva": "881.892",
+    "Priscilla Amorim dos Santos Rodrigues": "7.914",
+    "Rafael Queiroz Lemos de Oliveira": "881.782",
+    "Reynaldo Jessé Rodrigues da Silva": "888.131",
+    "Ronaldo Jovino da Silva": "919.185",
+    "Richard Rodrigues dos Santos": "921.026",
+    "Roberio Antunes Simionato": "5.266",
+    "Rodrigo Fonseca Shiratori": "5.272",
+    "Rondney Rodrigues Alves Sousa": "881.174",
+    "Rosivan Augustinho Pereira": "882.518",
+    "Thiago Veríssimo Cabral Freitas": "922.497",
+    "Vinícius Veríssimo Cabral Freitas": "919.796",
+    "Vivikananda Abdallah Antun Filho": "5.301",
+    "Waleria Bastos Cardoso": "915.570",
+    "Wanderson Balzan de Sousa": "918.679",
+    "Wellington Jorge Souza Mendes": "881.179",
+    "Wellington Rodrigo Ribeiro Santana": "882.052",
+    "Wendel Vieira da Costa": "919.907",
+    "Wesley Laécio da Silva Costa": "882.054",
+    "Wesley Maurício Ribeiro França": "888.217",
+    "Willian Neves da Silva": "888.230",
+    "Wirlem Silva Alves": "919.906",
+    "Lucas Farias de Menezes": "920.362",
+};
+
+function carregarFicha() {
+    const f = JSON.parse(localStorage.getItem('fichaParaImprimir'));
+    if (!f) {
+        alert('Nenhum dado de ficha encontrado. Redirecionando...');
+        window.location.href = 'fichas.html';
+        return;
+    }
+
+    const [dataParte, horaParte] = (f.dataRetirada || '').split(', ');
+    const data = dataParte || '-';
+    const hora = horaParte || '-';
+    const pt   = nome => operadoresPontos[nome] || 'N/A';
+    const set  = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val || '-';
+    };
+
+    set('ficha',         f.idFicha);
+    set('data',          data);
+    set('hora',          hora);
+    set('evento',        f.evento);
+    set('local',         f.local);
+    set('nome',          f.operador1);
+    set('pontoOperador1', pt(f.operador1));
+    set('nomeOperador2', f.operador2);
+    set('pontoOperador2', pt(f.operador2));
+    set('fichaRodape',   f.idFicha);
+    set('dataRodape',    data);
+
+    // Tabela de equipamentos
+    const tbody = document.querySelector('#listaMaterial tbody');
+    (f.equipamentos || []).forEach(equip => {
+        const [patrimonio, ...partes] = equip.split(' - ');
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td style="font-family:monospace;width:120px">${patrimonio || '-'}</td>
+            <td>${partes.join(' - ') || '-'}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+</script>
+</body>
+</html>

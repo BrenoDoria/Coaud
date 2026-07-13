@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COAUD — Comparador de Patrimônios</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='4' fill='%2300b04f'/><text y='22' x='5' font-size='17' fill='white' font-family='Arial' font-weight='bold'>C</text></svg>">
+    <link rel="stylesheet" href="style.css">
+    <script>
+        // Aplica tema salvo ANTES do render (evita flash)
+        document.documentElement.setAttribute('data-tema',
+            localStorage.getItem('tema-coaud') || 'verde-neon');
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    <style>
+        .file-upload {
+            display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+        }
+        .file-upload-label {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 8px 16px; background: var(--verde); color: #fff;
+            border-radius: var(--radius-sm); font-size: 12px;
+            font-weight: 600; cursor: pointer;
+            transition: background .14s; font-family: inherit;
+        }
+        .file-upload-label:hover { background: var(--verde-dark); }
+        .file-upload input[type="file"] { display: none; }
+        .file-name { font-size: 12px; color: var(--text-muted); font-style: italic; }
+        .file-name.loaded { color: var(--verde); font-style: normal; font-weight: 600; }
+        .stat-result {
+            display: inline-block;
+            background: rgba(0,176,79,0.1);
+            border: 1px solid rgba(0,176,79,0.25);
+            border-radius: var(--radius-sm);
+            padding: 8px 14px; font-size: 13px;
+            color: var(--verde); font-weight: 600; margin-top: 10px;
+        }
+        .stat-result.warn {
+            background: rgba(245,158,11,0.1);
+            border-color: rgba(245,158,11,0.3);
+            color: #fbbf24;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-layout">
+
+        <!-- ══ SIDEBAR ═══════════════════════════════════ -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-brand">
+                <div class="brand-row">
+                    <div class="brand-icon">C</div>
+                    <div>
+                        <div class="brand-name">CÂMARA DOS DEPUTADOS</div>
+                        <div class="brand-sub">COAUD</div>
+                    </div>
+                </div>
+            </div>
+            <div class="sidebar-user">
+                <div class="user-avatar" id="user-avatar">?</div>
+                <div class="user-info">
+                    <div class="user-name" id="user-name">Carregando...</div>
+                    <div class="user-role" id="user-role"></div>
+                </div>
+            </div>
+            <nav class="sidebar-nav">
+                <div class="nav-section-title">Sistemas</div>
+                <a class="nav-item" id="nav-escanear" href="index-escanear.html">
+                    <span class="nav-icon">📷</span> Sistema de Escaneamento
+                </a>
+                <a class="nav-item active" id="nav-comparador" href="index-comparador.html">
+                    <span class="nav-icon">🔍</span> Comparador de Patrimônios
+                </a>
+                <a class="nav-item" id="nav-localizador" href="index_Local.html">
+                    <span class="nav-icon">📍</span> Localizador e Transferência
+                </a>
+                <a class="nav-item" id="nav-almoxarifado" href="index-almoxarifado.html">
+                    <span class="nav-icon">📋</span> Controle de Almoxarifado
+                </a>
+                <a class="nav-item" href="index.html">
+                    <span class="nav-icon">🏠</span> Página Inicial
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <button class="btn-logout" onclick="fazerLogout()">
+                    <span>⎋</span> Sair do sistema
+                </button>
+            </div>
+        </aside>
+
+        <!-- ══ ÁREA PRINCIPAL ════════════════════════════ -->
+        <div class="main-area">
+
+            <div class="topbar">
+                <button class="btn-menu" onclick="toggleSidebar()">☰</button>
+                <div>
+                    <div class="topbar-title">Comparador de Patrimônios</div>
+                    <div class="topbar-sub">Localiza patrimônios dos 3 responsáveis ainda não coletados</div>
+                </div>
+                <div class="topbar-right">
+                    <div id="spinner" class="spinner" style="margin:0"></div>
+                    <p id="progressText" style="font-size:11px;color:var(--text-muted);margin:0">
+                        Carregando base SIGMAS...
+                    </p>
+                </div>
+            </div>
+
+            <div class="page-content">
+
+                <!-- ═══ UPLOAD ═══ -->
+                <div class="card">
+                    <div class="card-title">Planilha Consolidada do Levantamento</div>
+
+                    <div class="file-upload">
+                        <label for="fileInputExportada" class="file-upload-label">
+                            📄 Escolher Planilha Consolidada (Total Escaneado)
+                        </label>
+                        <input type="file" id="fileInputExportada" accept=".xlsx">
+                        <span class="file-name" id="fileName">Nenhum arquivo escolhido</span>
+                    </div>
+
+                    <div id="statContainer"></div>
+
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+                        <button onclick="exportarNaoEncontrados()" class="btn-blue">
+                            ⬇ Exportar Patrimônios Ausentes (.xlsx)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ═══ TABELA ═══ -->
+                <div class="card" style="padding:0;overflow:hidden">
+                    <div style="padding:14px 16px 8px">
+                        <div class="card-title" style="margin:0;border:none;padding:0">
+                            Patrimônios Pendentes de Coleta (dos 3 Responsáveis)
+                        </div>
+                    </div>
+                    <div class="table-wrapper">
+                        <table id="patrimonioTable">
+                            <thead>
+                                <tr>
+                                    <th>NRP</th>
+                                    <th>Material</th>
+                                    <th>Localização</th>
+                                    <th>Responsável</th>
+                                </tr>
+                            </thead>
+                            <tbody id="patrimonioList"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+
+            <footer class="site-footer">
+                © 2026 COAUD — Câmara dos Deputados
+            </footer>
+        </div>
+    </div>
+
+    <script>
+    // ══════════════════════════════════════════════════════
+    //  SIDEBAR — usuário, permissões e tema
+    // ══════════════════════════════════════════════════════
+    function preencherUsuarioSidebar() {
+        const u = JSON.parse(localStorage.getItem('usuarioLogado'));
+        if (!u) { window.location.href = 'index.html'; return; }
+        const initials = nome => nome
+            ? nome.split(' ').slice(0,2).map(n=>n[0]).join('').toUpperCase()
+            : '?';
+        const avatarEl = document.getElementById('user-avatar');
+        const nameEl   = document.getElementById('user-name');
+        const roleEl   = document.getElementById('user-role');
+        if (avatarEl) avatarEl.textContent = initials(u.nome);
+        if (nameEl)   nameEl.textContent   = u.nome || 'Usuário';
+        if (roleEl)   roleEl.textContent   = u.permissao || '';
+    }
+
+    function aplicarPermissoesSidebar() {
+        const u = JSON.parse(localStorage.getItem('usuarioLogado')) || {};
+        const perm = u.permissao;
+        const PERMS_SIDEBAR = {
+            supervisor:   ['nav-escanear', 'nav-comparador', 'nav-localizador', 'nav-almoxarifado'],
+            almoxarifado: ['nav-almoxarifado'],
+        };
+        const liberados = PERMS_SIDEBAR[perm] || [];
+        ['nav-escanear', 'nav-comparador', 'nav-localizador', 'nav-almoxarifado']
+            .forEach(id => {
+                const el = document.getElementById(id);
+                if (el && !liberados.includes(id)) el.style.display = 'none';
+            });
+        const paginaAtual = window.location.pathname.split('/').pop();
+        const paginasPorPermissao = {
+            'index-escanear.html':      'nav-escanear',
+            'index-comparador.html':    'nav-comparador',
+            'index_Local.html':         'nav-localizador',
+            'index-almoxarifado.html':  'nav-almoxarifado',
+            'fichas.html':              'nav-almoxarifado',
+            'fichas-arquivadas.html':   'nav-almoxarifado',
+        };
+        const permNecessaria = paginasPorPermissao[paginaAtual];
+        if (permNecessaria && !liberados.includes(permNecessaria)) {
+            alert('Você não tem permissão para acessar esta página.');
+            window.location.href = 'index.html';
+        }
+    }
+
+    // ── Seletor de tema no rodapé da sidebar ──
+    function criarSeletorTema() {
+        if (document.getElementById('theme-selector')) return;
+        const footer = document.querySelector('.sidebar-footer');
+        if (!footer) return;
+
+        const container = document.createElement('div');
+        container.id = 'theme-selector';
+        container.style.cssText = 'margin-bottom:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.08)';
+        container.innerHTML = `
+            <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">
+                Tema
+            </div>
+            <div style="display:flex;gap:5px">
+                <button class="theme-btn" data-tema="verde-neon" title="Verde Neon"
+                    style="flex:1;padding:5px;border-radius:3px;border:1px solid rgba(255,255,255,.15);background:linear-gradient(135deg,#0a2d17 50%,#00b04f 50%);cursor:pointer;height:22px"></button>
+                <button class="theme-btn" data-tema="dark-neutro" title="Dark Neutro"
+                    style="flex:1;padding:5px;border-radius:3px;border:1px solid rgba(255,255,255,.15);background:linear-gradient(135deg,#1e1e1e 50%,#4a90e2 50%);cursor:pointer;height:22px"></button>
+                <button class="theme-btn" data-tema="claro" title="Claro"
+                    style="flex:1;padding:5px;border-radius:3px;border:1px solid rgba(255,255,255,.15);background:linear-gradient(135deg,#f5f5f5 50%,#1e6b2e 50%);cursor:pointer;height:22px"></button>
+            </div>
+        `;
+        footer.parentNode.insertBefore(container, footer);
+
+        const temaAtivo = localStorage.getItem('tema-coaud') || 'verde-neon';
+        container.querySelectorAll('.theme-btn').forEach(btn => {
+            if (btn.dataset.tema === temaAtivo) btn.style.outline = '2px solid #00b04f';
+            btn.addEventListener('click', () => {
+                container.querySelectorAll('.theme-btn').forEach(b => b.style.outline = 'none');
+                btn.style.outline = '2px solid #00b04f';
+                document.documentElement.setAttribute('data-tema', btn.dataset.tema);
+                localStorage.setItem('tema-coaud', btn.dataset.tema);
+            });
+        });
+    }
+
+    function initSidebar() {
+        preencherUsuarioSidebar();
+        aplicarPermissoesSidebar();
+        criarSeletorTema();
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initSidebar);
+    } else {
+        initSidebar();
+    }
+
+    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
+    function fazerLogout() {
+        localStorage.removeItem('usuarioLogado');
+        localStorage.removeItem('access_token');
+        window.location.href = 'index.html';
+    }
+    function setProgress(msg) {
+        const el = document.getElementById("progressText");
+        if (el) el.textContent = msg;
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  CONFIGURAÇÃO — Comparador
+    // ══════════════════════════════════════════════════════
+    const FILE_ID = '1EJOqQOe5lu42Y2B-p6A0wIySAsv1gna3Tt1_fTBY9b4';
+    const ABA_BASE = 'SIGMAS';
+
+    const responsaveisEspecificos = [
+        "ALBERTO CESAR SOUZA ALMEIDA (5302)",
+        "PAULO FERNANDO VOLPE (5933)",
+        "JOSE HENRIQUE FERREIRA DA SILVA (7913)"
+    ];
+
+    let accessToken       = null;
+    let baseSigmas        = [];   // apenas linhas dos 3 responsáveis
+    let nrpsEscaneados    = new Set();
+    let pendentes         = [];   // resultado da comparação
+
+    function normalizeNRP(nrp) {
+        if (!nrp) return "";
+        return nrp.toString().replace(/\./g, "").replace(/^0+/, "").trim();
+    }
+
+    function formatarData() {
+        const d = new Date();
+        return `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  CARREGAMENTO DA BASE (SIGMAS filtrada nos 3)
+    // ══════════════════════════════════════════════════════
+    window.addEventListener('load', () => {
+        accessToken = localStorage.getItem('access_token');
+        if (!accessToken) {
+            alert('Sessão expirada. Faça login novamente.');
+            window.location.href = 'index.html';
+            return;
+        }
+        carregarBase();
+    });
+
+    async function carregarBase() {
+        document.getElementById('spinner').style.display = 'inline-block';
+        setProgress('Carregando base SIGMAS...');
+        try {
+            const r = await fetch(
+                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/${ABA_BASE}!A:D`,
+                { headers: { 'Authorization': `Bearer ${accessToken}` } }
+            );
+            if (!r.ok) {
+                const e = await r.json();
+                if (r.status === 401) {
+                    localStorage.removeItem('access_token');
+                    alert('Sessão expirada. Faça login novamente.');
+                    window.location.href = 'index.html';
+                    return;
+                }
+                throw new Error(e.error?.message || r.statusText);
+            }
+            const data  = await r.json();
+            const todas = (data.values || []).slice(1);
+
+            // Filtra APENAS os patrimônios dos 3 responsáveis
+            baseSigmas = todas.filter(row =>
+                row[3] && responsaveisEspecificos.some(resp =>
+                    resp.trim().toUpperCase() === row[3].toString().trim().toUpperCase()
+                )
+            );
+
+            setProgress(`✅ Base SIGMAS vinculada (${baseSigmas.length} patrimônios dos 3 responsáveis).`);
+        } catch (error) {
+            setProgress('Erro: ' + error.message);
+        } finally {
+            document.getElementById('spinner').style.display = 'none';
+        }
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  UPLOAD DA PLANILHA CONSOLIDADA
+    // ══════════════════════════════════════════════════════
+    document.getElementById('fileInputExportada').addEventListener('change', function() {
+        const nameEl = document.getElementById('fileName');
+        const file = this.files[0];
+        if (!file) {
+            nameEl.textContent = 'Nenhum arquivo escolhido';
+            nameEl.classList.remove('loaded');
+            return;
+        }
+        nameEl.textContent = '📎 ' + file.name;
+        nameEl.classList.add('loaded');
+        processarConsolidada(file);
+    });
+
+    function processarConsolidada(file) {
+        if (!baseSigmas.length) {
+            setProgress('Aguarde a base SIGMAS ser carregada primeiro.');
+            return;
+        }
+        document.getElementById('spinner').style.display = 'inline-block';
+        setProgress('Lendo planilha consolidada...');
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const data     = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+
+                // Junta NRPs de TODAS as abas do arquivo (caso venha 1 aba por sala)
+                nrpsEscaneados = new Set();
+                workbook.SheetNames.forEach(sheetName => {
+                    const ws   = workbook.Sheets[sheetName];
+                    const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+                    rows.slice(1).forEach(row => {
+                        if (row[0] !== undefined && row[0] !== null && row[0] !== '') {
+                            const n = normalizeNRP(row[0]);
+                            if (n) nrpsEscaneados.add(n);
+                        }
+                    });
+                });
+
+                setProgress(`Comparando ${nrpsEscaneados.size} NRPs coletados com ${baseSigmas.length} da base...`);
+                compararEExibir();
+
+            } catch (error) {
+                setProgress('Erro ao ler a planilha: ' + error.message);
+            } finally {
+                document.getElementById('spinner').style.display = 'none';
+            }
+        };
+        reader.onerror = function() {
+            setProgress('Erro ao ler o arquivo.');
+            document.getElementById('spinner').style.display = 'none';
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  COMPARAÇÃO — pendentes = base dos 3 − escaneados
+    // ══════════════════════════════════════════════════════
+    function compararEExibir() {
+        pendentes = baseSigmas.filter(row => {
+            const n = normalizeNRP(row[0]);
+            return n && !nrpsEscaneados.has(n);
+        });
+
+        const list = document.getElementById('patrimonioList');
+        list.innerHTML = '';
+
+        if (!pendentes.length) {
+            list.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px">
+                🎉 Todos os patrimônios dos 3 responsáveis foram coletados!
+            </td></tr>`;
+        } else {
+            pendentes.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${row[0] || '-'}</td>
+                    <td>${row[1] || '-'}</td>
+                    <td>${row[2] || '-'}</td>
+                    <td>${row[3] || '-'}</td>
+                `;
+                list.appendChild(tr);
+            });
+        }
+
+        const c = document.getElementById('statContainer');
+        if (pendentes.length > 0) {
+            c.innerHTML = `<div class="stat-result warn">
+                ⚠ ${pendentes.length} patrimônios dos 3 responsáveis ainda NÃO foram coletados.
+            </div>`;
+            setProgress(`${pendentes.length} pendentes de coleta.`);
+        } else {
+            c.innerHTML = `<div class="stat-result">
+                ✅ Levantamento completo! Nenhum patrimônio pendente.
+            </div>`;
+            setProgress('Levantamento 100% completo.');
+        }
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  EXPORTAÇÃO DOS PENDENTES
+    // ══════════════════════════════════════════════════════
+    function exportarNaoEncontrados() {
+        if (!pendentes.length) {
+            alert('Nenhum patrimônio pendente para exportar. Carregue a planilha consolidada primeiro.');
+            return;
+        }
+        const dados = pendentes.map(row => ({
+            NRP: row[0] || '',
+            Material: row[1] || '',
+            Localização: row[2] || '',
+            Responsável: row[3] || ''
+        }));
+        const worksheet = XLSX.utils.json_to_sheet(dados);
+        const workbook  = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Pendentes_Coleta');
+        XLSX.writeFile(workbook, `Patrimonios_Pendentes_${formatarData()}.xlsx`);
+    }
+    </script>
+</body>
+</html>

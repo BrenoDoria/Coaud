@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COAUD — Escaneamento de Patrimônios</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='4' fill='%2300b04f'/><text y='22' x='5' font-size='17' fill='white' font-family='Arial' font-weight='bold'>C</text></svg>">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    <script src="sidebar-init.js" defer></script>
+    <style>
+        .inventario-header {
+            background: rgba(0,176,79,0.08);
+            border: 1px solid rgba(0,176,79,0.2);
+            border-radius: var(--radius);
+            padding: 12px 16px;
+            margin-bottom: 14px;
+            display: none;
+        }
+        .inventario-header h3 {
+            font-size: 13px; font-weight: 700;
+            color: var(--verde); margin-bottom: 4px;
+        }
+        .nrp-row {
+            display: flex; gap: 8px; align-items: flex-end;
+        }
+        .nrp-row input { flex: 1; margin: 0; }
+
+        .actions-bar {
+            display: flex; flex-wrap: wrap; gap: 8px;
+            margin: 12px 0; align-items: center;
+        }
+
+        .btn-export {
+            background: rgba(26,95,168,0.25);
+            color: #93c5fd;
+            border: 1px solid rgba(26,95,168,0.3);
+        }
+        .btn-export:hover { background: rgba(26,95,168,0.4); }
+
+        .btn-reset {
+            background: rgba(231,76,60,0.15);
+            color: #f87171;
+            border: 1px solid rgba(231,76,60,0.25);
+        }
+        .btn-reset:hover { background: rgba(231,76,60,0.25); }
+
+        /* ── Modais customizados ── */
+        .modal-transf {
+            display: none;
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.65);
+            z-index: 500;
+            align-items: center; justify-content: center;
+        }
+        .modal-transf.aberto { display: flex; }
+
+        .modal-transf-content {
+            background: #1a2a1a;
+            border: 1px solid rgba(0,176,79,0.3);
+            border-radius: var(--radius);
+            padding: 22px;
+            width: 92%; max-width: 480px;
+            box-shadow: var(--shadow-lg);
+        }
+        .modal-transf-content h2 {
+            font-size: 14px; font-weight: 700;
+            color: var(--verde);
+            text-transform: uppercase; letter-spacing: .5px;
+            margin-bottom: 14px; padding-bottom: 10px;
+            border-bottom: 1px solid rgba(0,176,79,0.2);
+        }
+
+        .modal-transf-info {
+            background: rgba(245,158,11,0.1);
+            border-left: 3px solid var(--warning);
+            padding: 10px 14px;
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            color: #fbbf24;
+            margin-bottom: 14px;
+            line-height: 1.5;
+        }
+        .modal-transf-info strong { color: #fff; }
+
+        .respon-list {
+            list-style: none;
+            max-height: 180px;
+            overflow-y: auto;
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-sm);
+            background: rgba(0,0,0,0.25);
+            margin-top: 6px;
+            padding: 0;
+            display: none;
+        }
+        .respon-list li {
+            padding: 7px 12px; cursor: pointer;
+            font-size: 12px; color: var(--text);
+            border-bottom: 1px solid var(--border-light);
+        }
+        .respon-list li:hover {
+            background: rgba(0,176,79,0.12); color: #4ade80;
+        }
+        .respon-list li:last-child { border-bottom: none; }
+    </style>
+</head>
+<body>
+
+    <div class="app-layout">
+
+        <!-- ══════════════════════════════════════════════════
+             SIDEBAR
+        ══════════════════════════════════════════════════ -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-brand">
+                <div class="brand-row">
+                    <div class="brand-icon">C</div>
+                    <div>
+                        <div class="brand-name">CÂMARA DOS DEPUTADOS</div>
+                        <div class="brand-sub">COAUD</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-user">
+                <div class="user-avatar" id="user-avatar">?</div>
+                <div class="user-info">
+                    <div class="user-name" id="user-name">Carregando...</div>
+                    <div class="user-role" id="user-role"></div>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="nav-section-title">Sistemas</div>
+                <a class="nav-item active" id="nav-escanear" href="index-escanear.html">
+                    <span class="nav-icon">📷</span> Sistema de Escaneamento
+                </a>
+                <a class="nav-item" id="nav-comparador" href="index-comparador.html">
+                    <span class="nav-icon">🔍</span> Comparador de Patrimônios
+                </a>
+                <a class="nav-item" id="nav-localizador" href="index_Local.html">
+                    <span class="nav-icon">📍</span> Localizador e Transferência
+                </a>
+                <a class="nav-item" id="nav-almoxarifado" href="index-almoxarifado.html">
+                    <span class="nav-icon">📋</span> Controle de Almoxarifado
+                </a>
+                <a class="nav-item" href="index.html">
+                    <span class="nav-icon">🏠</span> Página Inicial
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button class="btn-logout" onclick="fazerLogout()">
+                    <span>⎋</span> Sair do sistema
+                </button>
+            </div>
+        </aside>
+
+        <!-- ══════════════════════════════════════════════════
+             ÁREA PRINCIPAL
+        ══════════════════════════════════════════════════ -->
+        <div class="main-area">
+
+            <div class="topbar">
+                <button class="btn-menu" onclick="toggleSidebar()">☰</button>
+                <div>
+                    <div class="topbar-title">Escaneamento de Patrimônios</div>
+                    <div class="topbar-sub">Inventário por sala com transferência automática</div>
+                </div>
+                <div class="topbar-right">
+                    <div id="spinner" class="spinner" style="margin:0"></div>
+                    <p id="progressText" style="font-size:11px;color:var(--text-muted);margin:0"></p>
+                </div>
+            </div>
+
+            <div class="page-content">
+
+                <!-- ═══ SELEÇÃO DE SALA ═══ -->
+                <div class="card">
+                    <div class="card-title">Seleção de Sala</div>
+
+                    <div class="field-block" style="margin-bottom:14px">
+                        <label>Selecione a sala</label>
+                        <select id="salaSelect">
+                            <option value="">Carregando salas...</option>
+                        </select>
+                    </div>
+
+                    <div class="actions-bar">
+                        <button id="confirmarSala">✔ Confirmar Sala</button>
+                        <button id="resetarColeta" class="backButton">↩ Nova Sala</button>
+                    </div>
+
+                    <div class="field-block" style="margin-bottom:14px">
+                        <label>Patrimônio (NRP)</label>
+                        <div class="nrp-row">
+                            <input type="text" id="patrimonioInput"
+                                placeholder="Digite ou bipe o patrimônio e pressione Enter">
+                            <button onclick="addPatrimonio()">+ Adicionar</button>
+                        </div>
+                    </div>
+
+                    <div class="actions-bar">
+                        <button class="btn-export" onclick="exportPlanilhaEspecifica()">
+                            ⬇ Exportar — Responsáveis Específicos
+                        </button>
+                        <button class="btn-export" onclick="exportPlanilhaOutros()">
+                            ⬇ Exportar — Outros Responsáveis
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ═══ INVENTÁRIO ═══ -->
+                <div class="inventario-header" id="inventarioHeader">
+                    <h3>📦 Inventário da Sala: <span id="salaTitle"></span></h3>
+                    <div class="legend">
+                        🔴 Vermelho = Ainda não encontrado &nbsp;|&nbsp;
+                        🟢 Verde = Bipado / Encontrado &nbsp;|&nbsp;
+                        🟡 Amarelo = Novo (transferido/inserido)
+                    </div>
+                </div>
+
+                <div class="card" style="padding:0;overflow:hidden">
+                    <div class="table-wrapper">
+                        <table id="patrimonioTable">
+                            <thead>
+                                <tr>
+                                    <th>NRP</th>
+                                    <th>Material</th>
+                                    <th>Localização</th>
+                                    <th>Responsável</th>
+                                </tr>
+                            </thead>
+                            <tbody id="patrimonioList"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div style="margin-top:8px">
+                    <button id="refreshButton" class="btn-reset">⚠ RESET TOTAL</button>
+                </div>
+
+            </div>
+
+            <footer class="site-footer">
+                © 2025 BrenoDoria — Câmara dos Deputados / COAUD
+            </footer>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════
+         MODAL DE TRANSFERÊNCIA
+    ══════════════════════════════════════════════════ -->
+    <div id="modalTransf" class="modal-transf">
+        <div class="modal-transf-content">
+            <h2>⚠ Transferência de Sala</h2>
+            <div class="modal-transf-info" id="modalTransfInfo"></div>
+
+            <div class="field-block" style="margin-bottom:12px">
+                <label>Manter responsável ou alterar?</label>
+                <select id="modalRespOpcao" onchange="modalRespToggle()">
+                    <option value="manter">Manter responsável atual</option>
+                    <option value="alterar">Alterar responsável</option>
+                </select>
+            </div>
+
+            <div class="field-block" id="modalRespBusca" style="display:none;margin-bottom:12px">
+                <label>Buscar novo responsável (3 letras)</label>
+                <input type="text" id="modalRespInput"
+                    placeholder="Digite 3 letras..."
+                    autocomplete="off"
+                    oninput="filtrarModalResp()">
+                <ul id="modalRespList" class="respon-list"></ul>
+                <div id="modalRespSelecionado" style="font-size:11px;color:var(--verde);margin-top:4px;display:none;font-weight:600"></div>
+            </div>
+
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;padding-top:12px;border-top:1px solid rgba(0,176,79,0.15)">
+                <button class="cancelButton" onclick="fecharModalTransf()">Cancelar</button>
+                <button onclick="confirmarTransferencia()">✔ Confirmar Transferência</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════
+         MODAL DE NOVO PATRIMÔNIO
+    ══════════════════════════════════════════════════ -->
+    <div id="modalNovo" class="modal-transf">
+        <div class="modal-transf-content">
+            <h2>+ Cadastrar Novo Patrimônio</h2>
+            <div class="modal-transf-info" id="modalNovoInfo"></div>
+
+            <div class="field-block" style="margin-bottom:10px">
+                <label>NRP</label>
+                <input type="text" id="modalNovoNRP" readonly>
+            </div>
+
+            <div class="field-block" style="margin-bottom:10px">
+                <label>Material (descrição)</label>
+                <input type="text" id="modalNovoMaterial" placeholder="Ex.: MICROFONE (12576)">
+            </div>
+
+            <div class="field-block" style="margin-bottom:10px">
+                <label>Buscar responsável (3 letras)</label>
+                <input type="text" id="modalNovoRespInput"
+                    placeholder="Digite 3 letras..."
+                    autocomplete="off"
+                    oninput="filtrarModalNovoResp()">
+                <ul id="modalNovoRespList" class="respon-list"></ul>
+                <div id="modalNovoRespSelecionado" style="font-size:11px;color:var(--verde);margin-top:4px;display:none;font-weight:600"></div>
+            </div>
+
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;padding-top:12px;border-top:1px solid rgba(0,176,79,0.15)">
+                <button class="cancelButton" onclick="fecharModalNovo()">Cancelar</button>
+                <button onclick="confirmarNovoPatrimonio()">✔ Cadastrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════
+         SCRIPTS
+    ══════════════════════════════════════════════════ -->
+    <script>
+    // ══════════════════════════════════════════════════════
+    //  SIDEBAR — dados do usuário e permissões
+    // ══════════════════════════════════════════════════════
+  
+
+    function aplicarPermissoesSidebar() {
+        const u = JSON.parse(localStorage.getItem('usuarioLogado')) || {};
+        const perm = u.permissao;
+
+        const PERMS_SIDEBAR = {
+            supervisor:   ['nav-escanear', 'nav-comparador', 'nav-localizador', 'nav-almoxarifado'],
+            almoxarifado: ['nav-almoxarifado'],
+        };
+
+        const liberados = PERMS_SIDEBAR[perm] || [];
+        ['nav-escanear', 'nav-comparador', 'nav-localizador', 'nav-almoxarifado']
+            .forEach(id => {
+                const el = document.getElementById(id);
+                if (el && !liberados.includes(id)) el.style.display = 'none';
+            });
+
+        const paginaAtual = window.location.pathname.split('/').pop();
+        const paginasPorPermissao = {
+            'index-escanear.html':      'nav-escanear',
+            'index-comparador.html':    'nav-comparador',
+            'index_Local.html':         'nav-localizador',
+            'index-almoxarifado.html':  'nav-almoxarifado',
+            'fichas.html':              'nav-almoxarifado',
+            'fichas-arquivadas.html':   'nav-almoxarifado',
+        };
+        const permNecessaria = paginasPorPermissao[paginaAtual];
+        if (permNecessaria && !liberados.includes(permNecessaria)) {
+            alert('Você não tem permissão para acessar esta página.');
+            window.location.href = 'index.html';
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            preencherUsuarioSidebar();
+            aplicarPermissoesSidebar();
+        });
+    } else {
+        preencherUsuarioSidebar();
+        aplicarPermissoesSidebar();
+    }
+
+    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
+    function fazerLogout() {
+        localStorage.removeItem('usuarioLogado');
+        localStorage.removeItem('access_token');
+        window.location.href = 'index.html';
+    }
+    function setProgress(msg) {
+        const el = document.getElementById("progressText");
+        if (el) el.textContent = msg;
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  CONFIGURAÇÃO
+    // ══════════════════════════════════════════════════════
+    const FILE_ID = '1iNeSf0wakQ6j9Eg_qOCzVNKcIVVIsukeThL0Phpd5LE';
+
+    const RESPONSAVEIS_COAUD = [
+        "ALBERTO CESAR SOUZA ALMEIDA (5302)",
+        "PAULO FERNANDO VOLPE (5933)",
+        "JOSE HENRIQUE FERREIRA DA SILVA (7913)"
+    ];
+
+    let salaSelecionada       = "";
+    let patrimoniosColetados  = [];
+    let sigmasData            = [];
+    let coaudData             = [];
+    let sheetIds              = {};
+    let currentSalaInventario = [];
+
+    let transfPendente = null;
+    let novoRespSelecionado = null;
+    let modalNovoRespSelecionado = null;
+
+    // ══════════════════════════════════════════════════════
+    //  HELPERS
+    // ══════════════════════════════════════════════════════
+    function formatarData() {
+        const d = new Date();
+        return `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
+    }
+
+    function normalizeNRP(nrp) {
+        if (!nrp) return "";
+        return nrp.toString().replace(/^0+/, "").trim();
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  CARREGAMENTO INICIAL
+    // ══════════════════════════════════════════════════════
+    window.addEventListener("load", function() {
+        const accessToken = localStorage.getItem("access_token");
+        if (!accessToken) {
+            alert("Sessão expirada. Faça login novamente.");
+            window.location.href = "index.html";
+            return;
+        }
+        carregarDados(accessToken);
+    });
+
+    async function carregarDados(accessToken) {
+        document.getElementById("spinner").style.display = "inline-block";
+        setProgress("Consultando servidor...");
+
+        try {
+            // Metadados
+            const meta = await fetch(
+                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}`,
+                { headers: { 'Authorization': `Bearer ${accessToken}` } }
+            );
+            if (!meta.ok) throw new Error("Erro ao obter metadados.");
+            const metaData = await meta.json();
+            metaData.sheets.forEach(s => { sheetIds[s.properties.title] = s.properties.sheetId; });
+
+            // SIGMAS
+            const r1 = await fetch(
+                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/SIGMAS!A:D`,
+                { headers: { 'Authorization': `Bearer ${accessToken}` } }
+            );
+            if (!r1.ok) { const e = await r1.json(); throw new Error(e.error?.message); }
+            sigmasData = (await r1.json()).values || [];
+
+            // COAUD
+            const r2 = await fetch(
+                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/COAUD!A:D`,
+                { headers: { 'Authorization': `Bearer ${accessToken}` } }
+            );
+            if (!r2.ok) { const e = await r2.json(); throw new Error(e.error?.message); }
+            coaudData = (await r2.json()).values || [];
+
+            // Popula salas (apenas da aba COAUD)
+            if (coaudData.length > 1) {
+                const salas = [...new Set(
+                    coaudData.slice(1)
+                        .map(row => row[2] ? row[2].trim() : '')
+                        .filter(s => s !== '')
+                )].sort();
+                const sel = document.getElementById("salaSelect");
+                sel.innerHTML = '<option value="">Selecione a sala...</option>';
+                salas.forEach(sala => {
+                    const opt = document.createElement("option");
+                    opt.value = sala; opt.textContent = sala;
+                    sel.appendChild(opt);
+                });
+            }
+            setProgress(`✅ SIGMAS: ${sigmasData.length-1} | COAUD: ${coaudData.length-1}`);
+            document.getElementById("spinner").style.display = "none";
+            document.getElementById("salaSelect").focus();
+        } catch (error) {
+            setProgress("Erro: " + error.message);
+            document.getElementById("spinner").style.display = "none";
+        }
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  SELEÇÃO DE SALA
+    // ══════════════════════════════════════════════════════
+    document.getElementById("confirmarSala").addEventListener("click", function() {
+        salaSelecionada = document.getElementById("salaSelect").value.trim();
+        if (!salaSelecionada) { alert("Selecione uma sala."); return; }
+
+        document.getElementById("salaSelect").disabled = true;
+        document.getElementById("confirmarSala").disabled = true;
+
+        // Inventário inicial vem da COAUD
+        currentSalaInventario = coaudData.slice(1)
+            .filter(row => (row[2] || '').trim().toUpperCase() === salaSelecionada.toUpperCase())
+            .map(row => ({
+                NRP: row[0]?.toString() || '',
+                Material: row[1]?.toString() || '',
+                Localização: salaSelecionada,
+                Responsável: row[3]?.toString() || '',
+                status: 'red'
+            }));
+
+        document.getElementById("inventarioHeader").style.display = "block";
+        document.getElementById("salaTitle").textContent = salaSelecionada;
+        updateInventarioTable();
+        document.getElementById("patrimonioInput").focus();
+        setProgress(`✅ Sala "${salaSelecionada}" confirmada. ${currentSalaInventario.length} itens aguardando bipagem.`);
+    });
+
+    document.getElementById("patrimonioInput").addEventListener("keydown", function(e) {
+        if (e.key === "Enter") addPatrimonio();
+    });
+
+    // ══════════════════════════════════════════════════════
+    //  FLUXO PRINCIPAL — ADICIONAR PATRIMÔNIO
+    // ══════════════════════════════════════════════════════
+    function addPatrimonio() {
+        let input = document.getElementById("patrimonioInput").value.trim().replace(/\./g, "");
+        if (!input) { alert("Digite ou bipe o patrimônio."); return; }
+        if (!salaSelecionada) { alert("Selecione e confirme uma sala primeiro."); return; }
+
+        const n = normalizeNRP(input);
+
+        // ── Passo 1: já está no inventário desta sala? ──
+        const idxInventario = currentSalaInventario.findIndex(item =>
+            normalizeNRP(item.NRP) === n
+        );
+
+        if (idxInventario !== -1) {
+            const item = currentSalaInventario[idxInventario];
+            if (item.status === 'red') {
+                item.status = 'green';
+                patrimoniosColetados.push({
+                    NRP: item.NRP, Material: item.Material,
+                    Localização: salaSelecionada, Responsável: item.Responsável
+                });
+                updateInventarioTable();
+                setProgress(`✅ NRP "${input}" localizado na sala.`);
+            } else {
+                setProgress(`⚠ NRP "${input}" já foi coletado nesta sala.`);
+            }
+            document.getElementById("patrimonioInput").value = "";
+            document.getElementById("patrimonioInput").focus();
+            return;
+        }
+
+        // ── Passo 2: busca em COAUD ──
+        let idxCoaud = -1, rowCoaud = null;
+        for (let i = 1; i < coaudData.length; i++) {
+            if (normalizeNRP(coaudData[i][0]) === n) {
+                idxCoaud = i; rowCoaud = coaudData[i]; break;
+            }
+        }
+
+        // ── Passo 3: busca em SIGMAS ──
+        let idxSigmas = -1, rowSigmas = null;
+        for (let i = 1; i < sigmasData.length; i++) {
+            if (normalizeNRP(sigmasData[i][0]) === n) {
+                idxSigmas = i; rowSigmas = sigmasData[i]; break;
+            }
+        }
+
+        // ── Cenário C: não existe em lugar nenhum ──
+        if (!rowSigmas && !rowCoaud) {
+            abrirModalNovo(input);
+            return;
+        }
+
+        // ── Cenário B: existe em outra sala da COAUD ──
+        if (rowCoaud) {
+            abrirModalTransf({
+                nrp: rowCoaud[0], material: rowCoaud[1],
+                responsavelAtual: rowCoaud[3] || '',
+                salaOriginal: (rowCoaud[2] || '').trim(),
+                idxSigmas, idxCoaud,
+                emSigmas: !!rowSigmas, emCoaud: !!rowCoaud
+            });
+            return;
+        }
+
+        // ── Cenário D: existe apenas em SIGMAS (novo para COAUD) ──
+        abrirModalTransf({
+            nrp: rowSigmas[0], material: rowSigmas[1],
+            responsavelAtual: rowSigmas[3] || '',
+            salaOriginal: (rowSigmas[2] || '').trim(),
+            idxSigmas, idxCoaud: -1,
+            emSigmas: true, emCoaud: false
+        });
+    }
+
+    function marcarComoColetado(rowRef, status) {
+        const n = normalizeNRP(rowRef[0]);
+        const idx = currentSalaInventario.findIndex(item => normalizeNRP(item.NRP) === n);
+        if (idx !== -1) {
+            currentSalaInventario[idx].status      = status;
+            currentSalaInventario[idx].Responsável = rowRef[3] || '';
+            currentSalaInventario[idx].Material    = rowRef[1] || '';
+        } else {
+            currentSalaInventario.unshift({
+                NRP: rowRef[0]?.toString(),
+                Material: rowRef[1]?.toString() || 'N/A',
+                Localização: salaSelecionada,
+                Responsável: rowRef[3]?.toString() || '',
+                status
+            });
+        }
+        patrimoniosColetados.push({
+            NRP: rowRef[0]?.toString(),
+            Material: rowRef[1]?.toString() || 'N/A',
+            Localização: salaSelecionada,
+            Responsável: rowRef[3]?.toString() || ''
+        });
+        updateInventarioTable();
+    }
+
+    function updateInventarioTable() {
+        const list = document.getElementById("patrimonioList");
+        list.innerHTML = "";
+        currentSalaInventario.forEach(item => {
+            const tr = document.createElement("tr");
+            tr.className = item.status;
+            ['NRP','Material','Localização','Responsável'].forEach(key => {
+                const td = document.createElement("td");
+                td.textContent = item[key] || '';
+                tr.appendChild(td);
+            });
+            list.appendChild(tr);
+        });
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  MODAL DE TRANSFERÊNCIA
+    // ══════════════════════════════════════════════════════
+    function abrirModalTransf(dados) {
+        transfPendente = dados;
+        document.getElementById("modalTransfInfo").innerHTML = `
+            📍 O patrimônio <strong>${dados.nrp}</strong> (${dados.material})
+            pertence à sala <strong>${dados.salaOriginal}</strong>.<br><br>
+            Responsável atual: <strong>${dados.responsavelAtual || '(sem responsável)'}</strong><br><br>
+            Deseja transferir para a sala <strong>${salaSelecionada}</strong>?
+        `;
+        document.getElementById("modalRespOpcao").value = "manter";
+        document.getElementById("modalRespBusca").style.display = "none";
+        document.getElementById("modalRespInput").value = "";
+        document.getElementById("modalRespList").innerHTML = "";
+        document.getElementById("modalRespList").style.display = "none";
+        document.getElementById("modalRespSelecionado").style.display = "none";
+        novoRespSelecionado = null;
+        document.getElementById("modalTransf").classList.add("aberto");
+    }
+
+    function fecharModalTransf() {
+        document.getElementById("modalTransf").classList.remove("aberto");
+        transfPendente = null;
+        document.getElementById("patrimonioInput").value = "";
+        document.getElementById("patrimonioInput").focus();
+    }
+
+    function modalRespToggle() {
+        const opcao = document.getElementById("modalRespOpcao").value;
+        document.getElementById("modalRespBusca").style.display =
+            opcao === "alterar" ? "block" : "none";
+    }
+
+    function filtrarModalResp() {
+        const busca = document.getElementById("modalRespInput").value.trim().toLowerCase();
+        const lista = document.getElementById("modalRespList");
+        lista.innerHTML = "";
+        if (busca.length < 3) { lista.style.display = 'none'; return; }
+
+        const todosResp = [...new Set(sigmasData.slice(1).map(r => r[3]).filter(Boolean))];
+        const filtrados = todosResp.filter(r => r.toLowerCase().includes(busca));
+
+        if (!filtrados.length) {
+            const li = document.createElement("li");
+            li.textContent = 'Nenhum responsável encontrado.';
+            li.style.color = 'var(--text-muted)';
+            lista.appendChild(li);
+        } else {
+            filtrados.forEach(nome => {
+                const li = document.createElement("li");
+                const isCoaud = RESPONSAVEIS_COAUD.includes(nome);
+                li.innerHTML = `${nome} ${isCoaud ? '<span style="color:#4ade80;font-size:9px;margin-left:4px">◉ COAUD</span>' : ''}`;
+                li.onmousedown = () => {
+                    novoRespSelecionado = nome;
+                    document.getElementById("modalRespInput").value = nome;
+                    document.getElementById("modalRespSelecionado").textContent = `✔ Selecionado: ${nome}`;
+                    document.getElementById("modalRespSelecionado").style.display = 'block';
+                    lista.style.display = 'none';
+                };
+                lista.appendChild(li);
+            });
+        }
+        lista.style.display = 'block';
+    }
+
+    async function confirmarTransferencia() {
+        if (!transfPendente) return;
+        const accessToken = localStorage.getItem("access_token");
+        const opcao       = document.getElementById("modalRespOpcao").value;
+
+        if (opcao === "alterar" && !novoRespSelecionado) {
+            alert("Selecione o novo responsável ou escolha 'Manter'.");
+            return;
+        }
+
+        const respFinal = (opcao === "alterar")
+            ? novoRespSelecionado
+            : transfPendente.responsavelAtual;
+
+        document.getElementById("spinner").style.display = "inline-block";
+        setProgress("Aplicando transferência...");
+
+        try {
+            const nrp      = transfPendente.nrp;
+            const material = transfPendente.material;
+            const linha    = [nrp, material, salaSelecionada, respFinal];
+            const isNovoRespCoaud = RESPONSAVEIS_COAUD.includes(respFinal);
+
+            // SIGMAS: sempre atualiza
+            if (transfPendente.emSigmas) {
+                await atualizarLinha(accessToken, 'SIGMAS', transfPendente.idxSigmas + 1, linha);
+                sigmasData[transfPendente.idxSigmas] = linha;
+            }
+
+            // COAUD: aplica regras
+            if (isNovoRespCoaud) {
+                if (transfPendente.emCoaud) {
+                    await atualizarLinha(accessToken, 'COAUD', transfPendente.idxCoaud + 1, linha);
+                    coaudData[transfPendente.idxCoaud] = linha;
+                } else {
+                    await appendLinha(accessToken, 'COAUD', linha);
+                    coaudData.push(linha);
+                }
+            } else {
+                if (transfPendente.emCoaud) {
+                    await deletarLinha(accessToken, 'COAUD', transfPendente.idxCoaud);
+                    coaudData.splice(transfPendente.idxCoaud, 1);
+                }
+            }
+
+            marcarComoColetado(linha, 'yellow');
+            setProgress(`✅ Transferido de ${transfPendente.salaOriginal} → ${salaSelecionada}.`);
+            fecharModalTransf();
+        } catch (error) {
+            setProgress("Erro: " + error.message);
+            alert("Erro ao transferir: " + error.message);
+        } finally {
+            document.getElementById("spinner").style.display = "none";
+        }
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  MODAL DE NOVO PATRIMÔNIO
+    // ══════════════════════════════════════════════════════
+    function abrirModalNovo(nrp) {
+        document.getElementById("modalNovoNRP").value = nrp;
+        document.getElementById("modalNovoMaterial").value = "";
+        document.getElementById("modalNovoRespInput").value = "";
+        document.getElementById("modalNovoRespList").innerHTML = "";
+        document.getElementById("modalNovoRespList").style.display = "none";
+        document.getElementById("modalNovoRespSelecionado").style.display = "none";
+        modalNovoRespSelecionado = null;
+        document.getElementById("modalNovoInfo").innerHTML = `
+            ⚠ O patrimônio <strong>${nrp}</strong> não foi encontrado em nenhuma sala.<br>
+            Preencha os dados abaixo para cadastrá-lo na sala <strong>${salaSelecionada}</strong>.
+        `;
+        document.getElementById("modalNovo").classList.add("aberto");
+    }
+
+    function fecharModalNovo() {
+        document.getElementById("modalNovo").classList.remove("aberto");
+        document.getElementById("patrimonioInput").value = "";
+        document.getElementById("patrimonioInput").focus();
+    }
+
+    function filtrarModalNovoResp() {
+        const busca = document.getElementById("modalNovoRespInput").value.trim().toLowerCase();
+        const lista = document.getElementById("modalNovoRespList");
+        lista.innerHTML = "";
+        if (busca.length < 3) { lista.style.display = 'none'; return; }
+
+        const todosResp = [...new Set(sigmasData.slice(1).map(r => r[3]).filter(Boolean))];
+        const filtrados = todosResp.filter(r => r.toLowerCase().includes(busca));
+
+        if (!filtrados.length) {
+            const li = document.createElement("li");
+            li.textContent = 'Nenhum responsável.';
+            li.style.color = 'var(--text-muted)';
+            lista.appendChild(li);
+        } else {
+            filtrados.forEach(nome => {
+                const li = document.createElement("li");
+                const isCoaud = RESPONSAVEIS_COAUD.includes(nome);
+                li.innerHTML = `${nome} ${isCoaud ? '<span style="color:#4ade80;font-size:9px;margin-left:4px">◉ COAUD</span>' : ''}`;
+                li.onmousedown = () => {
+                    modalNovoRespSelecionado = nome;
+                    document.getElementById("modalNovoRespInput").value = nome;
+                    document.getElementById("modalNovoRespSelecionado").textContent = `✔ Selecionado: ${nome}`;
+                    document.getElementById("modalNovoRespSelecionado").style.display = 'block';
+                    lista.style.display = 'none';
+                };
+                lista.appendChild(li);
+            });
+        }
+        lista.style.display = 'block';
+    }
+
+    async function confirmarNovoPatrimonio() {
+        const nrp      = document.getElementById("modalNovoNRP").value.trim();
+        const material = document.getElementById("modalNovoMaterial").value.trim();
+        const respFinal = modalNovoRespSelecionado || "";
+        const accessToken = localStorage.getItem("access_token");
+
+        if (!material) { alert("Digite a descrição do material."); return; }
+        if (!respFinal) { alert("Selecione um responsável."); return; }
+
+        document.getElementById("spinner").style.display = "inline-block";
+        setProgress("Cadastrando novo patrimônio...");
+
+        try {
+            const linha = [nrp, material, salaSelecionada, respFinal];
+            const isCoaud = RESPONSAVEIS_COAUD.includes(respFinal);
+
+            await appendLinha(accessToken, 'SIGMAS', linha);
+            sigmasData.push(linha);
+
+            if (isCoaud) {
+                await appendLinha(accessToken, 'COAUD', linha);
+                coaudData.push(linha);
+                setProgress(`✅ NRP ${nrp} inserido em SIGMAS + COAUD.`);
+            } else {
+                setProgress(`✅ NRP ${nrp} inserido em SIGMAS.`);
+            }
+
+            marcarComoColetado(linha, 'yellow');
+            fecharModalNovo();
+        } catch (error) {
+            setProgress("Erro: " + error.message);
+            alert("Erro ao cadastrar: " + error.message);
+        } finally {
+            document.getElementById("spinner").style.display = "none";
+        }
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  HELPERS DE PLANILHA
+    // ══════════════════════════════════════════════════════
+    async function atualizarLinha(accessToken, aba, linha, valores) {
+        const r = await fetch(
+            `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/${aba}!A${linha}:D${linha}?valueInputOption=RAW`,
+            { method: 'PUT',
+              headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ values: [valores] }) }
+        );
+        if (!r.ok) { const e = await r.json(); throw new Error(`Erro em ${aba}: ${e.error?.message}`); }
+    }
+
+    async function appendLinha(accessToken, aba, valores) {
+        const r = await fetch(
+            `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/${aba}!A:D:append?valueInputOption=RAW`,
+            { method: 'POST',
+              headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ values: [valores] }) }
+        );
+        if (!r.ok) { const e = await r.json(); throw new Error(`Erro append ${aba}: ${e.error?.message}`); }
+    }
+
+    async function deletarLinha(accessToken, aba, idx) {
+        const r = await fetch(
+            `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}:batchUpdate`,
+            { method: 'POST',
+              headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ requests: [{
+                deleteDimension: { range: {
+                    sheetId: sheetIds[aba], dimension: 'ROWS',
+                    startIndex: idx, endIndex: idx + 1
+                }}
+              }]}) }
+        );
+        if (!r.ok) { const e = await r.json(); throw new Error(`Erro delete ${aba}: ${e.error?.message}`); }
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  RESETAR SALA
+    // ══════════════════════════════════════════════════════
+    document.getElementById("resetarColeta").addEventListener("click", function() {
+        document.getElementById("salaSelect").disabled = false;
+        document.getElementById("salaSelect").value = "";
+        document.getElementById("confirmarSala").disabled = false;
+        salaSelecionada = "";
+        currentSalaInventario = [];
+        document.getElementById("inventarioHeader").style.display = "none";
+        updateInventarioTable();
+        setProgress("Sala desbloqueada. Selecione uma nova sala.");
+    });
+
+    // ══════════════════════════════════════════════════════
+    //  EXPORTS XLSX
+    // ══════════════════════════════════════════════════════
+    function exportPlanilhaEspecifica() {
+        const dados = patrimoniosColetados.filter(item =>
+            RESPONSAVEIS_COAUD.some(r => r.trim() === item.Responsável.trim())
+        );
+        if (!dados.length) { alert("Nenhum patrimônio para responsáveis específicos."); return; }
+        exportarXLSX(dados, "Responsaveis_Especificos", `Responsaveis_COAUD_${formatarData()}.xlsx`);
+    }
+
+    function exportPlanilhaOutros() {
+        const dados = patrimoniosColetados.filter(item =>
+            !RESPONSAVEIS_COAUD.some(r => r.trim() === item.Responsável.trim())
+        );
+        if (!dados.length) { alert("Nenhum patrimônio para outros responsáveis."); return; }
+        exportarXLSX(dados, "Outros_Responsaveis", `Outros_Responsaveis_${formatarData()}.xlsx`);
+    }
+
+    function exportarXLSX(dados, nomePlanilha, nomeArquivo) {
+        const rows = [
+            ["NRP", "Material", "Localização", "Responsável"],
+            ...dados.map(i => [i.NRP, i.Material, i.Localização, i.Responsável])
+        ];
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, nomePlanilha);
+        XLSX.writeFile(wb, nomeArquivo);
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  RESET TOTAL
+    // ══════════════════════════════════════════════════════
+    document.getElementById("refreshButton").addEventListener("click", function() {
+        if (!confirm("RESET TOTAL? Todos os dados coletados desta sessão serão perdidos.")) return;
+        salaSelecionada = "";
+        patrimoniosColetados = [];
+        currentSalaInventario = [];
+        document.getElementById("salaSelect").value = "";
+        document.getElementById("salaSelect").disabled = false;
+        document.getElementById("confirmarSala").disabled = false;
+        document.getElementById("patrimonioInput").value = "";
+        document.getElementById("inventarioHeader").style.display = "none";
+        document.getElementById("patrimonioList").innerHTML = "";
+        setProgress("✅ Reset total concluído.");
+    });
+    </script>
+</body>
+</html>

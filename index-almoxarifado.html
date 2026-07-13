@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COAUD — Controle de Almoxarifado</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='4' fill='%2300b04f'/><text y='22' x='5' font-size='17' fill='white' font-family='Arial' font-weight='bold'>C</text></svg>">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="sidebar-init.js" defer></script>
+    <style>
+        .nrp-row {
+            display: flex;
+            gap: 8px;
+            align-items: flex-end;
+        }
+        .nrp-row input { flex: 1; margin: 0; }
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }
+        @media(max-width:600px) {
+            .nrp-row { flex-direction: column; }
+            .nrp-row input, .nrp-row button { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-layout">
+
+        <!-- ══ SIDEBAR ═══════════════════════════════════════ -->
+        <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+        <div class="brand-row">
+            <div class="brand-icon">C</div>
+            <div>
+                <div class="brand-name">CÂMARA DOS DEPUTADOS</div>
+                <div class="brand-sub">COAUD</div>
+            </div>
+        </div>
+    </div>
+    <div class="sidebar-user">
+        <div class="user-avatar" id="user-avatar">?</div>
+        <div class="user-info">
+            <div class="user-name" id="user-name">Carregando...</div>
+            <div class="user-role" id="user-role"></div>
+        </div>
+    </div>
+    <nav class="sidebar-nav">
+    <div class="nav-section-title">Sistemas</div>
+    <a class="nav-item" id="nav-escanear" href="index-escanear.html">
+        <span class="nav-icon">📷</span> Sistema de Escaneamento
+    </a>
+    <a class="nav-item" id="nav-comparador" href="index-comparador.html">
+        <span class="nav-icon">🔍</span> Comparador de Patrimônios
+    </a>
+    <a class="nav-item" id="nav-localizador" href="index_Local.html">
+        <span class="nav-icon">📍</span> Localizador e Transferência
+    </a>
+
+    <a class="nav-item nav-parent" id="nav-almoxarifado" href="index-almoxarifado.html">
+        <span class="nav-icon">📋</span> Controle de Almoxarifado
+    </a>
+    <div class="nav-subgroup" id="nav-almoxarifado-sub">
+        <a class="nav-subitem" data-page="index-almoxarifado.html" href="index-almoxarifado.html">
+            <span class="nav-sub-icon">↳</span> Nova Retirada
+        </a>
+        <a class="nav-subitem" data-page="fichas.html" href="fichas.html">
+            <span class="nav-sub-icon">↳</span> Fichas Pendentes
+        </a>
+        <a class="nav-subitem" data-page="fichas-arquivadas.html" href="fichas-arquivadas.html">
+            <span class="nav-sub-icon">↳</span> Fichas Arquivadas
+        </a>
+        <a class="nav-subitem" data-page="relatorios.html" href="relatorios.html">
+            <span class="nav-sub-icon">↳</span> Relatórios
+        </a>
+    </div>
+
+    <a class="nav-item" href="index.html">
+        <span class="nav-icon">🏠</span> Página Inicial
+    </a>
+</nav>
+    <div class="sidebar-footer">
+        <button class="btn-logout" onclick="fazerLogout()">
+            <span>⎋</span> Sair do sistema
+        </button>
+    </div>
+</aside>
+<script>
+// Marca o subitem ativo conforme a página atual
+(function() {
+    const pagina = window.location.pathname.split('/').pop();
+    document.querySelectorAll('.nav-subitem[data-page]').forEach(el => {
+        if (el.getAttribute('data-page') === pagina) el.classList.add('active');
+    });
+    // Esconde o subgrupo se o item pai estiver escondido (sem permissão)
+    const pai = document.getElementById('nav-almoxarifado');
+    const sub = document.getElementById('nav-almoxarifado-sub');
+    if (pai && sub && pai.style.display === 'none') sub.style.display = 'none';
+})();
+</script>
+
+        <!-- ══ ÁREA PRINCIPAL ═════════════════════════════════ -->
+        <div class="main-area">
+
+            <div class="topbar">
+                <button class="btn-menu" onclick="toggleSidebar()">☰</button>
+                <div>
+                    <div class="topbar-title">Nova Retirada</div>
+                    <div class="topbar-sub">Registre a saída de equipamentos</div>
+                </div>
+                <div class="topbar-right">
+                    <div id="spinner" class="spinner" style="margin:0"></div>
+                    <p id="progressText" style="font-size:11px;color:var(--text-muted);margin:0"></p>
+                </div>
+            </div>
+
+            <div class="page-content">
+                <!-- ══ DASHBOARD ══════════════════════════════════════ -->
+<div class="dashboard" id="dashboard">
+    <div class="kpi">
+        <div class="kpi-icon">⏳</div>
+        <div class="kpi-info">
+            <div class="kpi-label">Fichas Pendentes</div>
+            <div class="kpi-value" id="kpi-pendentes">–</div>
+            <div class="kpi-sub">Aguardando devolução</div>
+        </div>
+    </div>
+
+    <div class="kpi kpi-warn" id="kpi-atraso-card" style="display:none">
+        <div class="kpi-icon">⚠️</div>
+        <div class="kpi-info">
+            <div class="kpi-label">Em Atraso</div>
+            <div class="kpi-value" id="kpi-atraso">0</div>
+            <div class="kpi-sub">Mais de 30 dias</div>
+        </div>
+    </div>
+
+    <div class="kpi kpi-danger" id="kpi-critico-card" style="display:none">
+        <div class="kpi-icon">🚨</div>
+        <div class="kpi-info">
+            <div class="kpi-label">Situação Crítica</div>
+            <div class="kpi-value" id="kpi-critico">0</div>
+            <div class="kpi-sub">Mais de 35 dias</div>
+        </div>
+    </div>
+
+    <div class="kpi kpi-blue">
+        <div class="kpi-icon">📁</div>
+        <div class="kpi-info">
+            <div class="kpi-label">Arquivadas</div>
+            <div class="kpi-value" id="kpi-arquivadas">–</div>
+            <div class="kpi-sub">Histórico total</div>
+        </div>
+    </div>
+</div>
+
+                <!-- ═══ FORMULÁRIO ═══ -->
+                <div class="form-section">
+                    <h2 id="form-title">Registrar Retirada de Equipamento</h2>
+
+                    <!-- Operador + Almoxarifado -->
+                    <div class="form-row">
+                        <div class="field-block">
+                            <label for="operador1Busca">Operador</label>
+                            <div class="operador-wrapper">
+                               <input type="text" id="operador1Busca"
+                                    placeholder="Clique para ver a lista ou digite para filtrar..."
+                                    autocomplete="off"
+                                    oninput="filtrarOperador1()"
+                                    onfocus="abrirListaOperador1()"
+                                    onclick="abrirListaOperador1()"
+                                    onblur="setTimeout(fecharListaOperador1, 200)">
+                                <input type="hidden" id="operador1Select">
+                                <ul id="operador1Lista"></ul>
+                            </div>
+                            <span id="operador1Selecionado"></span>
+                        </div>
+
+                        <div class="field-block">
+                            <label for="operador2Select">Almoxarifado</label>
+                            <select id="operador2Select">
+                                <option value=""></option>
+                                <option value="Afonso Viana de Mesquita Filho">Afonso Viana de Mesquita Filho</option>
+                                <option value="Altamir Araujo da Silva">Altamir Araujo da Silva</option>
+                                <option value="Antonio Batista Ângelo">Antonio Batista Ângelo</option>
+                                <option value="Breno Doria Felicio">Breno Doria Felicio</option>
+                                <option value="Waleria Bastos Cardoso">Waleria Bastos Cardoso</option>
+                                <option value="Wirlem Silva Alves">Wirlem Silva Alves</option>
+                                <option value="Lucas Farias de Menezes">Lucas Farias de Menezes</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Local + Evento -->
+                    <div class="form-row">
+                        <div class="field-block">
+                            <label for="localMontagemInput">Local</label>
+                            <input type="text" id="localMontagemInput" placeholder="Ex.: Sala 101">
+                        </div>
+                        <div class="field-block">
+                            <label for="eventoInput">Evento / Reunião</label>
+                            <input type="text" id="eventoInput" placeholder="Ex.: Reunião Mensal">
+                        </div>
+                    </div>
+
+                    <!-- NRP -->
+                    <div class="field-block" style="margin-bottom:14px">
+                        <label for="nrpInput">Patrimônio (NRP)</label>
+                        <div class="nrp-row">
+                            <input type="text" id="nrpInput"
+                                placeholder="Digite ou bipe o NRP e pressione Enter"
+                                onkeypress="if(event.key==='Enter') adicionarNRP()">
+                            <button onclick="adicionarNRP()">+ Adicionar</button>
+                        </div>
+                    </div>
+
+                    <div class="action-buttons">
+                        <button id="submitButton" onclick="registrarRetirada()">
+                            ✔ Registrar Retirada
+                        </button>
+                        <button id="cancelButton" class="cancelButton"
+                            onclick="cancelarEdicao()" style="display:none">
+                            ✕ Cancelar Edição
+                        </button>
+                        <button id="limparNRPsBtn" class="cancelButton"
+                            onclick="limparNRPs()" style="display:none">
+                            🗑 Limpar Lista
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ═══ TABELA DE NRPs ═══ -->
+                <div class="card" style="padding:0;overflow:hidden">
+                    <div class="table-wrapper">
+                        <table id="patrimonioTable">
+                            <thead>
+                                <tr>
+                                    <th>NRP</th>
+                                    <th>Material</th>
+                                    <th>Localização</th>
+                                    <th>Responsável</th>
+                                    <th>Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody id="patrimonioList"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+
+            <footer class="site-footer">
+                © 2025 BrenoDoria — Câmara dos Deputados / COAUD
+            </footer>
+        </div>
+    </div>
+
+    <script>
+        // ══ DASHBOARD — busca dados e atualiza KPIs ══════════
+async function atualizarDashboard() {
+    if (!accessToken) return;
+
+    try {
+        // Busca fichas pendentes
+        const pendResp = await fetch(
+            `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/RETIRADAS_PENDENTES!A:G`,
+            { headers: { 'Authorization': `Bearer ${accessToken}` } }
+        );
+        // Busca fichas arquivadas (só a coluna A para contar)
+        const arqResp = await fetch(
+            `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/RETIRADAS_ARQUIVADAS!A:A`,
+            { headers: { 'Authorization': `Bearer ${accessToken}` } }
+        );
+
+        if (!pendResp.ok || !arqResp.ok) return;
+
+        const pendData = await pendResp.json();
+        const arqData  = await arqResp.json();
+
+        const pendentes  = pendData.values ? pendData.values.slice(1) : [];
+        const arquivadas = arqData.values  ? arqData.values.slice(1)  : [];
+
+        // Calcula atraso e crítico
+        const agora = new Date();
+        let emAtraso = 0, criticas = 0;
+
+        pendentes.forEach(row => {
+            const dataStr = row[6];
+            if (!dataStr) return;
+            const [datePart] = dataStr.split(', ');
+            if (!datePart) return;
+            const [d, m, y] = datePart.split('/').map(Number);
+            const dataRet = new Date(y, m-1, d);
+            const dias = (agora - dataRet) / (1000*60*60*24);
+            if (dias > 35)       criticas++;
+            else if (dias > 30)  emAtraso++;
+        });
+
+        // Atualiza KPIs
+        document.getElementById('kpi-pendentes').textContent  = pendentes.length;
+        document.getElementById('kpi-arquivadas').textContent = arquivadas.length;
+
+        const cardAtraso = document.getElementById('kpi-atraso-card');
+        if (emAtraso > 0) {
+            cardAtraso.style.display = 'flex';
+            document.getElementById('kpi-atraso').textContent = emAtraso;
+        } else {
+            cardAtraso.style.display = 'none';
+        }
+
+        const cardCritico = document.getElementById('kpi-critico-card');
+        if (criticas > 0) {
+            cardCritico.style.display = 'flex';
+            document.getElementById('kpi-critico').textContent = criticas;
+        } else {
+            cardCritico.style.display = 'none';
+        }
+
+    } catch (error) {
+        console.error('Erro ao atualizar dashboard:', error);
+    }
+}
+    // ══ SIDEBAR / LOGOUT ═══════════════════════════════════
+   // ══ FILTRA SIDEBAR CONFORME PERMISSÃO ═════════════════
+// ══ Preenche dados do usuário na sidebar ═══════════════
+function preencherUsuarioSidebar() {
+    const u = JSON.parse(localStorage.getItem('usuarioLogado'));
+    if (!u) { window.location.href = 'index.html'; return; }
+
+    const initials = nome => nome
+        ? nome.split(' ').slice(0,2).map(n=>n[0]).join('').toUpperCase()
+        : '?';
+
+    const avatarEl = document.getElementById('user-avatar');
+    const nameEl   = document.getElementById('user-name');
+    const roleEl   = document.getElementById('user-role');
+
+    if (avatarEl) avatarEl.textContent = initials(u.nome);
+    if (nameEl)   nameEl.textContent   = u.nome || 'Usuário';
+    if (roleEl)   roleEl.textContent   = u.permissao || '';
+}
+
+// ══════════════════════════════════════════════════════
+//  BLOQUEIO DE NAVEGAÇÃO DURANTE EDIÇÃO
+//  Só sai da edição salvando ou cancelando
+// ══════════════════════════════════════════════════════
+function bloquearNavegacaoSeEditando(e) {
+    if (!fichaEditando) return; // não está editando, navega normal
+    e.preventDefault();
+    e.stopPropagation();
+    alert('⚠ Você está editando uma ficha.\n\nSalve as alterações ou cancele a edição antes de sair.');
+}
+
+function ativarBloqueioEdicao() {
+    // Bloqueia todos os links da sidebar
+    document.querySelectorAll('.sidebar a.nav-item, .sidebar a.nav-subitem').forEach(a => {
+        a.addEventListener('click', bloquearNavegacaoSeEditando, true);
+    });
+    // Bloqueia o botão de logout
+    const btnLogout = document.querySelector('.btn-logout');
+    if (btnLogout) {
+        btnLogout.addEventListener('click', bloquearNavegacaoSeEditando, true);
+    }
+    // Bloqueia fechar/recarregar a aba do navegador
+    window.addEventListener('beforeunload', function(e) {
+        if (fichaEditando) {
+            e.preventDefault();
+            e.returnValue = '';
+            return '';
+        }
+    });
+}
+
+// Ativa o bloqueio quando o DOM estiver pronto
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', ativarBloqueioEdicao);
+} else {
+    ativarBloqueioEdicao();
+}
+
+// Executa quando o DOM estiver pronto
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', preencherUsuarioSidebar);
+} else {
+    preencherUsuarioSidebar();
+}
+
+    function toggleSidebar() {
+        document.getElementById('sidebar').classList.toggle('open');
+    }
+    function fazerLogout() {
+        localStorage.removeItem('usuarioLogado');
+        localStorage.removeItem('access_token');
+        window.location.href = 'index.html';
+    }
+
+    // ══ CONFIGURAÇÃO GERAL ═════════════════════════════════
+    const CLIENT_ID = '286050228811-cv6vsd075480anb1i6auuc421enuaf8q.apps.googleusercontent.com';
+    const FILE_ID   = '1q9RCwJ4P--QIH4kkMszffrN8ZwzkSsNoZtPH-Usk4Zw';
+
+    let tokenClient;
+    let accessToken            = null;
+    let patrimonioData         = [];
+    let patrimoniosSelecionados = [];
+    let fichaEditando          = null;
+    let escalaData             = [];
+
+    const emailToNome = {
+        "afonsoguitar@gmail.com":          "Afonso Viana de Mesquita Filho",
+        "altamiraraujo@gmail.com":         "Altamir Araujo da Silva",
+        "waleriasbastos@gmail.com":        "Waleria Bastos Cardoso",
+        "antonio.angelo.agenda@gmail.com": "Antonio Batista Ângelo",
+        "breno.felicio@gmail.com":         "Breno Doria Felicio",
+        "wirlemalves@gmail.com":           "Wirlem Silva Alves",
+        "lcsfirmeza@gmail.com":            "Lucas Farias de Menezes",
+    };
+
+    const patrimoniosPermitidosParaRepeticao = [
+        "99010001","99010002","99010003","99010004","99010005",
+        "99010006","99010007","99010008","99010009","99010010",
+        "99010011","99010012","99010013","99010014","99010015",
+        "99010016","99010017","99010018","99010019","99010020",
+        "99010021","99010022","99010023","99010024","99010025",
+        "99030001","99030002","99040001","99020001","99020002",
+        "99020003","99020004","99040002","99040003","99030003",
+        "99030004","99030005","99030006","99040004","99030011","99040005",
+    ];
+
+    // ══ LISTA DE OPERADORES ═════════════════════════════════
+    const todosOperadores = [
+        "Adson Miranda dos Anjos","Afonso Viana de Mesquita Filho",
+        "Alberto Cesar Souza Almeida","Alexander Rafael Carvalho Paim",
+        "Alison Silva de Oliveira","Allan Cosseti Ardisson",
+        "Ana Clara Cardoso de Oliveira","Altamir Araujo da Silva",
+        "Antonio Batista Ângelo","Antonio Rodrigues Siqueira Filho",
+        "Arley Carvalho Alves","Breno Doria Felicio",
+        "Bruno Fernandes Braga","Bruno Rodrigues do Prado",
+        "Bruno Vieira Rodrigues","Carlos Cesar José da Silva",
+        "Carlos Eduardo Guedes da Silva",
+        "Carlos Roberto de Paiva Miranda dos Santos",
+        "Cinthia Neves Carvalho Barbosa","Claudio Marcelo do Nascimento",
+        "Daniel Deluze Braga","Davi Aragão de Paula Gonçalves",
+        "Douglas Batista da Silva","Emmanuel do Amaral Idelfonso",
+        "Emanuel Silveira Costa","Eric Samuel do Ouro",
+        "Erika Fedosseeff Auler","Eromilson Monteiro dutra Chaves",
+        "Evellyn Mendes de Souza Nunes","Felipe Omena Vasconcellos de Assis",
+        "Fernando de Sousa Vasconcelos","Flavio Lima Camara",
+        "Francisco de Assis da Silva Sales","Francisco de Sousa Filho",
+        "Francisco Juniel Sousa E Silva","Geraldo Ribeiro de Souza Filho",
+        "Gildo Marques da Silva","Gilson Gomes da Silva",
+        "Gleisson Carlos Pereira da Silva","Guilherme Malheiro da Rocha Pinto",
+        "Helisson Rafael de O. Leite","Helyeber Feitosa Ferreira",
+        "Hilton Severiano Ferreira","Huelisson Amancio de Moraes Silva",
+        "Igor Mendes dos Santos","Isaias Pereira Soares",
+        "Joel Luiz de Sá Silva","Joel Pereira Santos",
+        "Jônatas Soares de Andrade","Jose Henrique Ferreira da Silva",
+        "Jose Leandro Marques","José Nilton Abraão de Sousa",
+        "Josue Cardoso Abreu","Joval Bastos Freitas Júnior",
+        "Juliano Gustavo Pedro de Oliveira","Kely Berlinck Freire",
+        "Kleber de Araújo Moura","Leandro Calixto da Silva",
+        "Leandro Silva Lima Alves","Leonardo Augusto de Freitas",
+        "Letícia Santana Araújo","Lívia Maria de Souza",
+        "Lucas Lima Lira","Lucas Ribeiro dos Santos",
+        "Luciano de Freitas Silva","Luiz Henrique Reis de Lima",
+        "Marcelo Gomes da Silva","Marco Antonio Baldresca Lambert de Brito",
+        "Marco Antônio Felício Júnior","Marcos Murilo Antunes",
+        "Marcos Borges de Souza","Marcus Aurélius Fernandes de Moura",
+        "Massilon Alves de Sousa Filho","Mateus da Silva Lima",
+        "Matheus Gabriel Damasceno Dias","Matheus Henrique Felix Barbosa",
+        "Múcio Homero Rocha Pires de Oliveira","Orlando Villavicencio Venegas",
+        "Otoniel Alves de Souza","Paulo Fernando Volpe",
+        "Paulo Roberto Pereira","Paulo Soares da Costa",
+        "Pedro Henrique Candido Boaventura","Péricles Cruz da Silva",
+        "Rafael Queiroz Lemos de Oliveira","Reynaldo Jesse Rodrigues da Silva",
+        "Ronaldo Jovino da Silva","Richard Rodrigues dos Santos",
+        "Roberio Antunes Simionato","Rondney Rodrigues Alves Sousa",
+        "Rosivan Augustinho Pereira","Thiago Veríssimo Cabral Freitas",
+        "Waleria Bastos Cardoso","Wellington Jorge Souza Mendes",
+        "Wendel Vieira da Costa","Wesley Maurício Ribeiro França",
+        "William Neves da Silva","Wirlem Silva Alves"
+    ];
+
+   // ══════════════════════════════════════════════════════
+//  BUSCA DE OPERADOR — lista ao focar + teclado
+// ══════════════════════════════════════════════════════
+let operadorFocusIndex = -1;
+
+function renderListaOperador1(filtrados, busca) {
+    const lista = document.getElementById('operador1Lista');
+    lista.innerHTML = '';
+    operadorFocusIndex = -1;
+
+    if (!filtrados.length) {
+        const li = document.createElement('li');
+        li.textContent = 'Nenhum operador encontrado.';
+        li.style.color = 'var(--text-muted)';
+        lista.appendChild(li);
+    } else {
+        const regex = busca
+            ? new RegExp(`(${busca.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`, 'gi')
+            : null;
+        filtrados.forEach(nome => {
+            const li = document.createElement('li');
+            li.innerHTML = regex
+                ? nome.replace(regex, '<strong style="color:#4ade80">$1</strong>')
+                : nome;
+            li.dataset.nome = nome;
+            li.onmousedown = () => selecionarOperador1(nome);
+            lista.appendChild(li);
+        });
+    }
+    lista.style.display = 'block';
+}
+
+function filtrarOperador1() {
+    const busca = document.getElementById('operador1Busca').value.trim().toLowerCase();
+    if (busca.length === 0) {
+        limparSelecaoOperador1();
+        renderListaOperador1(todosOperadores, '');
+        return;
+    }
+    const filtrados = todosOperadores.filter(n => n.toLowerCase().includes(busca));
+    renderListaOperador1(filtrados, busca);
+}
+
+function abrirListaOperador1() {
+    // Ao clicar/focar: mostra lista completa (ou filtrada se já tem texto)
+    filtrarOperador1();
+}
+
+function selecionarOperador1(nome) {
+    document.getElementById('operador1Busca').value  = nome;
+    document.getElementById('operador1Select').value = nome;
+    document.getElementById('operador1Lista').style.display = 'none';
+    const tag = document.getElementById('operador1Selecionado');
+    tag.textContent   = '✔ ' + nome;
+    tag.style.display = 'block';
+    atualizarOperador2();
+    autoPreencherLocalEEvento();
+}
+
+function limparSelecaoOperador1() {
+    document.getElementById('operador1Select').value = '';
+    const tag = document.getElementById('operador1Selecionado');
+    tag.textContent   = '';
+    tag.style.display = 'none';
+}
+
+function fecharListaOperador1() {
+    document.getElementById('operador1Lista').style.display = 'none';
+    operadorFocusIndex = -1;
+}
+
+// ── Navegação por teclado (↑ ↓ Enter Esc) ──
+document.getElementById('operador1Busca').addEventListener('keydown', function(e) {
+    const lista = document.getElementById('operador1Lista');
+    const itens = Array.from(lista.querySelectorAll('li[data-nome]'));
+    if (lista.style.display === 'none' || !itens.length) return;
+
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        operadorFocusIndex = Math.min(operadorFocusIndex + 1, itens.length - 1);
+        destacarItemFocado(itens);
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        operadorFocusIndex = Math.max(operadorFocusIndex - 1, 0);
+        destacarItemFocado(itens);
+    } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (operadorFocusIndex >= 0) {
+            selecionarOperador1(itens[operadorFocusIndex].dataset.nome);
+        } else if (itens.length === 1) {
+            // Se só sobrou 1 na lista, Enter seleciona direto
+            selecionarOperador1(itens[0].dataset.nome);
+        }
+    } else if (e.key === 'Escape') {
+        fecharListaOperador1();
+    }
+});
+
+function destacarItemFocado(itens) {
+    itens.forEach((li, i) => {
+        li.style.background = i === operadorFocusIndex ? 'rgba(0,176,79,0.25)' : '';
+    });
+    if (operadorFocusIndex >= 0) {
+        itens[operadorFocusIndex].scrollIntoView({ block: 'nearest' });
+    }
+}
+    // ══ AUTENTICAÇÃO ═══════════════════════════════════════
+    function setProgress(msg) {
+        const el = document.getElementById("progressText");
+        if (el) el.textContent = msg;
+    }
+
+    function solicitarToken() {
+        if (tokenClient) tokenClient.requestAccessToken({ prompt: 'select_account' });
+    }
+
+    async function getCurrentUserEmail() {
+        if (!accessToken) return null;
+        try {
+            const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo',
+                { headers: { 'Authorization': `Bearer ${accessToken}` } });
+            if (r.status === 401) {
+                localStorage.removeItem("access_token");
+                accessToken = null;
+                solicitarToken();
+                return null;
+            }
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            return (await r.json()).email.toLowerCase().trim();
+        } catch (e) { console.error(e); return null; }
+    }
+
+    async function autoPreencherAlmoxarifado() {
+        const email = await getCurrentUserEmail();
+        if (!email) return;
+        const nome = emailToNome[email];
+        const sel  = document.getElementById("operador2Select");
+        if (nome) {
+            sel.value    = nome;
+            sel.disabled = true;
+            setProgress(`✅ Almoxarifado: ${nome}`);
+        } else {
+            setProgress(`⚠ E-mail ${email} não cadastrado como Almoxarifado.`);
+        }
+    }
+
+    // ══ INICIALIZAÇÃO ══════════════════════════════════════
+    window.addEventListener('load', () => {
+        const inicializarGoogle = () => {
+            if (typeof google === 'undefined' || !google.accounts) {
+                setTimeout(inicializarGoogle, 300);
+                return;
+            }
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.email',
+                callback: (tokenResponse) => {
+                    if (tokenResponse.error) {
+                        setProgress("Erro: " + tokenResponse.error);
+                        return;
+                    }
+                    accessToken = tokenResponse.access_token;
+                    localStorage.setItem("access_token", accessToken);
+                    setProgress("Autenticado. Carregando dados...");
+                    carregarPatrimoniosDoSheets();
+                    carregarEscalaDoSheets();
+                    setTimeout(() => autoPreencherAlmoxarifado(), 500);
+                }
+            });
+
+            const savedToken = localStorage.getItem("access_token");
+            if (savedToken) {
+                accessToken = savedToken;
+                atualizarDashboard();
+                setProgress("Carregando dados...");
+                carregarPatrimoniosDoSheets();
+                carregarEscalaDoSheets();
+                autoPreencherAlmoxarifado();
+            } else {
+                solicitarToken();
+            }
+        };
+        inicializarGoogle();
+
+        // Ficha em edição
+        const fichaParaEditar = JSON.parse(localStorage.getItem('fichaParaEditar'));
+        if (fichaParaEditar) {
+            fichaEditando = fichaParaEditar;
+            document.getElementById("form-title").textContent    = "Editar Ficha Pendente";
+            document.getElementById("submitButton").textContent  = "✔ Salvar Alterações";
+            document.getElementById("cancelButton").style.display = "inline-flex";
+
+            document.getElementById("operador1Busca").value  = fichaEditando.operador1;
+            document.getElementById("operador1Select").value = fichaEditando.operador1;
+            const tag = document.getElementById("operador1Selecionado");
+            tag.textContent   = '✔ ' + fichaEditando.operador1;
+            tag.style.display = 'block';
+
+            document.getElementById("operador2Select").value    = fichaEditando.operador2;
+            atualizarOperador2();
+            document.getElementById("localMontagemInput").value = fichaEditando.local;
+            document.getElementById("eventoInput").value        = fichaEditando.evento;
+
+            patrimoniosSelecionados = fichaEditando.equipamentos.map(equip => {
+                const [nrp, ...partes] = equip.split(' - ');
+                return { NRP: nrp, Material: partes.join(' - ') };
+            });
+            atualizarListaPatrimonios();
+            document.getElementById("limparNRPsBtn").style.display =
+                patrimoniosSelecionados.length > 0 ? "inline-flex" : "none";
+        }
+    });
+
+    function cancelarEdicao() {
+        fichaEditando = null;
+        localStorage.removeItem('fichaParaEditar');
+        document.getElementById("form-title").textContent   = "Registrar Retirada de Equipamento";
+        document.getElementById("submitButton").textContent = "✔ Registrar Retirada";
+        document.getElementById("cancelButton").style.display = "none";
+        document.getElementById("operador1Busca").value  = "";
+        document.getElementById("operador1Select").value = "";
+        limparSelecaoOperador1();
+        document.getElementById("operador2Select").value    = "";
+        document.getElementById("localMontagemInput").value = "";
+        document.getElementById("eventoInput").value        = "";
+        patrimoniosSelecionados = [];
+        atualizarListaPatrimonios();
+        document.getElementById("limparNRPsBtn").style.display = "none";
+        autoPreencherAlmoxarifado();
+        setProgress("Edição cancelada.");
+    }
+
+    function atualizarOperador2() {
+        const operador1  = document.getElementById("operador1Select").value;
+        const sel        = document.getElementById("operador2Select");
+        const valorAtual = sel.value;
+        const almoxarifados = [
+            "Afonso Viana de Mesquita Filho","Altamir Araujo da Silva",
+            "Antonio Batista Ângelo","Waleria Bastos Cardoso",
+            "Wirlem Silva Alves","Breno Doria Felicio","Lucas Farias de Menezes",
+        ];
+        sel.innerHTML = '<option value=""></option>' +
+            almoxarifados.map(nome =>
+                `<option value="${nome}" ${nome === operador1 ? 'disabled' : ''}>${nome}</option>`
+            ).join('');
+        if (valorAtual && valorAtual !== operador1) sel.value = valorAtual;
+    }
+
+    function carregarPatrimoniosDoSheets(retryCount = 0) {
+        const maxRetries = 3;
+        document.getElementById("spinner").style.display = "inline-block";
+        setProgress("Consultando servidor...");
+        atualizarDashboard();
+
+        fetch(`https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/SIGMAS!A:D`, {
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+        })
+        .then(async r => {
+            if (!r.ok) {
+                if (r.status === 401 && retryCount < maxRetries) {
+                    localStorage.removeItem("access_token");
+                    solicitarToken();
+                    return;
+                }
+                if (r.status === 429 && retryCount < maxRetries) {
+                    setTimeout(() => carregarPatrimoniosDoSheets(retryCount+1), 2000*(retryCount+1));
+                    return;
+                }
+                const e = await r.json();
+                throw new Error(`HTTP ${r.status}: ${e.error?.message || r.statusText}`);
+            }
+            return r.json();
+        })
+        .then(data => {
+            if (!data) return;
+            patrimonioData = data.values || [];
+            setProgress("✅ Dados carregados.");
+            document.getElementById("spinner").style.display = "none";
+            atualizarDashboard();
+        })
+        .catch(error => {
+            setProgress("Erro: " + error.message);
+            document.getElementById("spinner").style.display = "none";
+        });
+    }
+
+    function carregarEscalaDoSheets() {
+        fetch('https://sheets.googleapis.com/v4/spreadsheets/1smzyrRUnPZkfZGY-8EPDGg7Js8_6-nQ2xlpXgl8Orjw/values/escalaAudio!A:Z?key=AIzaSyA8yWyDVkekhaVdxCO7BuP3pjjjKTD-cDE')
+        .then(r => { if (!r.ok) throw new Error('Falha'); return r.json(); })
+        .then(data => {
+            escalaData = data.values && data.values.length > 1 ? data.values.slice(1) : [];
+        })
+        .catch(e => console.error("Erro ao carregar escala:", e));
+    }
+
+    function autoPreencherLocalEEvento() {
+        const operador   = document.getElementById("operador1Select").value.trim();
+        const localInput = document.getElementById("localMontagemInput");
+        const eventoInput = document.getElementById("eventoInput");
+        localInput.value  = "";
+        eventoInput.value = "";
+        if (!operador || escalaData.length === 0) return;
+        const row = escalaData.find(r => r[9] && r[9].trim() === operador);
+        if (row) {
+            localInput.value  = (row[2] || "").trim();
+            eventoInput.value = (row[6] || "").trim();
+            setProgress("Local e Evento preenchidos pela escala.");
+        } else {
+            setProgress("Operador não encontrado na escala. Preencha manualmente.");
+        }
+    }
+
+    function adicionarNRP() {
+        let nrp = document.getElementById("nrpInput").value.trim();
+        if (!nrp) { setProgress("Digite um NRP."); return; }
+        nrp = nrp.replace(/\./g, "");
+        const nrpSemZeros = nrp.replace(/^0+/, "");
+
+        if (!patrimoniosPermitidosParaRepeticao.includes(nrpSemZeros)) {
+            if (patrimoniosSelecionados.some(item => item.NRP === nrp)) {
+                setProgress(`NRP "${nrp}" já foi adicionado.`);
+                document.getElementById("nrpInput").value = "";
+                return;
+            }
+        }
+
+        const encontrado = patrimonioData.find(
+            row => row[0] && row[0].toString().replace(/^0+/, "") === nrpSemZeros
+        );
+
+        if (encontrado) {
+            patrimoniosSelecionados.push({
+                NRP: encontrado[0], Material: encontrado[1],
+                Localização: encontrado[2], Responsável: encontrado[3],
+            });
+            atualizarListaPatrimonios();
+            setProgress(`✅ NRP "${nrp}" adicionado.`);
+        } else {
+            setProgress(`NRP "${nrp}" não encontrado.`);
+        }
+
+        document.getElementById("nrpInput").value = "";
+        document.getElementById("limparNRPsBtn").style.display =
+            patrimoniosSelecionados.length > 0 ? "inline-flex" : "none";
+    }
+
+    function atualizarListaPatrimonios() {
+        const list = document.getElementById("patrimonioList");
+        list.innerHTML = "";
+        patrimoniosSelecionados.forEach((item, index) => {
+            const row = document.createElement("tr");
+            row.innerHTML = `
+                <td>${item.NRP || "N/A"}</td>
+                <td>${item.Material || "N/A"}</td>
+                <td>${item.Localização || "-"}</td>
+                <td>${item.Responsável || "-"}</td>
+                <td>
+                    <button onclick="removerPatrimonio(${index})"
+                        style="padding:3px 9px;font-size:11px;background:rgba(231,76,60,0.2);color:#f87171;border:1px solid rgba(231,76,60,0.3)">
+                        Remover
+                    </button>
+                </td>
+            `;
+            list.prepend(row);
+        });
+    }
+
+    function removerPatrimonio(index) {
+        patrimoniosSelecionados.splice(index, 1);
+        atualizarListaPatrimonios();
+        document.getElementById("limparNRPsBtn").style.display =
+            patrimoniosSelecionados.length > 0 ? "inline-flex" : "none";
+        setProgress("Patrimônio removido.");
+    }
+
+    function limparNRPs() {
+        patrimoniosSelecionados = [];
+        atualizarListaPatrimonios();
+        document.getElementById("limparNRPsBtn").style.display = "none";
+        setProgress("Lista limpa.");
+    }
+
+    async function registrarRetirada() {
+        const operador1     = document.getElementById("operador1Select").value;
+        const operador2     = document.getElementById("operador2Select").value;
+        const localMontagem = document.getElementById("localMontagemInput").value.trim();
+        const evento        = document.getElementById("eventoInput").value.trim();
+        const dataRetirada  = fichaEditando
+            ? fichaEditando.dataRetirada
+            : new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+
+        if (!operador1 || patrimoniosSelecionados.length === 0 || !localMontagem || !evento) {
+            setProgress("Preencha Operador, NRP, Local e Evento.");
+            return;
+        }
+
+        const equipamentos = patrimoniosSelecionados
+            .map(item => `${item.NRP} - ${item.Material}`).join("; ");
+        const novaRetirada = [
+            fichaEditando ? fichaEditando.idFicha : Date.now().toString(),
+            operador1, operador2, equipamentos, localMontagem, evento, dataRetirada
+        ];
+
+        document.getElementById("spinner").style.display = "inline-block";
+        setProgress(fichaEditando ? "Salvando..." : "Registrando...");
+
+        try {
+            const pendentesResp = await fetch(
+                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/RETIRADAS_PENDENTES!A:G`,
+                { headers: { 'Authorization': `Bearer ${accessToken}` } }
+            );
+            if (!pendentesResp.ok) {
+                const e = await pendentesResp.json();
+                throw new Error(`Erro: ${e.error?.message}`);
+            }
+            const pendentesData = await pendentesResp.json();
+            const nrpsSelecionados = patrimoniosSelecionados.map(i => i.NRP.replace(/^0+/, ''));
+            let nrpEmUso = null;
+
+            if (pendentesData.values && pendentesData.values.length > 1) {
+                pendentesData.values.slice(1).forEach((row, index) => {
+                    if (fichaEditando && (index+1) === fichaEditando.rowIndex) return;
+                    const equips = row[3] ? row[3].split('; ') : [];
+                    for (const equip of equips) {
+                        const [nrpP] = equip.split(' - ');
+                        const nrpN   = nrpP ? nrpP.replace(/^0+/, '') : '';
+                        if (nrpsSelecionados.includes(nrpN)) { nrpEmUso = nrpP; return; }
+                    }
+                });
+            }
+
+            if (nrpEmUso && !patrimoniosPermitidosParaRepeticao.includes(nrpEmUso.replace(/^0+/, ''))) {
+                alert(`O patrimônio ${nrpEmUso} já está em uso em uma ficha pendente.`);
+                setProgress(`Patrimônio ${nrpEmUso} já está em uso.`);
+                document.getElementById("spinner").style.display = "none";
+                return;
+            }
+
+            if (fichaEditando) {
+                const rowIndex = fichaEditando.rowIndex;
+                const upd = await fetch(
+                    `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/RETIRADAS_PENDENTES!A${rowIndex+1}:G${rowIndex+1}?valueInputOption=RAW`,
+                    { method: 'PUT',
+                      headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ values: [novaRetirada] }) }
+                );
+                if (!upd.ok) { const e = await upd.json(); throw new Error(`Erro ao atualizar: ${e.error?.message}`); }
+            } else {
+                const reg = await fetch(
+                    `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/RETIRADAS_PENDENTES!A:G:append?valueInputOption=RAW`,
+                    { method: 'POST',
+                      headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ values: [novaRetirada] }) }
+                );
+                if (!reg.ok) {
+                    if (reg.status === 401) throw new Error("Sessão expirada.");
+                    const e = await reg.json(); throw new Error(e.error?.message || "Falha ao registrar.");
+                }
+                const result = await reg.json();
+                if (!result.updates?.updatedRange) throw new Error("Sheets não confirmou o registro.");
+            }
+
+            setProgress("✅ Retirada registrada!");
+            setTimeout(() => { window.location.href = "fichas.html"; }, 1200);
+
+        } catch (error) {
+            setProgress("❌ Falhou: " + error.message);
+            alert("Retirada NÃO registrada.\n\n" + error.message);
+        } finally {
+            document.getElementById("spinner").style.display = "none";
+        }
+    }
+
+    // ══ INATIVIDADE ══════════════════════════════════════
+    void function() {
+        const TEMPO_MS      = 5  * 60 * 1000;
+        const TEMPO_MS_NRPS = 10 * 60 * 1000;
+        const AVISO_MS      = 10 * 1000;
+        let timerRec = null, timerAv = null;
+        let elAviso = null, intAv = null;
+
+        function criarAviso() {
+            const div = document.createElement('div');
+            div.id = 'aviso-inatividade';
+            div.style.cssText = 'display:none;position:fixed;bottom:14px;right:14px;background:rgba(0,0,0,.85);color:#4ade80;padding:6px 14px;border-radius:4px;border:1px solid rgba(0,176,79,.25);font-size:11px;z-index:9999;pointer-events:none;font-family:inherit';
+            document.body.appendChild(div);
+            return div;
+        }
+        function mostrar() {
+            if (!elAviso) elAviso = criarAviso();
+            let c = 10;
+            elAviso.textContent = `Atualizando em ${c}s...`;
+            elAviso.style.display = 'block';
+            intAv = setInterval(() => { c--; if (elAviso) elAviso.textContent = `Atualizando em ${c}s...`; if (c<=0) clearInterval(intAv); }, 1000);
+        }
+        function esconder() {
+            if (intAv) { clearInterval(intAv); intAv = null; }
+            if (elAviso) elAviso.style.display = 'none';
+        }
+        function reset() {
+            const temNRPs = patrimoniosSelecionados.length > 0;
+            const TEMPO = temNRPs ? TEMPO_MS_NRPS : TEMPO_MS;
+            clearTimeout(timerRec); clearTimeout(timerAv); esconder();
+            timerAv  = setTimeout(mostrar, TEMPO - AVISO_MS);
+            timerRec = setTimeout(() => window.location.reload(), TEMPO);
+        }
+        ['mousemove','mousedown','keydown','scroll','touchstart','click','wheel']
+            .forEach(e => document.addEventListener(e, reset, { passive: true }));
+        reset();
+    }();
+    </script>
+</body>
+</html>

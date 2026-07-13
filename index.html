@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COAUD — Portal de Sistemas</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='4' fill='%2300b04f'/><text y='22' x='5' font-size='17' fill='white' font-family='Arial' font-weight='bold'>C</text></svg>">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <style>
+        /* Página de login — sem sidebar, centralizado */
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background: var(--page-bg);
+            padding: 20px;
+        }
+        .login-page-wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            flex: 1;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="login-page-wrap">
+
+        <!-- ── LOGIN ── -->
+        <div id="login-container" class="login-card">
+            <div class="login-brasao">
+                <img src="LOGOCOAUD.png" alt="COAUD"
+                    style="width:64px;height:auto;margin-bottom:6px">
+            </div>
+            <h1 class="login-titulo">Portal COAUD</h1>
+            <p class="login-subtitulo">Entre com seu número de ponto</p>
+
+            <div class="field-group">
+                <label class="field-label" for="username">Número de ponto</label>
+                <input type="text" id="username"
+                    placeholder="Ex.: 922.083" autocomplete="off">
+            </div>
+            <div class="field-group">
+                <label class="field-label" for="password">Senha</label>
+                <input type="password" id="password" placeholder="••••••">
+            </div>
+
+            <button id="loginButton" class="btn-primary-full">Entrar</button>
+            <p id="loginMessage" class="login-msg"></p>
+        </div>
+
+        <!-- ── PORTAL (após login) ── -->
+        <div id="systems-container" class="systems-card" style="display:none">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid var(--card-border)">
+                <div>
+                    <div style="font-size:13px;font-weight:700;color:var(--verde)">Portal COAUD</div>
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Selecione o sistema</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px">
+                    <span class="topbar-chip" id="nome-usuario"></span>
+                    <button id="logoutButton" class="btn-logout"
+                        style="width:auto;padding:5px 12px;font-size:11px">
+                        ⎋ Sair
+                    </button>
+                </div>
+            </div>
+
+            <div class="systems-grid" id="system-options">
+                <button id="scanSystem" class="system-btn"
+                    onclick="window.location.href='index-escanear.html'">
+                    <span class="system-icon">📷</span>
+                    <span class="system-label">Escaneamento</span>
+                </button>
+                <button id="compareSystem" class="system-btn" style="display:none"
+                    onclick="window.location.href='index-comparador.html'">
+                    <span class="system-icon">🔍</span>
+                    <span class="system-label">Comparador</span>
+                </button>
+                <button id="locateSystem" class="system-btn" style="display:none"
+                    onclick="window.location.href='index_Local.html'">
+                    <span class="system-icon">📍</span>
+                    <span class="system-label">Localizador</span>
+                </button>
+                <button id="almoxarifadoSystem" class="system-btn" style="display:none"
+                    onclick="window.location.href='index-almoxarifado.html'">
+                    <span class="system-icon">📋</span>
+                    <span class="system-label">Almoxarifado</span>
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <footer class="site-footer">
+        © 2025 BrenoDoria — Câmara dos Deputados / COAUD
+    </footer>
+
+    <script src="script.js"></script>
+    <script>
+        // Atualiza chip do usuário quando já logado
+        window.addEventListener('load', () => {
+            const u = JSON.parse(localStorage.getItem('usuarioLogado'));
+            if (u) {
+                const el = document.getElementById('nome-usuario');
+                if (el) el.textContent = u.nome || '';
+            }
+        });
+    </script>
+</body>
+</html>

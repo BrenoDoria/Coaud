@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COAUD — Impressão de Fichas Arquivadas</title>
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 10pt;
+            margin: 0;
+            padding: 0;
+            background: #f0f0f0;
+            color: #111;
+        }
+
+        /* ── Wrapper de tela (não imprime o fundo cinza) ── */
+        .pagina-wrapper {
+            max-width: 210mm;
+            margin: 20px auto;
+            background: #fff;
+            padding: 16mm 14mm 14mm;
+            box-shadow: 0 2px 16px rgba(0,0,0,0.15);
+        }
+
+        @page {
+            size: A4 portrait;
+            margin: 14mm 12mm 16mm;
+        }
+
+        @media print {
+            body { background: #fff; }
+            .pagina-wrapper {
+                margin: 0;
+                padding: 0;
+                box-shadow: none;
+                max-width: 100%;
+            }
+            .no-print { display: none !important; }
+        }
+
+        /* ── Cada ficha ocupa sua própria página ── */
+        .ficha-container {
+            page-break-after: always;
+            padding-bottom: 8mm;
+        }
+        .ficha-container:last-child {
+            page-break-after: auto;
+            padding-bottom: 0;
+        }
+
+        /* ── Cabeçalho institucional ── */
+        .header-content {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #1a5fa8;
+            margin-bottom: 10px;
+        }
+        .brasao {
+            width: 60px;
+            height: auto;
+            flex-shrink: 0;
+        }
+        .header-text p {
+            margin: 1px 0;
+            font-size: 9pt;
+            color: #111;
+        }
+        .header-text .inst-nome {
+            font-size: 11pt;
+            font-weight: bold;
+            color: #1a3a6e;
+        }
+        .header-text .ficha-titulo {
+            font-size: 9pt;
+            font-weight: bold;
+            color: #2d8c3e;
+            margin-top: 3px;
+        }
+
+        /* ── Títulos de seção ── */
+        .section-title {
+            background: #1a5fa8;
+            color: #fff;
+            font-weight: bold;
+            font-size: 9pt;
+            text-align: center;
+            padding: 4px 0;
+            margin: 10px 0 6px;
+            letter-spacing: 0.5px;
+            border-radius: 2px;
+        }
+        .section-title.verde {
+            background: #2d8c3e;
+        }
+        .section-title.cinza {
+            background: #555;
+        }
+
+        /* ── Tabela de materiais ── */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 9.5pt;
+            margin-bottom: 6px;
+        }
+        thead th {
+            background: #e8f0fb;
+            color: #1a3a6e;
+            font-weight: bold;
+            padding: 5px 8px;
+            border: 1px solid #b0c4de;
+            text-align: left;
+            font-size: 9pt;
+        }
+        tbody td {
+            padding: 5px 8px;
+            border: 1px solid #c8c8c8;
+            vertical-align: top;
+        }
+        tbody tr:nth-child(even) td {
+            background: #f7f9ff;
+        }
+
+        /* ── Blocos de dados ── */
+        .dados-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3px 16px;
+            font-size: 9.5pt;
+            margin-bottom: 4px;
+        }
+        .dados-grid.single {
+            grid-template-columns: 1fr;
+        }
+        .dado-item {
+            display: flex;
+            align-items: baseline;
+            gap: 5px;
+            padding: 2px 0;
+            border-bottom: 1px dotted #ddd;
+        }
+        .dado-label {
+            font-weight: bold;
+            color: #1a3a6e;
+            white-space: nowrap;
+            font-size: 8.5pt;
+            min-width: 72px;
+        }
+        .dado-valor {
+            color: #111;
+            font-size: 9.5pt;
+            flex: 1;
+        }
+
+        /* ── Bloco de devolução com fundo diferenciado ── */
+        .bloco-devolucao {
+            background: #f0faf3;
+            border: 1px solid #b8dfc4;
+            border-radius: 4px;
+            padding: 8px 10px;
+            margin-bottom: 4px;
+        }
+
+        /* ── Termo de empréstimo ── */
+        .termo-texto {
+            font-size: 8.5pt;
+            color: #333;
+            line-height: 1.5;
+            text-align: justify;
+            margin: 4px 0 8px;
+        }
+
+        /* ── Assinatura ── */
+        .assinatura-bloco {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 8px 12px;
+            background: #fafafa;
+            margin-top: 6px;
+        }
+        .assinatura-operador {
+            font-size: 10pt;
+            font-weight: bold;
+            color: #1a3a6e;
+            margin-bottom: 4px;
+        }
+        .assinatura-operador span {
+            font-size: 11pt;
+            color: #2d8c3e;
+        }
+        .rubrica-linha {
+            margin-top: 18px;
+            font-size: 9pt;
+            color: #444;
+            border-top: 1px solid #bbb;
+            padding-top: 6px;
+        }
+
+        /* ── Botões de tela ── */
+        .no-print {
+            max-width: 210mm;
+            margin: 0 auto 24px;
+            display: flex;
+            gap: 10px;
+            padding: 0 14mm;
+        }
+        .no-print button {
+            padding: 10px 22px;
+            border: none;
+            border-radius: 7px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .btn-print  { background: #2d8c3e; color: #fff; }
+        .btn-print:hover  { background: #247534; }
+        .btn-voltar { background: #f0f0f0; color: #444; border: 1px solid #ccc !important; }
+        .btn-voltar:hover { background: #e4e4e4; }
+
+        @media screen and (max-width: 600px) {
+            .pagina-wrapper { padding: 8mm 6mm; margin: 8px; }
+            .dados-grid { grid-template-columns: 1fr; }
+            .no-print { padding: 0 6mm; }
+        }
+    </style>
+</head>
+<body onload="carregarFichas()">
+
+    <!-- Botões só aparecem na tela -->
+    <div class="no-print" style="padding-top:16px">
+        <button class="btn-print"  onclick="window.print()">🖨 Imprimir</button>
+        <button class="btn-voltar" onclick="window.location.href='fichas-arquivadas.html'">← Voltar</button>
+    </div>
+
+    <div class="pagina-wrapper" id="fichasContainer"></div>
+
+    <div class="no-print" style="padding-bottom:16px">
+        <button class="btn-print"  onclick="window.print()">🖨 Imprimir</button>
+        <button class="btn-voltar" onclick="window.location.href='fichas-arquivadas.html'">← Voltar</button>
+    </div>
+
+<script>
+const operadoresPontos = {
+    "Adson Miranda dos Anjos": "914.262",
+    "Afonso Viana de Mesquita Filho": "5.947",
+    "Alberto Cesar Souza Almeida": "5.302",
+    "Alexander Rafael Carvalho Paim": "882.420",
+    "Alexandre Alves de Siqueira": "919.956",
+    "Alison Silva de Oliveira": "914.799",
+    "Allan Cosseti Ardisson": "919.895",
+    "Ana Clara Cardoso de Oliveira": "92444",
+    "Altamir Araujo da Silva": "881.758",
+    "Antonio Batista Ângelo": "999.134",
+    "Antonio Rodrigues Siqueira Filho": "917.486",
+    "Arley Carvalho Alves": "915.546",
+    "Breno Doria Felicio": "922.083",
+    "Bruno Fernandes Braga": "881.842",
+    "Bruno Rodrigues do Prado": "919.894",
+    "Bruno Vieira Rodrigues": "922.084",
+    "Carlos César Ferreira de Sousa": "5.250",
+    "Carlos Cesar José da Silva": "920.074",
+    "Carlos Eduardo Guedes da Silva": "882.174",
+    "Carlos Roberto de Paiva Miranda dos Santos": "922.498",
+    "Cinthia Neves Carvalho Barbosa": "5.476",
+    "Cláudio Marcelo do Nascimento": "882.421",
+    "Davi Aragão de Paula Gonçalves": "921.627",
+    "Douglas Batista da Silva": "920.077",
+    "Emmanuel do Amaral Idelfonso": "920.076",
+    "Emanuel Silveira Costa": "922.931",
+    "Enzo Risso Conturbia": "920.438",
+    "Eric Samuel do Ouro": "920.359",
+    "Erika Fedosseeff Auler": "921.672",
+    "Eromilson Monteiro dutra Chaves": "882.134",
+    "Evellyn Mendes de Souza Nunes": "915.974",
+    "Fausto Barbosa de Oliveira": "888.223",
+    "Felipe Omena Vasconcellos de Assis": "919.593",
+    "Fernando de Sousa Vasconcelos": "914.382",
+    "Flávio Lima Câmara": "882.218",
+    "Francisco de Assis da Silva Sales": "888.744",
+    "Francisco de Sousa Filho": "5.953",
+    "Francisco Juniel Sousa e Silva": "915.547",
+    "Geraldo Ribeiro de Souza Filho": "888.010",
+    "Gildo Marques da Silva": "920.092",
+    "Gilson Gomes da Silva": "882.541",
+    "Gilson Gustavo de Paiva Oliveira": "5.254",
+    "Gleisson Carlos Pereira da Silva": "914.815",
+    "Guilherme Malheiro da Rocha Pinto": "4.224",
+    "Helisson Rafael de O. Leite": "881.759",
+    "Helyeber Feitosa Ferreira": "919.899",
+    "Hilton Severiano Ferreira": "922.678",
+    "Huelisson Amancio de Moraes Silva": "881.596",
+    "Igor Mendes dos Santos": "921.292",
+    "Isaias Pereira Soares": "919.903",
+    "Joel Luiz de Sá Silva": "920.353",
+    "Joel Pereira Santos": "882.652",
+    "Joilson Santos de Jesus": "920.123",
+    "Jônatas Soares de Andrade": "881.598",
+    "Jose Henrique Ferreira da Silva": "7.913",
+    "José Nilton Abraão de Sousa": "920.352",
+    "Joval Bastos Freitas Júnior": "882.702",
+    "Juliano Gustavo Pedro de Oliveira": "882.053",
+    "Kely Berlinck Freire": "919.896",
+    "Kleber de Araújo Moura": "888.397",
+    "Leandro Calixto da Silva": "917.992",
+    "Leandro Silva Lima Alves": "921.291",
+    "Leonardo Augusto de Freitas": "882.688",
+    "Letícia Santana Araújo": "920.816",
+    "Lívia Maria de Souza": "916.391",
+    "Lucas Lima Lira": "919.897",
+    "Lucas Ribeiro dos Santos": "919.904",
+    "Luciano de Freitas Silva": "881.452",
+    "Luis Eduardo Campos Moreira": "919.898",
+    "Luiz Henrique Reis de Lima": "888.226",
+    "Marcelo Bruno Rezende Costa": "882.728",
+    "Marcelo Gomes da Silva": "918.923",
+    "Marco Antonio Baldresca Lambert de Brito": "5.261",
+    "Marco Antônio Felício Júnior": "915.553",
+    "Marcos Borges de Souza": "920.075",
+    "Marcus Aurélius Fernandes de Moura": "888.219",
+    "Massilon Alves de Sousa Filho": "919.905",
+    "Mateus da Silva Lima": "922.278",
+    "Matheus Gabriel Damasceno Dias": "920.354",
+    "Matheus Henrique Felix Barbosa": "922.082",
+    "Múcio Homero Rocha Pires de Oliveira": "5.297",
+    "Orlando Villavicencio Venegas": "882.673",
+    "Paulo Fernando Volpe": "5.933",
+    "Paulo Roberto Pereira": "888.227",
+    "Paulo Soares da Costa": "888.228",
+    "Pedro Henrique Candido Boaventura": "920.124",
+    "Péricles Cruz da Silva": "881.892",
+    "Priscilla Amorim dos Santos Rodrigues": "7.914",
+    "Rafael Queiroz Lemos de Oliveira": "881.782",
+    "Reynaldo Jessé Rodrigues da Silva": "888.131",
+    "Ronaldo Jovino da Silva": "919.185",
+    "Richard Rodrigues dos Santos": "921.026",
+    "Roberio Antunes Simionato": "5.266",
+    "Rodrigo Fonseca Shiratori": "5.272",
+    "Rondney Rodrigues Alves Sousa": "881.174",
+    "Rosivan Augustinho Pereira": "882.518",
+    "Thiago Veríssimo Cabral Freitas": "922.497",
+    "Vinícius Veríssimo Cabral Freitas": "919.796",
+    "Vivikananda Abdallah Antun Filho": "5.301",
+    "Waleria Bastos Cardoso": "915.570",
+    "Wanderson Balzan de Sousa": "918.679",
+    "Wellington Jorge Souza Mendes": "881.179",
+    "Wellington Rodrigo Ribeiro Santana": "882.052",
+    "Wendel Vieira da Costa": "919.907",
+    "Wesley Laécio da Silva Costa": "882.054",
+    "Wesley Maurício Ribeiro França": "888.217",
+    "Willian Neves da Silva": "888.230",
+    "Wirlem Silva Alves": "919.906",
+    "Lucas Farias de Menezes": "920.362",
+};
+
+function ponto(nome) {
+    return operadoresPontos[nome] || 'N/A';
+}
+
+function esc(str) {
+    if (!str) return '-';
+    return String(str)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function formatarDH(dateStr) {
+    if (!dateStr) return { data: '-', hora: '-' };
+    const [d, h] = dateStr.split(', ');
+    return { data: d || '-', hora: h || '-' };
+}
+
+function dado(label, valor, ponto_) {
+    const v = ponto_ ? `${esc(valor)} <span style="color:#555;font-size:8.5pt">| Ponto: ${ponto_}</span>` : esc(valor);
+    return `
+        <div class="dado-item">
+            <span class="dado-label">${label}</span>
+            <span class="dado-valor">${v}</span>
+        </div>`;
+}
+
+function gerarHTMLFicha(f) {
+    const ret = formatarDH(f.dataRetirada);
+    const dev = formatarDH(f.dataDevolucao);
+
+    const linhasEquip = (f.equipamentos || []).map((equip, i) => {
+        const [pat, ...partes] = equip.split(' - ');
+        return `<tr>
+            <td style="width:120px;font-family:monospace">${esc(pat)}</td>
+            <td>${esc(partes.join(' - '))}</td>
+        </tr>`;
+    }).join('');
+
+    return `
+    <!-- ══ CABEÇALHO ══ -->
+    <div class="header-content">
+        <img src="brasao_republica_brasil.jpg" class="brasao"
+             alt="Brasão da República Federativa do Brasil">
+        <div class="header-text">
+            <p class="inst-nome">CÂMARA DOS DEPUTADOS</p>
+            <p>Coordenação de Engenharia de Telecomunicações e Audiovisual — COAUD</p>
+            <p>Seção de Apoio aos Auditórios e Comissões — SAUDI/SAPCO</p>
+            <p class="ficha-titulo">FICHA DE RETIRADA / EMPRÉSTIMO DE MATERIAL PARA EVENTO</p>
+        </div>
+    </div>
+
+    <!-- ══ MATERIAIS ══ -->
+    <div class="section-title">LISTA DE MATERIAL COM PATRIMÔNIO</div>
+    <table>
+        <thead>
+            <tr>
+                <th style="width:120px">Patrimônio</th>
+                <th>Descrição do Material</th>
+            </tr>
+        </thead>
+        <tbody>${linhasEquip}</tbody>
+    </table>
+
+    <!-- ══ RETIRADA ══ -->
+    <div class="section-title">RETIRADA</div>
+    <div class="dados-grid">
+        ${dado('Ficha:', f.idFicha)}
+        ${dado('Data:', ret.data)}
+        ${dado('Hora:', ret.hora)}
+        ${dado('Evento:', f.evento)}
+        ${dado('Local:', f.local)}
+        <div></div>
+        ${dado('Operador:', f.operador1, ponto(f.operador1))}
+        ${dado('Almoxarifado:', f.operador2, ponto(f.operador2))}
+    </div>
+
+    <!-- ══ DEVOLUÇÃO ══ -->
+    <div class="section-title verde">DEVOLUÇÃO</div>
+    <div class="bloco-devolucao">
+        <div class="dados-grid">
+            ${dado('Data:', dev.data)}
+            ${dado('Hora:', dev.hora)}
+            ${dado('Devolvido por:', f.operadorDevolucao, ponto(f.operadorDevolucao))}
+            ${dado('Recebido por:', f.almoxarifadoDevolucao, ponto(f.almoxarifadoDevolucao))}
+        </div>
+    </div>
+
+    <!-- ══ TERMO ══ -->
+    <div class="section-title cinza">TERMO DE EMPRÉSTIMO</div>
+    <p class="termo-texto">
+        Conforme legislação vigente, o servidor abaixo-assinado e qualificado
+        se responsabiliza pela guarda, zelo e devolução do material acima
+        relacionado, classificado como permanente e de carga patrimonial desta
+        seção de apoio SAUDI/SAPCO, da Coordenação de Engenharia de
+        Telecomunicações e Audiovisual — COAUD.
+    </p>
+
+    <div class="assinatura-bloco">
+        <div class="assinatura-operador">
+            A SAUDI/SAPCO, representada pelo Operador:
+            <span>${esc(f.operador1)}</span>
+            &nbsp;|&nbsp; Ponto: <span>${ponto(f.operador1)}</span>
+        </div>
+        <div class="rubrica-linha">
+            Rubrica: _______________________________
+            &nbsp;&nbsp; recolheu, em <strong>${ret.data}</strong>,
+            às <strong>${ret.hora}</strong>
+        </div>
+    </div>
+    `;
+}
+
+function carregarFichas() {
+    const fichas = JSON.parse(localStorage.getItem('fichasParaImprimir'));
+    if (!fichas || !fichas.length) {
+        alert('Nenhuma ficha selecionada. Redirecionando...');
+        window.location.href = 'fichas-arquivadas.html';
+        return;
+    }
+
+    const container = document.getElementById('fichasContainer');
+    fichas.forEach(f => {
+        const div = document.createElement('div');
+        div.className = 'ficha-container';
+        div.innerHTML = gerarHTMLFicha(f);
+        container.appendChild(div);
+    });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,1122 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COAUD — Relatórios do Almoxarifado</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='4' fill='%2300b04f'/><text y='22' x='5' font-size='17' fill='white' font-family='Arial' font-weight='bold'>C</text></svg>">
+    <link rel="stylesheet" href="style.css">
+    <script>
+        document.documentElement.setAttribute('data-tema',
+            localStorage.getItem('tema-coaud') || 'verde-neon');
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        .rank-list { list-style: none; padding: 0; margin: 0; }
+        .rank-item {
+            display: flex; align-items: center; gap: 10px;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border-light);
+            font-size: 12px;
+        }
+        .rank-item:last-child { border-bottom: none; }
+        .rank-pos {
+            width: 24px; height: 24px; border-radius: 50%;
+            background: var(--verde-light); color: var(--verde);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 11px; font-weight: 700; flex-shrink: 0;
+        }
+        .rank-item:nth-child(1) .rank-pos { background: rgba(245,158,11,0.25); color: #f59e0b; }
+        .rank-item:nth-child(2) .rank-pos { background: rgba(148,163,184,0.25); color: #94a3b8; }
+        .rank-item:nth-child(3) .rank-pos { background: rgba(180,120,60,0.25); color: #cd7f32; }
+        .rank-nome { flex: 1; color: var(--text); word-break: break-word; }
+        .rank-qtd { font-weight: 700; color: var(--verde); white-space: nowrap; }
+        .cards-2col {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+        }
+        @media(max-width: 800px) { .cards-2col { grid-template-columns: 1fr; } }
+        .chart-box { position: relative; height: 260px; }
+
+        /* Itens clicaveis (drill-down) */
+        .rank-item.clicavel { cursor: pointer; border-radius: 6px; padding-left: 6px; padding-right: 6px; transition: background .15s; }
+        .rank-item.clicavel:hover { background: var(--verde-light); }
+        .rank-nome .seta { color: var(--text-muted); font-size: 11px; margin-left: 4px; }
+        .dica-clique { font-size: 10px; color: var(--text-muted); margin: -6px 0 8px; }
+
+        /* ===== Modal de detalhe (drill-down) ===== */
+        .modal-overlay {
+            display: none; position: fixed; inset: 0; z-index: 10000;
+            background: rgba(0,0,0,.6); align-items: flex-start; justify-content: center;
+            padding: 30px 14px; overflow-y: auto;
+        }
+        .modal-overlay.aberto { display: flex; }
+        .modal-box {
+            background: var(--card-bg, #161d18); color: var(--text);
+            border: 1px solid var(--border-light); border-radius: 12px;
+            width: 100%; max-width: 900px; box-shadow: 0 20px 60px rgba(0,0,0,.5);
+        }
+        .modal-head {
+            display: flex; align-items: center; justify-content: space-between; gap: 10px;
+            padding: 16px 20px; border-bottom: 2px solid var(--verde); flex-wrap: wrap;
+        }
+        .modal-head h2 { margin: 0; font-size: 17px; color: var(--verde); }
+        .modal-head .mh-sub { font-size: 12px; color: var(--text-muted); }
+        .modal-actions { display: flex; gap: 8px; }
+        .modal-body { padding: 18px 20px; }
+        .mini-cards { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 16px; }
+        @media(max-width:700px){ .mini-cards { grid-template-columns: 1fr 1fr; } }
+        .mini-card { background: var(--verde-light); border-radius: 8px; padding: 10px 12px; }
+        .mini-card .mv { font-size: 22px; font-weight: 800; color: var(--verde); }
+        .mini-card .ml { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .4px; }
+        .mini-rank-cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 16px; }
+        @media(max-width:700px){ .mini-rank-cols { grid-template-columns: 1fr; } }
+        .mini-rank h4 { margin: 0 0 6px; font-size: 12px; color: var(--verde); }
+        .mini-rank .lin { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 4px 0; border-bottom: 1px solid var(--border-light); }
+        .tabela-detalhe { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .tabela-detalhe th, .tabela-detalhe td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border-light); vertical-align: top; }
+        .tabela-detalhe th { color: var(--verde); font-size: 11px; text-transform: uppercase; letter-spacing: .3px; }
+        .badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px; white-space: nowrap; }
+        .badge.dev { background: rgba(0,176,79,.18); color: var(--verde); }
+        .badge.pend { background: rgba(245,158,11,.2); color: #f59e0b; }
+        .btn-fechar { background: transparent; border: 1px solid var(--border-light); color: var(--text); }
+
+        /* Cabecalho institucional que so aparece na impressao */
+        .print-header { display: none; }
+
+        /* ============ IMPRESSAO ============ */
+        @media print {
+            .sidebar, .topbar, .no-print, .site-footer, #theme-selector {
+                display: none !important;
+            }
+            .main-area { margin-left: 0 !important; }
+            .page-content { padding: 0 !important; }
+            body { background: #fff !important; }
+            .card, .kpi {
+                background: #fff !important;
+                border: 1px solid #ccc !important;
+                box-shadow: none !important;
+                break-inside: avoid;
+            }
+            .card-title, .kpi-value, .rank-qtd { color: #14532d !important; }
+            .kpi-label, .kpi-sub, .rank-nome { color: #333 !important; }
+            .rank-item { border-bottom: 1px solid #ddd !important; }
+            .print-header {
+                display: block !important;
+                text-align: center;
+                border-bottom: 3px solid #15803d;
+                padding-bottom: 12px;
+                margin-bottom: 18px;
+                color: #14532d;
+            }
+            .print-header .ph-1 { font-size: 16px; font-weight: 700; }
+            .print-header .ph-2 { font-size: 11px; color: #555; }
+            .print-header .ph-3 { font-size: 14px; font-weight: 700; margin-top: 8px; }
+            .print-header .ph-4 { font-size: 10px; color: #555; }
+            .chart-box { height: 220px; }
+            .dashboard { grid-template-columns: repeat(4, 1fr) !important; }
+            .cards-2col { grid-template-columns: 1fr 1fr !important; }
+
+            /* Imprimir SOMENTE o modal de detalhe quando aberto */
+            body.print-modal .app-layout { display: none !important; }
+            body.print-modal .modal-overlay {
+                display: block !important; position: static !important;
+                background: #fff !important; padding: 0 !important; overflow: visible !important;
+            }
+            body.print-modal .modal-box {
+                background: #fff !important; color: #000 !important; border: none !important;
+                box-shadow: none !important; max-width: none !important;
+            }
+            body.print-modal .modal-actions { display: none !important; }
+            body.print-modal .modal-head { border-bottom: 3px solid #15803d; }
+            body.print-modal .modal-head h2 { color: #14532d !important; }
+            body.print-modal .mini-card { background: #f1f5f1 !important; }
+            body.print-modal .mini-card .mv, body.print-modal .mini-rank h4,
+            body.print-modal .tabela-detalhe th { color: #14532d !important; }
+            body.print-modal .tabela-detalhe td { color: #000 !important; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-layout">
+
+        <!-- SIDEBAR -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-brand">
+                <div class="brand-row">
+                    <div class="brand-icon">C</div>
+                    <div>
+                        <div class="brand-name">CÂMARA DOS DEPUTADOS</div>
+                        <div class="brand-sub">COAUD</div>
+                    </div>
+                </div>
+            </div>
+            <div class="sidebar-user">
+                <div class="user-avatar" id="user-avatar">?</div>
+                <div class="user-info">
+                    <div class="user-name" id="user-name">Carregando...</div>
+                    <div class="user-role" id="user-role"></div>
+                </div>
+            </div>
+            <nav class="sidebar-nav">
+                <div class="nav-section-title">Sistemas</div>
+                <a class="nav-item" id="nav-escanear" href="index-escanear.html">
+                    <span class="nav-icon">&#128247;</span> Sistema de Escaneamento
+                </a>
+                <a class="nav-item" id="nav-comparador" href="index-comparador.html">
+                    <span class="nav-icon">&#128269;</span> Comparador de Patrimônios
+                </a>
+                <a class="nav-item" id="nav-localizador" href="index_Local.html">
+                    <span class="nav-icon">&#128205;</span> Localizador e Transferência
+                </a>
+                <a class="nav-item nav-parent active" id="nav-almoxarifado" href="index-almoxarifado.html">
+                    <span class="nav-icon">&#128203;</span> Controle de Almoxarifado
+                </a>
+                <div class="nav-subgroup" id="nav-almoxarifado-sub">
+                    <a class="nav-subitem" data-page="index-almoxarifado.html" href="index-almoxarifado.html">
+                        <span class="nav-sub-icon">&#8627;</span> Nova Retirada
+                    </a>
+                    <a class="nav-subitem" data-page="fichas.html" href="fichas.html">
+                        <span class="nav-sub-icon">&#8627;</span> Fichas Pendentes
+                    </a>
+                    <a class="nav-subitem" data-page="fichas-arquivadas.html" href="fichas-arquivadas.html">
+                        <span class="nav-sub-icon">&#8627;</span> Fichas Arquivadas
+                    </a>
+                    <a class="nav-subitem active" data-page="relatorios.html" href="relatorios.html">
+                        <span class="nav-sub-icon">&#8627;</span> Relatórios
+                    </a>
+                </div>
+                <a class="nav-item" href="index.html">
+                    <span class="nav-icon">&#127968;</span> Página Inicial
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <button class="btn-logout" onclick="fazerLogout()">
+                    <span>&#9099;</span> Sair do sistema
+                </button>
+            </div>
+        </aside>
+
+        <!-- AREA PRINCIPAL -->
+        <div class="main-area">
+
+            <div class="topbar">
+                <button class="btn-menu" onclick="toggleSidebar()">&#9776;</button>
+                <div>
+                    <div class="topbar-title">Relatórios do Almoxarifado</div>
+                    <div class="topbar-sub">Dashboard de empréstimos e estatísticas</div>
+                </div>
+                <div class="topbar-right">
+                    <div id="spinner" class="spinner" style="margin:0"></div>
+                    <p id="progressText" style="font-size:11px;color:var(--text-muted);margin:0"></p>
+                </div>
+            </div>
+
+            <div class="page-content">
+
+                <!-- Cabecalho institucional (aparece somente na impressao) -->
+                <div class="print-header">
+                    <div class="ph-1">CÂMARA DOS DEPUTADOS</div>
+                    <div class="ph-2">Coordenação de Engenharia de Telecomunicações e Audiovisual — COAUD</div>
+                    <div class="ph-3">RELATÓRIO DO ALMOXARIFADO</div>
+                    <div class="ph-4" id="print-data"></div>
+                </div>
+
+                <div class="no-print" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
+                    <button onclick="carregarDados()" class="btn-blue">&#128260; Atualizar</button>
+                    <button onclick="window.print()">&#128424; Imprimir Relatório</button>
+                    <select id="filtroPeriodo" onchange="aoMudarPeriodo()" style="width:auto;min-width:190px">
+                        <option value="365">Rankings: último ano</option>
+                        <option value="30">Rankings: último mês</option>
+                        <option value="7">Rankings: última semana</option>
+                        <option value="0">Rankings: tudo</option>
+                    </select>
+                </div>
+
+                <!-- KPIs -->
+                <div class="dashboard">
+                    <div class="kpi">
+                        <div class="kpi-icon">&#128197;</div>
+                        <div class="kpi-info">
+                            <div class="kpi-label">Última Semana</div>
+                            <div class="kpi-value" id="kpi-semana">&ndash;</div>
+                            <div class="kpi-sub">empréstimos (7 dias)</div>
+                        </div>
+                    </div>
+                    <div class="kpi kpi-blue">
+                        <div class="kpi-icon">&#128198;</div>
+                        <div class="kpi-info">
+                            <div class="kpi-label">Último Mês</div>
+                            <div class="kpi-value" id="kpi-mes">&ndash;</div>
+                            <div class="kpi-sub">empréstimos (30 dias)</div>
+                        </div>
+                    </div>
+                    <div class="kpi kpi-warn">
+                        <div class="kpi-icon">&#128202;</div>
+                        <div class="kpi-info">
+                            <div class="kpi-label">Último Ano</div>
+                            <div class="kpi-value" id="kpi-ano">&ndash;</div>
+                            <div class="kpi-sub">empréstimos (365 dias)</div>
+                        </div>
+                    </div>
+                    <div class="kpi">
+                        <div class="kpi-icon">&#8987;</div>
+                        <div class="kpi-info">
+                            <div class="kpi-label">Pendentes Agora</div>
+                            <div class="kpi-value" id="kpi-pendentes">&ndash;</div>
+                            <div class="kpi-sub">aguardando devolução</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ASSISTENTE IA -->
+                <!--<div class="card no-print" id="card-ia">
+                    <div class="card-title">&#129302; Assistente IA &ndash; pergunte sobre os dados</div>
+                    <div id="ia-msgs" style="max-height:280px;overflow-y:auto;margin-bottom:10px;display:none;flex-direction:column;gap:8px"></div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <input id="ia-input" type="text" placeholder="Ex.: Quantas retiradas o Geraldo fez no último mês?"
+                               style="flex:1;min-width:200px" onkeydown="if(event.key==='Enter'){event.preventDefault();perguntarIA();}">
+                        <button class="btn-blue" id="ia-btn" onclick="perguntarIA()">Perguntar</button>
+                    </div>
+                    <div class="dica-clique" style="margin-top:8px">
+                        Sugestões:
+                        <a href="#" onclick="sugestaoIA(event, 'Qual operador mais retirou equipamentos no último ano?')">operador que mais retira</a> &middot;
+                        <a href="#" onclick="sugestaoIA(event, 'Quais os 5 equipamentos mais retirados?')">equipamentos mais usados</a> &middot;
+                        <a href="#" onclick="sugestaoIA(event, 'Quantas retiradas ainda estão pendentes de devolução?')">pendências</a>
+                    </div>
+                </div>-->
+
+                <!-- GRAFICO DE EVOLUCAO -->
+                <div class="card">
+                    <div class="card-title">&#128200; Evolução de Empréstimos (últimos 12 meses)</div>
+                    <div class="chart-box">
+                        <canvas id="chartEvolucao"></canvas>
+                    </div>
+                </div>
+
+                <!-- GRAFICOS DE BARRAS -->
+                <div class="cards-2col">
+                    <div class="card">
+                        <div class="card-title">&#127942; Equipamentos com Mais Saída</div>
+                        <div class="dica-clique no-print">Clique numa barra para ver o detalhe</div>
+                        <div class="chart-box">
+                            <canvas id="chartEquipamentos"></canvas>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">&#128205; Salas que Mais Solicitam</div>
+                        <div class="dica-clique no-print">Clique numa barra para ver o detalhe</div>
+                        <div class="chart-box">
+                            <canvas id="chartSalas"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RANKINGS -->
+                <div class="cards-2col">
+                    <div class="card">
+                        <div class="card-title">&#128119; Operadores que Mais Retiram</div>
+                        <div class="dica-clique no-print">Clique num nome para ver o detalhe</div>
+                        <ul class="rank-list" id="rank-operadores">
+                            <li style="color:var(--text-muted);font-size:12px;padding:12px 0">Carregando...</li>
+                        </ul>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">&#127915; Eventos com Mais Retiradas</div>
+                        <div class="dica-clique no-print">Clique num evento para ver o detalhe</div>
+                        <ul class="rank-list" id="rank-eventos">
+                            <li style="color:var(--text-muted);font-size:12px;padding:12px 0">Carregando...</li>
+                        </ul>
+                    </div>
+                </div>
+
+            </div>
+
+            <footer class="site-footer">
+                  © 2025 BrenoDoria — Câmara dos Deputados / COAUD
+            </footer>
+        </div>
+    </div>
+
+    <!-- ===== Modal de detalhe (drill-down) ===== -->
+    <div class="modal-overlay" id="modal-detalhe" onclick="if(event.target===this) fecharDetalhe()">
+        <div class="modal-box">
+            <div class="modal-head">
+                <div>
+                    <h2 id="modal-titulo">Detalhe</h2>
+                    <div class="mh-sub" id="modal-subtitulo"></div>
+                </div>
+                <div class="modal-actions no-print">
+                    <button class="btn-blue" onclick="imprimirDetalhe()">&#128424; Imprimir</button>
+                    <button class="btn-fechar" onclick="fecharDetalhe()">Fechar</button>
+                </div>
+            </div>
+            <div class="modal-body" id="modal-corpo"></div>
+        </div>
+    </div>
+
+    <script>
+    // ======================================================
+    //  SIDEBAR - usuario, permissoes e tema
+    // ======================================================
+    function preencherUsuarioSidebar() {
+        var u = JSON.parse(localStorage.getItem('usuarioLogado'));
+        if (!u) { window.location.href = 'index.html'; return; }
+        var initials = function(nome) {
+            if (!nome) return '?';
+            return nome.split(' ').slice(0, 2).map(function(n) { return n[0]; }).join('').toUpperCase();
+        };
+        var avatarEl = document.getElementById('user-avatar');
+        var nameEl   = document.getElementById('user-name');
+        var roleEl   = document.getElementById('user-role');
+        if (avatarEl) avatarEl.textContent = initials(u.nome);
+        if (nameEl)   nameEl.textContent   = u.nome || 'Usuario';
+        if (roleEl)   roleEl.textContent   = u.permissao || '';
+    }
+
+    function aplicarPermissoesSidebar() {
+        var u = JSON.parse(localStorage.getItem('usuarioLogado')) || {};
+        var perm = u.permissao;
+        var PERMS_SIDEBAR = {
+            supervisor:   ['nav-escanear', 'nav-comparador', 'nav-localizador', 'nav-almoxarifado'],
+            almoxarifado: ['nav-almoxarifado']
+        };
+        var liberados = PERMS_SIDEBAR[perm] || [];
+        ['nav-escanear', 'nav-comparador', 'nav-localizador', 'nav-almoxarifado'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el && liberados.indexOf(id) === -1) el.style.display = 'none';
+        });
+        var pai = document.getElementById('nav-almoxarifado');
+        var sub = document.getElementById('nav-almoxarifado-sub');
+        if (pai && sub && pai.style.display === 'none') sub.style.display = 'none';
+
+        var paginaAtual = window.location.pathname.split('/').pop();
+        var paginasPorPermissao = {
+            'index-escanear.html':     'nav-escanear',
+            'index-comparador.html':   'nav-comparador',
+            'index_Local.html':        'nav-localizador',
+            'index-almoxarifado.html': 'nav-almoxarifado',
+            'fichas.html':             'nav-almoxarifado',
+            'fichas-arquivadas.html':  'nav-almoxarifado',
+            'relatorios.html':         'nav-almoxarifado'
+        };
+        var permNecessaria = paginasPorPermissao[paginaAtual];
+        if (permNecessaria && liberados.indexOf(permNecessaria) === -1) {
+            alert('Voce nao tem permissao para acessar esta pagina.');
+            window.location.href = 'index.html';
+        }
+    }
+
+    function criarSeletorTema() {
+        if (document.getElementById('theme-selector')) return;
+        var footer = document.querySelector('.sidebar-footer');
+        if (!footer) return;
+        var container = document.createElement('div');
+        container.id = 'theme-selector';
+        container.style.cssText = 'margin-bottom:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.08)';
+        container.innerHTML =
+            '<div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">Tema</div>' +
+            '<div style="display:flex;gap:5px">' +
+            '<button class="theme-btn" data-tema="verde-neon" title="Verde Neon" style="flex:1;padding:5px;border-radius:3px;border:1px solid rgba(255,255,255,.15);background:linear-gradient(135deg,#0a2d17 50%,#00b04f 50%);cursor:pointer;height:22px"></button>' +
+            '<button class="theme-btn" data-tema="dark-neutro" title="Dark Neutro" style="flex:1;padding:5px;border-radius:3px;border:1px solid rgba(255,255,255,.15);background:linear-gradient(135deg,#1e1e1e 50%,#4a90e2 50%);cursor:pointer;height:22px"></button>' +
+            '<button class="theme-btn" data-tema="claro" title="Claro" style="flex:1;padding:5px;border-radius:3px;border:1px solid rgba(255,255,255,.15);background:linear-gradient(135deg,#f5f5f5 50%,#1e6b2e 50%);cursor:pointer;height:22px"></button>' +
+            '</div>';
+        footer.parentNode.insertBefore(container, footer);
+        var temaAtivo = localStorage.getItem('tema-coaud') || 'verde-neon';
+        container.querySelectorAll('.theme-btn').forEach(function(btn) {
+            if (btn.dataset.tema === temaAtivo) btn.style.outline = '2px solid #00b04f';
+            btn.addEventListener('click', function() {
+                container.querySelectorAll('.theme-btn').forEach(function(b) { b.style.outline = 'none'; });
+                btn.style.outline = '2px solid #00b04f';
+                document.documentElement.setAttribute('data-tema', btn.dataset.tema);
+                localStorage.setItem('tema-coaud', btn.dataset.tema);
+                atualizarCoresGraficos();
+            });
+        });
+    }
+
+    function initSidebar() {
+        preencherUsuarioSidebar();
+        aplicarPermissoesSidebar();
+        criarSeletorTema();
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initSidebar);
+    } else {
+        initSidebar();
+    }
+
+    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
+    function fazerLogout() {
+        localStorage.removeItem('usuarioLogado');
+        localStorage.removeItem('access_token');
+        window.location.href = 'index.html';
+    }
+    function setProgress(msg) {
+        var el = document.getElementById('progressText');
+        if (el) el.textContent = msg;
+    }
+
+    // ======================================================
+    //  CONFIGURACAO
+    // ======================================================
+    var FILE_ID = '1q9RCwJ4P--QIH4kkMszffrN8ZwzkSsNoZtPH-Usk4Zw';
+
+    // URL do Web App do Apps Script que fala com a IA (Gemini).
+    // Cole aqui a URL que termina em /exec depois de implantar o "COAUD IA".
+   // var URL_IA = 'https://script.google.com/macros/s/AKfycbz9hL1l0FHj0DQxqZ8yiS8f_OHymr2Y9y_FXhIML_ORad96Kpqn_FQ1YgOfQZxKO6ZL/exec';
+
+    var accessToken  = null;
+    var arquivadas   = [];
+    var pendentes    = [];
+    var estatisticas = null;
+    var graficos     = { evolucao: null, equipamentos: null, salas: null };
+
+    function parseDataBR(dateStr) {
+        if (!dateStr) return null;
+        var partes   = String(dateStr).split(', ');
+        var datePart = partes[0];
+        var timePart = partes[1] || '';
+        if (!datePart) return null;
+        var dmy = datePart.split('/').map(Number);
+        if (dmy.length !== 3 || !dmy[0] || !dmy[1] || !dmy[2]) return null;
+        var hms = timePart.split(':').map(Number);
+        return new Date(dmy[2], dmy[1] - 1, dmy[0], hms[0] || 0, hms[1] || 0, hms[2] || 0);
+    }
+
+    function corTexto() {
+        var tema = document.documentElement.getAttribute('data-tema') || 'verde-neon';
+        return tema === 'claro' ? '#475569' : 'rgba(255,255,255,0.6)';
+    }
+    function corGrade() {
+        var tema = document.documentElement.getAttribute('data-tema') || 'verde-neon';
+        return tema === 'claro' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)';
+    }
+
+    // ======================================================
+    //  CARREGAMENTO
+    // ======================================================
+    window.addEventListener('load', function() {
+        accessToken = localStorage.getItem('access_token');
+        if (!accessToken) {
+            alert('Sessao expirada. Faca login novamente.');
+            window.location.href = 'index.html';
+            return;
+        }
+        var el = document.getElementById('print-data');
+        if (el) el.textContent = 'Emitido em ' + new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+        carregarDados();
+    });
+
+    function carregarDados() {
+        accessToken = localStorage.getItem('access_token');
+        document.getElementById('spinner').style.display = 'inline-block';
+        setProgress('Carregando dados...');
+
+        var urlArq  = 'https://sheets.googleapis.com/v4/spreadsheets/' + FILE_ID + '/values/RETIRADAS_ARQUIVADAS!A:J';
+        var urlPend = 'https://sheets.googleapis.com/v4/spreadsheets/' + FILE_ID + '/values/RETIRADAS_PENDENTES!A:G';
+        var headers = { 'Authorization': 'Bearer ' + accessToken };
+
+        Promise.all([
+            fetch(urlArq,  { headers: headers }),
+            fetch(urlPend, { headers: headers })
+        ])
+        .then(function(resps) {
+            var rArq  = resps[0];
+            var rPend = resps[1];
+            if (rArq.status === 401 || rPend.status === 401) {
+                localStorage.removeItem('access_token');
+                alert('Sessao expirada. Faca login novamente.');
+                window.location.href = 'index.html';
+                throw new Error('401');
+            }
+            if (!rArq.ok)  throw new Error('Erro ao ler RETIRADAS_ARQUIVADAS (' + rArq.status + ')');
+            if (!rPend.ok) throw new Error('Erro ao ler RETIRADAS_PENDENTES (' + rPend.status + ')');
+            return Promise.all([rArq.json(), rPend.json()]);
+        })
+        .then(function(dados) {
+            arquivadas = (dados[0].values || []).slice(1);
+            pendentes  = (dados[1].values || []).slice(1);
+            recalcularTudo();
+            setProgress('OK: ' + arquivadas.length + ' arquivadas + ' + pendentes.length + ' pendentes.');
+        })
+        .catch(function(error) {
+            if (error.message !== '401') {
+                console.error(error);
+                setProgress('Erro: ' + error.message);
+            }
+        })
+        .finally(function() {
+            document.getElementById('spinner').style.display = 'none';
+        });
+    }
+
+    function aoMudarPeriodo() { recalcularTudo(); }
+
+    function recalcularTudo() {
+        calcularEstatisticas();
+        renderizarKPIs();
+        renderizarGraficos();
+        renderizarRankings();
+    }
+
+    // ======================================================
+    //  ESTATISTICAS
+    // ======================================================
+    function calcularEstatisticas() {
+        var agora = new Date();
+        var d7    = new Date(agora.getTime() - 7   * 86400000);
+        var d30   = new Date(agora.getTime() - 30  * 86400000);
+        var d365  = new Date(agora.getTime() - 365 * 86400000);
+
+        var todas = arquivadas.concat(pendentes)
+            .map(function(r) { return { row: r, data: parseDataBR(r[6]) }; })
+            .filter(function(x) { return x.data; });
+
+        // Periodo dos rankings conforme filtro
+        var dias  = parseInt(document.getElementById('filtroPeriodo').value, 10);
+        var corte = dias > 0 ? new Date(agora.getTime() - dias * 86400000) : null;
+        var doPeriodo = corte
+            ? todas.filter(function(x) { return x.data >= corte; })
+            : todas;
+
+        // Evolucao mensal: ultimos 12 meses
+        var meses = [];
+        var mesesCount = {};
+        for (var i = 11; i >= 0; i--) {
+            var ref = new Date(agora.getFullYear(), agora.getMonth() - i, 1);
+            var chave = ref.getFullYear() + '-' + String(ref.getMonth() + 1).padStart(2, '0');
+            var rotulo = ref.toLocaleDateString('pt-BR', { month: 'short' }) + '/' + String(ref.getFullYear()).slice(2);
+            meses.push({ chave: chave, rotulo: rotulo });
+            mesesCount[chave] = 0;
+        }
+        todas.forEach(function(x) {
+            var chave = x.data.getFullYear() + '-' + String(x.data.getMonth() + 1).padStart(2, '0');
+            if (mesesCount.hasOwnProperty(chave)) mesesCount[chave]++;
+        });
+
+        var equipCount = {};
+        var salaCount  = {};
+        var opCount    = {};
+        var evCount    = {};
+
+        doPeriodo.forEach(function(item) {
+            var row = item.row;
+            (row[3] || '').split(';').forEach(function(equip) {
+                var partes = equip.trim().split(' - ');
+                if (partes.length >= 2) {
+                    var material = partes.slice(1).join(' - ').trim();
+                    if (material) equipCount[material] = (equipCount[material] || 0) + 1;
+                }
+            });
+            var sala = (row[4] || '').trim();
+            if (sala) salaCount[sala] = (salaCount[sala] || 0) + 1;
+            var op = (row[1] || '').trim();
+            if (op) opCount[op] = (opCount[op] || 0) + 1;
+            var ev = (row[5] || '').trim();
+            if (ev) evCount[ev] = (evCount[ev] || 0) + 1;
+        });
+
+        function top(obj, n) {
+            return Object.entries(obj)
+                .sort(function(a, b) { return b[1] - a[1]; })
+                .slice(0, n || 8);
+        }
+
+        estatisticas = {
+            semana: todas.filter(function(x) { return x.data >= d7; }).length,
+            mes:    todas.filter(function(x) { return x.data >= d30; }).length,
+            ano:    todas.filter(function(x) { return x.data >= d365; }).length,
+            pendentesAgora: pendentes.length,
+            evolucaoLabels: meses.map(function(m) { return m.rotulo; }),
+            evolucaoDados:  meses.map(function(m) { return mesesCount[m.chave]; }),
+            topEquipamentos: top(equipCount),
+            topSalas: top(salaCount),
+            topOperadores: top(opCount),
+            topEventos: top(evCount)
+        };
+    }
+
+    // ======================================================
+    //  RENDER KPIs
+    // ======================================================
+    function renderizarKPIs() {
+        var e = estatisticas;
+        document.getElementById('kpi-semana').textContent    = e.semana;
+        document.getElementById('kpi-mes').textContent       = e.mes;
+        document.getElementById('kpi-ano').textContent       = e.ano;
+        document.getElementById('kpi-pendentes').textContent = e.pendentesAgora;
+    }
+
+    // ======================================================
+    //  RENDER GRAFICOS (Chart.js)
+    // ======================================================
+    function encurtar(txt, max) {
+        txt = String(txt);
+        return txt.length > max ? txt.slice(0, max - 3) + '...' : txt;
+    }
+
+    function renderizarGraficos() {
+        var e = estatisticas;
+
+        if (graficos.evolucao) graficos.evolucao.destroy();
+        graficos.evolucao = new Chart(document.getElementById('chartEvolucao'), {
+            type: 'line',
+            data: {
+                labels: e.evolucaoLabels,
+                datasets: [{
+                    label: 'Emprestimos',
+                    data: e.evolucaoDados,
+                    borderColor: '#00b04f',
+                    backgroundColor: 'rgba(0,176,79,0.15)',
+                    fill: true,
+                    tension: 0.3,
+                    pointBackgroundColor: '#00b04f',
+                    pointRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color: corTexto() }, grid: { color: corGrade() } },
+                    y: { beginAtZero: true, ticks: { color: corTexto(), precision: 0 }, grid: { color: corGrade() } }
+                }
+            }
+        });
+
+        if (graficos.equipamentos) graficos.equipamentos.destroy();
+        graficos.equipamentos = new Chart(document.getElementById('chartEquipamentos'), {
+            type: 'bar',
+            data: {
+                labels: e.topEquipamentos.map(function(x) { return encurtar(x[0], 28); }),
+                datasets: [{
+                    data: e.topEquipamentos.map(function(x) { return x[1]; }),
+                    backgroundColor: '#00b04f',
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                onClick: function(evt, els) {
+                    if (els.length) abrirDetalhe('equipamento', e.topEquipamentos[els[0].index][0]);
+                },
+                scales: {
+                    x: { beginAtZero: true, ticks: { color: corTexto(), precision: 0 }, grid: { color: corGrade() } },
+                    y: { ticks: { color: corTexto(), font: { size: 10 } }, grid: { display: false } }
+                }
+            }
+        });
+
+        if (graficos.salas) graficos.salas.destroy();
+        graficos.salas = new Chart(document.getElementById('chartSalas'), {
+            type: 'bar',
+            data: {
+                labels: e.topSalas.map(function(x) { return encurtar(x[0], 28); }),
+                datasets: [{
+                    data: e.topSalas.map(function(x) { return x[1]; }),
+                    backgroundColor: '#1d4ed8',
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                onClick: function(evt, els) {
+                    if (els.length) abrirDetalhe('sala', e.topSalas[els[0].index][0]);
+                },
+                scales: {
+                    x: { beginAtZero: true, ticks: { color: corTexto(), precision: 0 }, grid: { color: corGrade() } },
+                    y: { ticks: { color: corTexto(), font: { size: 10 } }, grid: { display: false } }
+                }
+            }
+        });
+    }
+
+    function atualizarCoresGraficos() {
+        if (estatisticas) renderizarGraficos();
+    }
+
+    // ======================================================
+    //  RENDER RANKINGS
+    // ======================================================
+    function renderizarRankings() {
+        renderRank('rank-operadores', estatisticas.topOperadores, 'operador');
+        renderRank('rank-eventos',    estatisticas.topEventos,    'evento');
+    }
+
+    // XSS-safe: usa textContent (nao innerHTML) e permite clicar para o detalhe.
+    function renderRank(elementId, dados, tipo) {
+        var ul = document.getElementById(elementId);
+        ul.textContent = '';
+        if (!dados.length) {
+            var vazio = document.createElement('li');
+            vazio.style.cssText = 'color:var(--text-muted);font-size:12px;padding:12px 0';
+            vazio.textContent = 'Sem dados no periodo.';
+            ul.appendChild(vazio);
+            return;
+        }
+        dados.forEach(function(entrada, i) {
+            var li = document.createElement('li');
+            li.className = 'rank-item' + (tipo ? ' clicavel' : '');
+
+            var pos = document.createElement('div');
+            pos.className = 'rank-pos';
+            pos.textContent = (i + 1);
+
+            var nome = document.createElement('div');
+            nome.className = 'rank-nome';
+            nome.textContent = entrada[0];
+            if (tipo) {
+                var seta = document.createElement('span');
+                seta.className = 'seta';
+                seta.textContent = '\u203A'; // ›
+                nome.appendChild(seta);
+            }
+
+            var qtd = document.createElement('div');
+            qtd.className = 'rank-qtd';
+            qtd.textContent = entrada[1] + 'x';
+
+            li.appendChild(pos);
+            li.appendChild(nome);
+            li.appendChild(qtd);
+            if (tipo) {
+                li.addEventListener('click', function() { abrirDetalhe(tipo, entrada[0]); });
+            }
+            ul.appendChild(li);
+        });
+    }
+    
+    // ======================================================
+    //  DRILL-DOWN (clicar para ver o detalhe)
+    // ======================================================
+    var TITULOS = { operador: 'Operador', evento: 'Evento', sala: 'Sala / Local', equipamento: 'Equipamento' };
+
+    function materiaisDaLinha(row) {
+        var lista = [];
+        String(row[3] || '').split(';').forEach(function(equip) {
+            var partes = equip.trim().split(' - ');
+            if (partes.length >= 2) {
+                var material = partes.slice(1).join(' - ').trim();
+                if (material) lista.push(material);
+            }
+        });
+        return lista;
+    }
+
+    function todasLinhas() {
+        var lista = [];
+        arquivadas.forEach(function(r) { lista.push({ row: r, pend: false }); });
+        pendentes.forEach(function(r) { lista.push({ row: r, pend: true }); });
+        return lista;
+    }
+
+    function linhaBate(tipo, valor, row) {
+        if (tipo === 'operador')    return String(row[1] || '').trim() === valor;
+        if (tipo === 'evento')      return String(row[5] || '').trim() === valor;
+        if (tipo === 'sala')        return String(row[4] || '').trim() === valor;
+        if (tipo === 'equipamento') return materiaisDaLinha(row).indexOf(valor) !== -1;
+        return false;
+    }
+
+    function topDe(itens, n) {
+        var c = {};
+        itens.forEach(function(v) { v = (v || '').trim(); if (v) c[v] = (c[v] || 0) + 1; });
+        return Object.entries(c).sort(function(a, b) { return b[1] - a[1]; }).slice(0, n || 6);
+    }
+
+    function fmtData(d) {
+        if (!d) return '-';
+        return d.toLocaleDateString('pt-BR') + ' ' +
+               d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function miniRank(titulo, pares) {
+        var box = document.createElement('div');
+        box.className = 'mini-rank';
+        var h = document.createElement('h4');
+        h.textContent = titulo;
+        box.appendChild(h);
+        if (!pares.length) {
+            var vazio = document.createElement('div');
+            vazio.style.cssText = 'font-size:12px;color:var(--text-muted)';
+            vazio.textContent = 'Sem dados.';
+            box.appendChild(vazio);
+            return box;
+        }
+        pares.forEach(function(p) {
+            var lin = document.createElement('div');
+            lin.className = 'lin';
+            var n = document.createElement('span'); n.textContent = p[0];
+            var q = document.createElement('span'); q.className = 'rank-qtd'; q.textContent = p[1] + 'x';
+            lin.appendChild(n); lin.appendChild(q);
+            box.appendChild(lin);
+        });
+        return box;
+    }
+
+    function abrirDetalhe(tipo, valor) {
+        var linhas = todasLinhas().filter(function(o) { return linhaBate(tipo, valor, o.row); });
+        // ordena da retirada mais recente para a mais antiga
+        linhas.forEach(function(o) { o.data = parseDataBR(o.row[6]); });
+        linhas.sort(function(a, b) { return (b.data || 0) - (a.data || 0); });
+
+        var pend = linhas.filter(function(o) { return o.pend; }).length;
+        var dev  = linhas.length - pend;
+        var datas = linhas.map(function(o) { return o.data; }).filter(Boolean);
+        var ultima = datas.length ? datas[0] : null;
+        var primeira = datas.length ? datas[datas.length - 1] : null;
+
+        document.getElementById('modal-titulo').textContent = TITULOS[tipo] + ': ' + valor;
+        var sub = document.getElementById('modal-subtitulo');
+        sub.textContent = linhas.length + ' retirada(s)' +
+            (primeira ? ' | de ' + fmtData(primeira) + ' ate ' + fmtData(ultima) : '');
+
+        var corpo = document.getElementById('modal-corpo');
+        corpo.textContent = '';
+
+        // Mini-cards
+        var cards = document.createElement('div');
+        cards.className = 'mini-cards';
+        [['Total de retiradas', linhas.length], ['Devolvidas', dev],
+         ['Pendentes', pend], ['Ultima retirada', ultima ? ultima.toLocaleDateString('pt-BR') : '-']]
+        .forEach(function(c) {
+            var mc = document.createElement('div'); mc.className = 'mini-card';
+            var v = document.createElement('div'); v.className = 'mv'; v.textContent = c[1];
+            var l = document.createElement('div'); l.className = 'ml'; l.textContent = c[0];
+            mc.appendChild(v); mc.appendChild(l); cards.appendChild(mc);
+        });
+        corpo.appendChild(cards);
+
+        // Mini-rankings (dimensoes relacionadas, conforme o tipo)
+        var equipItens = [], salaItens = [], opItens = [], evItens = [];
+        linhas.forEach(function(o) {
+            materiaisDaLinha(o.row).forEach(function(m) { equipItens.push(m); });
+            salaItens.push(o.row[4]); opItens.push(o.row[1]); evItens.push(o.row[5]);
+        });
+        var cols = document.createElement('div');
+        cols.className = 'mini-rank-cols';
+        var conjunto;
+        if (tipo === 'operador')         conjunto = [['Equipamentos', equipItens], ['Salas', salaItens], ['Eventos', evItens]];
+        else if (tipo === 'evento')      conjunto = [['Equipamentos', equipItens], ['Salas', salaItens], ['Operadores', opItens]];
+        else if (tipo === 'sala')        conjunto = [['Equipamentos', equipItens], ['Operadores', opItens], ['Eventos', evItens]];
+        else                             conjunto = [['Operadores', opItens], ['Salas', salaItens], ['Eventos', evItens]];
+        conjunto.forEach(function(c) { cols.appendChild(miniRank(c[0], topDe(c[1]))); });
+        corpo.appendChild(cols);
+
+        // Tabela completa
+        var tabela = document.createElement('table');
+        tabela.className = 'tabela-detalhe';
+        var thead = document.createElement('thead');
+        var trh = document.createElement('tr');
+        ['Data retirada', 'Evento', 'Local', 'Equipamentos', 'Operador', 'Status'].forEach(function(t) {
+            var th = document.createElement('th'); th.textContent = t; trh.appendChild(th);
+        });
+        thead.appendChild(trh); tabela.appendChild(thead);
+        var tbody = document.createElement('tbody');
+        linhas.forEach(function(o) {
+            var tr = document.createElement('tr');
+            var celulas = [
+                o.data ? fmtData(o.data) : (o.row[6] || '-'),
+                o.row[5] || '-',
+                o.row[4] || '-',
+                materiaisDaLinha(o.row).join(', ') || '-',
+                o.row[1] || '-'
+            ];
+            celulas.forEach(function(txt) {
+                var td = document.createElement('td'); td.textContent = txt; tr.appendChild(td);
+            });
+            var tdSt = document.createElement('td');
+            var badge = document.createElement('span');
+            badge.className = 'badge ' + (o.pend ? 'pend' : 'dev');
+            badge.textContent = o.pend ? 'Pendente' : 'Devolvido';
+            tdSt.appendChild(badge); tr.appendChild(tdSt);
+            tbody.appendChild(tr);
+        });
+        tabela.appendChild(tbody);
+        corpo.appendChild(tabela);
+
+        document.getElementById('modal-detalhe').classList.add('aberto');
+    }
+
+    function fecharDetalhe() {
+        document.getElementById('modal-detalhe').classList.remove('aberto');
+    }
+
+    function imprimirDetalhe() {
+        document.body.classList.add('print-modal');
+        window.print();
+        setTimeout(function() { document.body.classList.remove('print-modal'); }, 500);
+    }
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') fecharDetalhe();
+    });
+
+    // ======================================================
+    //  ASSISTENTE IA (Gemini via Apps Script)
+    // ======================================================
+    function sugestaoIA(ev, texto) {
+        ev.preventDefault();
+        document.getElementById('ia-input').value = texto;
+        perguntarIA();
+    }
+
+    // Monta um RESUMO AGREGADO compacto (nao os dados crus) para caber
+    // no limite de tokens da IA. Cobre a maioria das perguntas analiticas.
+    function rankTexto(itens, limite) {
+        var pares = topDe(itens, limite || 40);
+        return pares.map(function(p) { return p[0] + ' \u2014 ' + p[1]; }).join('\n');
+    }
+
+    function construirDadosIA() {
+        var linhas = todasLinhas();
+        linhas.forEach(function(o) { o.data = parseDataBR(o.row[6]); });
+
+        var pend = linhas.filter(function(o) { return o.pend; });
+        var datas = linhas.map(function(o) { return o.data; }).filter(Boolean)
+                          .sort(function(a, b) { return a - b; });
+        var periodo = datas.length
+            ? datas[0].toLocaleDateString('pt-BR') + ' a ' + datas[datas.length - 1].toLocaleDateString('pt-BR')
+            : 'sem datas';
+
+        var ops = [], evs = [], salas = [], equips = [], meses = [];
+        linhas.forEach(function(o) {
+            var r = o.row;
+            if (r[1]) ops.push(r[1]);
+            if (r[5]) evs.push(r[5]);
+            if (r[4]) salas.push(r[4]);
+            materiaisDaLinha(r).forEach(function(m) { equips.push(m); });
+            if (o.data) {
+                meses.push(o.data.getFullYear() + '-' + ('0' + (o.data.getMonth() + 1)).slice(-2));
+            }
+        });
+
+        // pendentes: lista curta (quem/o que/onde)
+        var listaPend = pend.slice(0, 40).map(function(o) {
+            var r = o.row;
+            return '- ' + (r[1] || '?') + ' | ' + materiaisDaLinha(r).join(', ') +
+                   ' | ' + (r[4] || '') + ' | ' + (o.data ? o.data.toLocaleDateString('pt-BR') : '');
+        }).join('\n');
+
+        return [
+            'RESUMO DOS EMPRESTIMOS DO ALMOXARIFADO (COAUD)',
+            'Periodo dos dados: ' + periodo,
+            'Total de retiradas: ' + linhas.length +
+                ' | Devolvidas: ' + (linhas.length - pend.length) +
+                ' | Pendentes: ' + pend.length,
+            '',
+            'RETIRADAS POR OPERADOR (nome - quantidade):',
+            rankTexto(ops, 60),
+            '',
+            'RETIRADAS POR EVENTO:',
+            rankTexto(evs, 50),
+            '',
+            'RETIRADAS POR SALA/LOCAL:',
+            rankTexto(salas, 50),
+            '',
+            'RETIRADAS POR EQUIPAMENTO:',
+            rankTexto(equips, 60),
+            '',
+            'RETIRADAS POR MES (AAAA-MM - quantidade):',
+            rankTexto(meses, 24),
+            '',
+            'PENDENTES NO MOMENTO (' + pend.length + '):',
+            listaPend || '(nenhuma)'
+        ].join('\n');
+    }
+
+    function addMsgIA(quem, texto) {
+        var wrap = document.getElementById('ia-msgs');
+        wrap.style.display = 'flex';
+        var div = document.createElement('div');
+        var ehUser = quem === 'voce';
+        div.style.cssText = 'max-width:85%;padding:8px 12px;border-radius:10px;font-size:13px;white-space:pre-wrap;word-break:break-word;' +
+            (ehUser
+                ? 'align-self:flex-end;background:var(--verde);color:#04240f;font-weight:600'
+                : 'align-self:flex-start;background:var(--verde-light);color:var(--text)');
+        div.textContent = texto;
+        wrap.appendChild(div);
+        wrap.scrollTop = wrap.scrollHeight;
+        return div;
+    }
+
+    function perguntarIA() {
+        var input = document.getElementById('ia-input');
+        var pergunta = (input.value || '').trim();
+        if (!pergunta) return;
+
+        if (URL_IA.indexOf('COLE_AQUI') !== -1) {
+            addMsgIA('ia', 'A IA ainda nao foi configurada. Cole a URL do Apps Script (variavel URL_IA no codigo) para ativar.');
+            return;
+        }
+        if (!arquivadas.length && !pendentes.length) {
+            addMsgIA('ia', 'Os dados ainda nao carregaram. Clique em Atualizar e tente de novo.');
+            return;
+        }
+
+        addMsgIA('voce', pergunta);
+        input.value = '';
+        var btn = document.getElementById('ia-btn');
+        btn.disabled = true;
+        var pensando = addMsgIA('ia', 'Pensando...');
+
+        fetch(URL_IA, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // evita preflight de CORS
+            body: JSON.stringify({ pergunta: pergunta, dados: construirDadosIA() })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+            pensando.textContent = res.ok ? res.resposta : ('Erro: ' + (res.erro || 'desconhecido'));
+        })
+        .catch(function(err) {
+            pensando.textContent = 'Erro de conexao com a IA: ' + err.message;
+        })
+        .finally(function() { btn.disabled = false; });
+    }
+
+    // ══ INATIVIDADE ══════════════════════════════════════
+    void function() {
+        const TEMPO_MS = 5 * 60 * 1000;
+        const AVISO_MS = 10 * 1000;
+        let timerRed = null, timerAv = null;
+        let elAv = null, intAv = null;
+
+        function criarAviso() {
+            const div = document.createElement('div');
+            div.id = 'aviso-inatividade';
+            div.style.cssText = 'display:none;position:fixed;bottom:14px;right:14px;background:rgba(0,0,0,.85);color:#4ade80;padding:6px 14px;border-radius:4px;border:1px solid rgba(0,176,79,.25);font-size:11px;z-index:9999;pointer-events:none;font-family:inherit';
+            document.body.appendChild(div);
+            return div;
+        }
+        function mostrar() {
+            if (!elAv) elAv = criarAviso();
+            let c = 10;
+            elAv.textContent = `Redirecionando em ${c}s...`;
+            elAv.style.display = 'block';
+            intAv = setInterval(() => { c--; if (elAv) elAv.textContent = `Redirecionando em ${c}s...`; if (c<=0) clearInterval(intAv); }, 1000);
+        }
+        function esconder() {
+            if (intAv) { clearInterval(intAv); intAv = null; }
+            if (elAv) elAv.style.display = 'none';
+        }
+        function reset() {
+            clearTimeout(timerRed); clearTimeout(timerAv); esconder();
+            timerAv  = setTimeout(mostrar, TEMPO_MS - AVISO_MS);
+            timerRed = setTimeout(() => { window.location.href = 'index-almoxarifado.html'; }, TEMPO_MS);
+        }
+        ['mousemove','mousedown','keydown','scroll','touchstart','click','wheel']
+            .forEach(e => document.addEventListener(e, reset, { passive: true }));
+        reset();
+    }();
+    </script>
+</body>
+</html>
