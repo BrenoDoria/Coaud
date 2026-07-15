@@ -248,120 +248,83 @@
     </div>
 
     <script>
-        // ══ DASHBOARD — busca dados e atualiza KPIs ══════════
-async function atualizarDashboard() {
-    if (!accessToken) return;
+    // ══════════════════════════════════════════════════════
+    //  CONFIGURAÇÃO
+    // ══════════════════════════════════════════════════════
+    const CLIENT_ID = '286050228811-cv6vsd075480anb1i6auuc421enuaf8q.apps.googleusercontent.com';
+    const FILE_ID   = '1q9RCwJ4P--QIH4kkMszffrN8ZwzkSsNoZtPH-Usk4Zw';
 
-    try {
-        // Busca fichas pendentes
-        const pendResp = await fetch(
-            `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/RETIRADAS_PENDENTES!A:G`,
-            { headers: { 'Authorization': `Bearer ${accessToken}` } }
-        );
-        // Busca fichas arquivadas (só a coluna A para contar)
-        const arqResp = await fetch(
-            `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/RETIRADAS_ARQUIVADAS!A:A`,
-            { headers: { 'Authorization': `Bearer ${accessToken}` } }
-        );
-
-        if (!pendResp.ok || !arqResp.ok) return;
-
-        const pendData = await pendResp.json();
-        const arqData  = await arqResp.json();
-
-        const pendentes  = pendData.values ? pendData.values.slice(1) : [];
-        const arquivadas = arqData.values  ? arqData.values.slice(1)  : [];
-
-        // Calcula atraso e crítico
-        const agora = new Date();
-        let emAtraso = 0, criticas = 0;
-
-        pendentes.forEach(row => {
-            const dataStr = row[6];
-            if (!dataStr) return;
-            const [datePart] = dataStr.split(', ');
-            if (!datePart) return;
-            const [d, m, y] = datePart.split('/').map(Number);
-            const dataRet = new Date(y, m-1, d);
-            const dias = (agora - dataRet) / (1000*60*60*24);
-            if (dias > 35)       criticas++;
-            else if (dias > 30)  emAtraso++;
-        });
-
-        // Atualiza KPIs
-        document.getElementById('kpi-pendentes').textContent  = pendentes.length;
-        document.getElementById('kpi-arquivadas').textContent = arquivadas.length;
-
-        const cardAtraso = document.getElementById('kpi-atraso-card');
-        if (emAtraso > 0) {
-            cardAtraso.style.display = 'flex';
-            document.getElementById('kpi-atraso').textContent = emAtraso;
-        } else {
-            cardAtraso.style.display = 'none';
-        }
-
-        const cardCritico = document.getElementById('kpi-critico-card');
-        if (criticas > 0) {
-            cardCritico.style.display = 'flex';
-            document.getElementById('kpi-critico').textContent = criticas;
-        } else {
-            cardCritico.style.display = 'none';
-        }
-
-    } catch (error) {
-        console.error('Erro ao atualizar dashboard:', error);
-    }
-}
-
-    // ══ SIDEBAR / LOGOUT ═════════════════════════════════
-   // ══ FILTRA SIDEBAR CONFORME PERMISSÃO ═════════════════
-// ══ Preenche dados do usuário na sidebar ═══════════════
-function preencherUsuarioSidebar() {
-    const u = JSON.parse(localStorage.getItem('usuarioLogado'));
-    if (!u) { window.location.href = 'index.html'; return; }
-
-    const initials = nome => nome
-        ? nome.split(' ').slice(0,2).map(n=>n[0]).join('').toUpperCase()
-        : '?';
-
-    const avatarEl = document.getElementById('user-avatar');
-    const nameEl   = document.getElementById('user-name');
-    const roleEl   = document.getElementById('user-role');
-
-    if (avatarEl) avatarEl.textContent = initials(u.nome);
-    if (nameEl)   nameEl.textContent   = u.nome || 'Usuário';
-    if (roleEl)   roleEl.textContent   = u.permissao || '';
-}
-
-// Executa quando o DOM estiver pronto
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', preencherUsuarioSidebar);
-} else {
-    preencherUsuarioSidebar();
-}
-
-    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
-    function fazerLogout() {
-        localStorage.removeItem('usuarioLogado');
-        localStorage.removeItem('access_token');
-        window.location.href = 'index.html';
-    }
+    let tokenClient;
+    let accessToken        = null;
+    let pendentesData      = [];
+    let sheetIds           = {};
+    let idFichaSelecionada = null;
 
     function setProgress(msg) {
         const el = document.getElementById("progressText");
         if (el) el.textContent = msg;
     }
 
-    // ══ CONFIGURAÇÃO ══════════════════════════════════════
-    const CLIENT_ID = '286050228811-cv6vsd075480anb1i6auuc421enuaf8q.apps.googleusercontent.com';
-    const FILE_ID   = '1q9RCwJ4P--QIH4kkMszffrN8ZwzkSsNoZtPH-Usk4Zw';
+    // ══════════════════════════════════════════════════════
+    //  SESSÃO GOOGLE
+    //  Regra de ouro: requestAccessToken() SÓ pode ser
+    //  chamado a partir de um clique do usuário. Nunca
+    //  automaticamente — o navegador bloqueia o popup.
+    // ══════════════════════════════════════════════════════
+    function tokenExpirado() {
+        const exp = parseInt(localStorage.getItem('token_expira_em') || '0', 10);
+        return !exp || exp < (Date.now() + 60000);   // 1 min de folga
+    }
 
-    let tokenClient;
-    let accessToken       = null;
-    let pendentesData     = [];
-    let sheetIds          = {};
-    let idFichaSelecionada = null;
+    function exigirLogin(msg) {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('token_expira_em');
+        accessToken = null;
+        document.getElementById('login-section').style.display     = 'block';
+        document.getElementById('pendentes-section').style.display = 'none';
+        document.getElementById('spinner').style.display           = 'none';
+        setProgress(msg || '⚠ Sessão expirada. Clique em "Fazer Login com Google".');
+    }
 
+    // Só é chamado por clique no botão de login
+    function solicitarToken() {
+        if (tokenClient) tokenClient.requestAccessToken();
+    }
+
+    // ══ SIDEBAR / LOGOUT ═════════════════════════════════
+    function preencherUsuarioSidebar() {
+        const u = JSON.parse(localStorage.getItem('usuarioLogado'));
+        if (!u) { window.location.href = 'index.html'; return; }
+
+        const initials = nome => nome
+            ? nome.split(' ').slice(0,2).map(n=>n[0]).join('').toUpperCase()
+            : '?';
+
+        const avatarEl = document.getElementById('user-avatar');
+        const nameEl   = document.getElementById('user-name');
+        const roleEl   = document.getElementById('user-role');
+
+        if (avatarEl) avatarEl.textContent = initials(u.nome);
+        if (nameEl)   nameEl.textContent   = u.nome || 'Usuário';
+        if (roleEl)   roleEl.textContent   = u.permissao || '';
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', preencherUsuarioSidebar);
+    } else {
+        preencherUsuarioSidebar();
+    }
+
+    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
+
+    function fazerLogout() {
+        localStorage.removeItem('usuarioLogado');
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('token_expira_em');
+        window.location.href = 'index.html';
+    }
+
+    // ══ MAPA E-MAIL → NOME ═══════════════════════════════
     const emailToNome = {
         "afonsoguitar@gmail.com":          "Afonso Viana de Mesquita Filho",
         "altamiraraujo@gmail.com":         "Altamir Araujo da Silva",
@@ -428,98 +391,165 @@ if (document.readyState === 'loading') {
     ];
 
     // ══════════════════════════════════════════════════════
-//  BUSCA OPERADOR DEVOLUÇÃO — lista ao focar + teclado
-// ══════════════════════════════════════════════════════
-let opDevFocusIndex = -1;
+    //  DASHBOARD — KPIs
+    // ══════════════════════════════════════════════════════
+    async function atualizarDashboard() {
+        if (!accessToken || tokenExpirado()) return;
 
-function renderListaOperadorDev(filtrados, busca) {
-    const lista = document.getElementById('operadorDevolucaoLista');
-    lista.innerHTML = '';
-    opDevFocusIndex = -1;
+        try {
+            const pendResp = await fetch(
+                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/RETIRADAS_PENDENTES!A:G`,
+                { headers: { 'Authorization': `Bearer ${accessToken}` } }
+            );
+            const arqResp = await fetch(
+                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/RETIRADAS_ARQUIVADAS!A:A`,
+                { headers: { 'Authorization': `Bearer ${accessToken}` } }
+            );
 
-    if (!filtrados.length) {
-        const li = document.createElement('li');
-        li.textContent = 'Nenhum operador encontrado.';
-        li.style.color = 'var(--text-muted)';
-        lista.appendChild(li);
-    } else {
-        const regex = busca
-            ? new RegExp(`(${busca.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`, 'gi')
-            : null;
-        filtrados.forEach(nome => {
-            const li = document.createElement('li');
-            li.innerHTML = regex
-                ? nome.replace(regex, '<strong style="color:#4ade80">$1</strong>')
-                : nome;
-            li.dataset.nome = nome;
-            li.onmousedown = () => selecionarOperadorDevolucao(nome);
-            lista.appendChild(li);
-        });
-    }
-    lista.style.display = 'block';
-}
+            if (pendResp.status === 401 || arqResp.status === 401) {
+                exigirLogin();
+                return;
+            }
+            if (!pendResp.ok || !arqResp.ok) return;
 
-function filtrarOperadorDevolucao() {
-    const busca = document.getElementById('operadorDevolucaoBusca').value.trim().toLowerCase();
-    if (busca.length === 0) {
-        renderListaOperadorDev(todosOperadores, '');
-        return;
-    }
-    const filtrados = todosOperadores.filter(n => n.toLowerCase().includes(busca));
-    renderListaOperadorDev(filtrados, busca);
-}
+            const pendData = await pendResp.json();
+            const arqData  = await arqResp.json();
 
-function abrirListaOperadorDev() {
-    filtrarOperadorDevolucao();
-}
+            const pendentes  = pendData.values ? pendData.values.slice(1) : [];
+            const arquivadas = arqData.values  ? arqData.values.slice(1)  : [];
 
-function selecionarOperadorDevolucao(nome) {
-    document.getElementById('operadorDevolucaoBusca').value  = nome;
-    document.getElementById('operadorDevolucaoSelect').value = nome;
-    document.getElementById('operadorDevolucaoLista').style.display = 'none';
-    const tag = document.getElementById('operadorDevolucaoSelecionado');
-    tag.textContent   = '✔ ' + nome;
-    tag.style.display = 'block';
-}
+            const agora = new Date();
+            let emAtraso = 0, criticas = 0;
 
-function fecharListaOperadorDevolucao() {
-    document.getElementById('operadorDevolucaoLista').style.display = 'none';
-    opDevFocusIndex = -1;
-}
+            pendentes.forEach(row => {
+                const dataStr = row[6];
+                if (!dataStr) return;
+                const [datePart] = dataStr.split(', ');
+                if (!datePart) return;
+                const [d, m, y] = datePart.split('/').map(Number);
+                const dataRet = new Date(y, m-1, d);
+                const dias = (agora - dataRet) / (1000*60*60*24);
+                if (dias > 35)       criticas++;
+                else if (dias > 30)  emAtraso++;
+            });
 
-document.getElementById('operadorDevolucaoBusca').addEventListener('keydown', function(e) {
-    const lista = document.getElementById('operadorDevolucaoLista');
-    const itens = Array.from(lista.querySelectorAll('li[data-nome]'));
-    if (lista.style.display === 'none' || !itens.length) return;
+            document.getElementById('kpi-pendentes').textContent  = pendentes.length;
+            document.getElementById('kpi-arquivadas').textContent = arquivadas.length;
 
-    if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        opDevFocusIndex = Math.min(opDevFocusIndex + 1, itens.length - 1);
-        destacarItemDev(itens);
-    } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        opDevFocusIndex = Math.max(opDevFocusIndex - 1, 0);
-        destacarItemDev(itens);
-    } else if (e.key === 'Enter') {
-        e.preventDefault();
-        if (opDevFocusIndex >= 0) {
-            selecionarOperadorDevolucao(itens[opDevFocusIndex].dataset.nome);
-        } else if (itens.length === 1) {
-            selecionarOperadorDevolucao(itens[0].dataset.nome);
+            const cardAtraso = document.getElementById('kpi-atraso-card');
+            if (emAtraso > 0) {
+                cardAtraso.style.display = 'flex';
+                document.getElementById('kpi-atraso').textContent = emAtraso;
+            } else {
+                cardAtraso.style.display = 'none';
+            }
+
+            const cardCritico = document.getElementById('kpi-critico-card');
+            if (criticas > 0) {
+                cardCritico.style.display = 'flex';
+                document.getElementById('kpi-critico').textContent = criticas;
+            } else {
+                cardCritico.style.display = 'none';
+            }
+
+        } catch (error) {
+            console.error('Erro ao atualizar dashboard:', error);
         }
-    } else if (e.key === 'Escape') {
-        fecharListaOperadorDevolucao();
     }
-});
 
-function destacarItemDev(itens) {
-    itens.forEach((li, i) => {
-        li.style.background = i === opDevFocusIndex ? 'rgba(0,176,79,0.25)' : '';
-    });
-    if (opDevFocusIndex >= 0) {
-        itens[opDevFocusIndex].scrollIntoView({ block: 'nearest' });
+    // ══════════════════════════════════════════════════════
+    //  BUSCA OPERADOR DEVOLUÇÃO — lista ao focar + teclado
+    // ══════════════════════════════════════════════════════
+    let opDevFocusIndex = -1;
+
+    function renderListaOperadorDev(filtrados, busca) {
+        const lista = document.getElementById('operadorDevolucaoLista');
+        lista.innerHTML = '';
+        opDevFocusIndex = -1;
+
+        if (!filtrados.length) {
+            const li = document.createElement('li');
+            li.textContent = 'Nenhum operador encontrado.';
+            li.style.color = 'var(--text-muted)';
+            lista.appendChild(li);
+        } else {
+            const regex = busca
+                ? new RegExp(`(${busca.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`, 'gi')
+                : null;
+            filtrados.forEach(nome => {
+                const li = document.createElement('li');
+                li.innerHTML = regex
+                    ? nome.replace(regex, '<strong style="color:#4ade80">$1</strong>')
+                    : nome;
+                li.dataset.nome = nome;
+                li.onmousedown = () => selecionarOperadorDevolucao(nome);
+                lista.appendChild(li);
+            });
+        }
+        lista.style.display = 'block';
     }
-}
+
+    function filtrarOperadorDevolucao() {
+        const busca = document.getElementById('operadorDevolucaoBusca').value.trim().toLowerCase();
+        if (busca.length === 0) {
+            renderListaOperadorDev(todosOperadores, '');
+            return;
+        }
+        const filtrados = todosOperadores.filter(n => n.toLowerCase().includes(busca));
+        renderListaOperadorDev(filtrados, busca);
+    }
+
+    function abrirListaOperadorDev() {
+        filtrarOperadorDevolucao();
+    }
+
+    function selecionarOperadorDevolucao(nome) {
+        document.getElementById('operadorDevolucaoBusca').value  = nome;
+        document.getElementById('operadorDevolucaoSelect').value = nome;
+        document.getElementById('operadorDevolucaoLista').style.display = 'none';
+        const tag = document.getElementById('operadorDevolucaoSelecionado');
+        tag.textContent   = '✔ ' + nome;
+        tag.style.display = 'block';
+    }
+
+    function fecharListaOperadorDevolucao() {
+        document.getElementById('operadorDevolucaoLista').style.display = 'none';
+        opDevFocusIndex = -1;
+    }
+
+    document.getElementById('operadorDevolucaoBusca').addEventListener('keydown', function(e) {
+        const lista = document.getElementById('operadorDevolucaoLista');
+        const itens = Array.from(lista.querySelectorAll('li[data-nome]'));
+        if (lista.style.display === 'none' || !itens.length) return;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            opDevFocusIndex = Math.min(opDevFocusIndex + 1, itens.length - 1);
+            destacarItemDev(itens);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            opDevFocusIndex = Math.max(opDevFocusIndex - 1, 0);
+            destacarItemDev(itens);
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (opDevFocusIndex >= 0) {
+                selecionarOperadorDevolucao(itens[opDevFocusIndex].dataset.nome);
+            } else if (itens.length === 1) {
+                selecionarOperadorDevolucao(itens[0].dataset.nome);
+            }
+        } else if (e.key === 'Escape') {
+            fecharListaOperadorDevolucao();
+        }
+    });
+
+    function destacarItemDev(itens) {
+        itens.forEach((li, i) => {
+            li.style.background = i === opDevFocusIndex ? 'rgba(0,176,79,0.25)' : '';
+        });
+        if (opDevFocusIndex >= 0) {
+            itens[opDevFocusIndex].scrollIntoView({ block: 'nearest' });
+        }
+    }
 
     function limparCamposModal() {
         document.getElementById('operadorDevolucaoBusca').value  = '';
@@ -532,19 +562,19 @@ function destacarItemDev(itens) {
     }
 
     async function getCurrentUserEmail() {
-        if (!accessToken) return null;
+        if (!accessToken || tokenExpirado()) return null;
         try {
             const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo',
                 { headers: { 'Authorization': `Bearer ${accessToken}` } });
+            if (r.status === 401) { exigirLogin(); return null; }
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
             return (await r.json()).email.toLowerCase();
         } catch (e) { console.error(e); return null; }
     }
 
-    function solicitarToken() {
-        if (tokenClient) tokenClient.requestAccessToken();
-    }
-
+    // ══════════════════════════════════════════════════════
+    //  INICIALIZAÇÃO
+    // ══════════════════════════════════════════════════════
     window.addEventListener('load', () => {
         const inicializarGoogle = () => {
             if (typeof google === 'undefined' || !google.accounts) {
@@ -553,7 +583,7 @@ function destacarItemDev(itens) {
             }
             tokenClient = google.accounts.oauth2.initTokenClient({
                 client_id: CLIENT_ID,
-                scope: 'https://www.googleapis.com/auth/spreadsheets',
+                scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.email',
                 callback: (tokenResponse) => {
                     if (tokenResponse.error) {
                         setProgress("Erro: " + tokenResponse.error);
@@ -561,36 +591,55 @@ function destacarItemDev(itens) {
                     }
                     accessToken = tokenResponse.access_token;
                     localStorage.setItem("access_token", accessToken);
-                    document.getElementById("login-section").style.display   = "none";
+                    // Guarda QUANDO o token morre — é isso que evita usar token vencido
+                    localStorage.setItem("token_expira_em",
+                        Date.now() + ((tokenResponse.expires_in || 3600) * 1000));
+
+                    document.getElementById("login-section").style.display     = "none";
                     document.getElementById("pendentes-section").style.display = "block";
                     carregarDadosDoSheets();
                 }
             });
 
             const savedToken = localStorage.getItem("access_token");
-            if (savedToken) {
+            if (savedToken && !tokenExpirado()) {
                 accessToken = savedToken;
-                document.getElementById("login-section").style.display   = "none";
+                document.getElementById("login-section").style.display     = "none";
                 document.getElementById("pendentes-section").style.display = "block";
                 setProgress("Carregando dados...");
                 carregarDadosDoSheets();
+            } else {
+                // NÃO chama solicitarToken() aqui: o popup seria bloqueado.
+                exigirLogin('Clique em "Fazer Login com Google" para carregar as fichas.');
             }
         };
         inicializarGoogle();
     });
 
+    // ══════════════════════════════════════════════════════
+    //  CARGA DE DADOS
+    // ══════════════════════════════════════════════════════
     async function getSheetIds() {
         const r = await fetch(
             `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}`,
             { headers: { 'Authorization': `Bearer ${accessToken}` } }
         );
-        if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || r.statusText); }
+        if (!r.ok) {
+            const e = await r.json().catch(() => ({}));
+            const err = new Error(e.error?.message || r.statusText);
+            err.status = r.status;          // preserva o código HTTP
+            throw err;
+        }
         const data = await r.json();
         data.sheets.forEach(s => { sheetIds[s.properties.title] = s.properties.sheetId; });
     }
 
-    async function carregarDadosDoSheets(retryCount = 0) {
-        const maxRetries = 3;
+    async function carregarDadosDoSheets() {
+        if (!accessToken || tokenExpirado()) {
+            exigirLogin();
+            return;
+        }
+
         document.getElementById("spinner").style.display = "inline-block";
         setProgress("Consultando Google Sheets...");
 
@@ -601,7 +650,12 @@ function destacarItemDev(itens) {
                 `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/RETIRADAS_PENDENTES!A:G`,
                 { headers: { 'Authorization': `Bearer ${accessToken}` } }
             );
-            if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || r.statusText); }
+            if (!r.ok) {
+                const e = await r.json().catch(() => ({}));
+                const err = new Error(e.error?.message || r.statusText);
+                err.status = r.status;
+                throw err;
+            }
 
             const data = await r.json();
             pendentesData = data.values || [];
@@ -610,12 +664,9 @@ function destacarItemDev(itens) {
             atualizarDashboard();
             atualizarTabelas();
         } catch (error) {
-            if (error.message.includes("401") && retryCount < maxRetries) {
-                localStorage.removeItem("access_token");
-                accessToken = null;
-                document.getElementById("login-section").style.display   = "block";
-                document.getElementById("pendentes-section").style.display = "none";
-                solicitarToken();
+            // Agora testa o STATUS, não o texto da mensagem
+            if (error.status === 401) {
+                exigirLogin();
                 return;
             }
             setProgress("Erro: " + error.message);
@@ -681,6 +732,9 @@ function destacarItemDev(itens) {
         });
     }
 
+    // ══════════════════════════════════════════════════════
+    //  AÇÕES
+    // ══════════════════════════════════════════════════════
     function editarFicha(rowIndex) {
         const ficha = pendentesData[rowIndex];
         localStorage.setItem('fichaParaEditar', JSON.stringify({
@@ -723,53 +777,19 @@ function destacarItemDev(itens) {
         if (e.target === modal) fecharModal();
     });
 
-    async function verificarTokenValido() {
-        try {
-            const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo',
-                { headers: { 'Authorization': `Bearer ${accessToken}` } });
-            return r.ok;
-        } catch { return false; }
-    }
-
-    function renovarTokenEExecutar(callback) {
-        const orig = tokenClient.callback;
-        tokenClient.callback = async (tokenResponse) => {
-            if (tokenResponse.error) {
-                setProgress("Erro ao renovar: " + tokenResponse.error);
-                tokenClient.callback = orig;
-                return;
-            }
-            accessToken = tokenResponse.access_token;
-            localStorage.setItem("access_token", accessToken);
-            tokenClient.callback = orig;
-            await callback();
-        };
-        tokenClient.requestAccessToken({ prompt: '' });
-    }
-
     async function confirmarDevolucao() {
-        const operadorDev     = document.getElementById("operadorDevolucaoSelect").value;
-        const almoxDev        = document.getElementById("almoxarifadoDevolucaoSelect").value;
+        const operadorDev = document.getElementById("operadorDevolucaoSelect").value;
+        const almoxDev    = document.getElementById("almoxarifadoDevolucaoSelect").value;
 
         if (!operadorDev || !almoxDev) {
             setProgress("⚠ Preencha Operador e Almoxarifado.");
             return;
         }
 
-        const tokenOk = await verificarTokenValido();
-        if (!tokenOk) {
-            setProgress("⚠ Sessão expirada. Renovando...");
+        // Checagem SÍNCRONA — não gasta o "gesto" do clique com um await
+        if (!accessToken || tokenExpirado()) {
             fecharModal();
-            const idAtual = idFichaSelecionada;
-            renovarTokenEExecutar(async () => {
-                await carregarDadosDoSheets();
-                idFichaSelecionada = idAtual;
-                document.getElementById("operadorDevolucaoBusca").value  = operadorDev;
-                document.getElementById("operadorDevolucaoSelect").value = operadorDev;
-                document.getElementById("almoxarifadoDevolucaoSelect").value = almoxDev;
-                document.getElementById("devolucaoModal").classList.add('aberto');
-                setProgress("✅ Sessão renovada. Confirme novamente.");
-            });
+            exigirLogin('⚠ Sessão expirada. Faça login e repita a devolução.');
             return;
         }
 
@@ -788,11 +808,13 @@ function destacarItemDev(itens) {
         setProgress("Verificando duplicidade...");
 
         try {
+            // Proteção contra duplicidade: se já está arquivada, não arquiva de novo
             const arqResp = await fetch(
                 `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/RETIRADAS_ARQUIVADAS!A:A`,
                 { headers: { 'Authorization': `Bearer ${accessToken}` } }
             );
-            if (!arqResp.ok) { const e = await arqResp.json(); throw new Error(`Erro: ${e.error?.message}`); }
+            if (arqResp.status === 401) { exigirLogin('⚠ Sessão expirada. Faça login e repita a devolução.'); return; }
+            if (!arqResp.ok) { const e = await arqResp.json().catch(()=>({})); throw new Error(`Erro: ${e.error?.message || arqResp.statusText}`); }
             const idsExistentes = ((await arqResp.json()).values || []).flat();
 
             if (idsExistentes.includes(idFicha)) {
@@ -818,7 +840,8 @@ function destacarItemDev(itens) {
                   headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
                   body: JSON.stringify({ values: [fichaArquivada] }) }
             );
-            if (!appendResp.ok) { const e = await appendResp.json(); throw new Error(`Erro ao arquivar: ${e.error?.message}`); }
+            if (appendResp.status === 401) { exigirLogin('⚠ Sessão expirada. Faça login e repita a devolução.'); return; }
+            if (!appendResp.ok) { const e = await appendResp.json().catch(()=>({})); throw new Error(`Erro ao arquivar: ${e.error?.message || appendResp.statusText}`); }
 
             setProgress("Removendo de Pendentes...");
 
@@ -843,7 +866,8 @@ function destacarItemDev(itens) {
 
     async function deletarDePendentes(retiradaIndex) {
         const rowIndex = retiradaIndex + 1;
-        const executar = async () => fetch(
+
+        const resp = await fetch(
             `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}:batchUpdate`,
             { method: 'POST',
               headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
@@ -855,26 +879,14 @@ function destacarItemDev(itens) {
               }]}) }
         );
 
-        let resp = await executar();
-
         if (resp.status === 401) {
-            try {
-                await new Promise((resolve, reject) => {
-                    const orig = tokenClient.callback;
-                    tokenClient.callback = r => {
-                        tokenClient.callback = orig;
-                        if (r.error) { reject(new Error(r.error)); return; }
-                        accessToken = r.access_token;
-                        localStorage.setItem("access_token", accessToken);
-                        resolve();
-                    };
-                    tokenClient.requestAccessToken({ prompt: '' });
-                });
-                resp = await executar();
-            } catch (e) { console.error(e); return false; }
+            // Sem popup automático. A ficha JÁ está arquivada; o delete
+            // é feito na próxima vez (a checagem de duplicidade cobre isso).
+            exigirLogin('⚠ Sessão expirada. Faça login novamente — a ficha já foi arquivada.');
+            return false;
         }
 
-        if (!resp.ok) { console.error(await resp.json()); return false; }
+        if (!resp.ok) { console.error(await resp.json().catch(()=>({}))); return false; }
         return true;
     }
 
