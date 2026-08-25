@@ -886,12 +886,13 @@
         if (!nrp) { setProgress("Digite um NRP."); return; }
         nrp = nrp.replace(/\./g, "");
         const nrpSemZeros = nrp.replace(/^0+/, "");
+        const podeRepetir = patrimoniosPermitidosParaRepeticao.includes(nrpSemZeros);
 
-        if (!patrimoniosPermitidosParaRepeticao.includes(nrpSemZeros)) {
-            if (patrimoniosSelecionados.some(item => item.NRP === nrp)) {
-                setProgress(`NRP "${nrp}" já foi adicionado.`);
-                document.getElementById("nrpInput").value = "";
-                return;
+        if (!podeRepetir) {
+            if (patrimoniosSelecionados.some(item => item.NRP.replace(/^0+/, "") === nrpSemZeros)) {
+            setProgress(`NRP "${nrp}" já foi adicionado.`);
+            document.getElementById("nrpInput").value = "";
+            return;
             }
         }
 
@@ -900,15 +901,26 @@
         );
 
         if (encontrado) {
+        // Se pode repetir e já está na lista, só soma +1 na quantidade
+            const jaNaLista = podeRepetir
+            ? patrimoniosSelecionados.find(item => item.NRP.replace(/^0+/, "") === nrpSemZeros)
+            : null;
+
+            if (jaNaLista) {
+            jaNaLista.quantidade = (jaNaLista.quantidade || 1) + 1;
+            setProgress(`✅ NRP "${nrp}" agrupado (${jaNaLista.quantidade}Unidades).`);
+            } else {
             patrimoniosSelecionados.push({
                 NRP: encontrado[0], Material: encontrado[1],
                 Localização: encontrado[2], Responsável: encontrado[3],
+                quantidade: 1,
             });
-            atualizarListaPatrimonios();
             setProgress(`✅ NRP "${nrp}" adicionado.`);
-        } else {
-            setProgress(`NRP "${nrp}" não encontrado.`);
-        }
+         }
+        atualizarListaPatrimonios();
+    } else {
+        setProgress(`NRP "${nrp}" não encontrado.`);
+    }
 
         document.getElementById("nrpInput").value = "";
         document.getElementById("limparNRPsBtn").style.display =
@@ -918,10 +930,12 @@
     function atualizarListaPatrimonios() {
         const list = document.getElementById("patrimonioList");
         list.innerHTML = "";
-        patrimoniosSelecionados.forEach((item, index) => {
-            const row = document.createElement("tr");
-            row.innerHTML = `
-                <td>${item.NRP || "N/A"}</td>
+            patrimoniosSelecionados.forEach((item, index) => {
+        const qtd = item.quantidade || 1;
+        const badgeQtd = qtd > 1 ? ` <span class="badge badge-green">${qtd}Unidades</span>` : "";
+        const row = document.createElement("tr");
+        row.innerHTML = `
+            <td>${item.NRP || "N/A"}${badgeQtd}</td>
                 <td>${item.Material || "N/A"}</td>
                 <td>${item.Localização || "-"}</td>
                 <td>${item.Responsável || "-"}</td>
@@ -938,7 +952,12 @@
     }
 
     function removerPatrimonio(index) {
-        patrimoniosSelecionados.splice(index, 1);
+        const item = patrimoniosSelecionados[index];
+        if (item && (item.quantidade || 1) > 1) {
+            item.quantidade -= 1;                       // tira 1 unidade do grupo
+        } else {
+            patrimoniosSelecionados.splice(index, 1);   // era só 1 → remove a linha
+        }
         atualizarListaPatrimonios();
         document.getElementById("limparNRPsBtn").style.display =
             patrimoniosSelecionados.length > 0 ? "inline-flex" : "none";
@@ -987,7 +1006,8 @@
         }
 
         const equipamentos = patrimoniosSelecionados
-            .map(item => `${item.NRP} - ${item.Material}`).join("; ");
+            .flatMap(item => Array(item.quantidade || 1).fill(`${item.NRP} - ${item.Material}`))
+            .join("; ");
         const novaRetirada = [
             fichaEditando ? fichaEditando.idFicha : Date.now().toString(),
             operador1, operador2, equipamentos, localMontagem, evento, dataRetirada
