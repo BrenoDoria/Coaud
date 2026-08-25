@@ -224,11 +224,11 @@
                     <div class="form-row">
                         <div class="field-block">
                             <label for="localMontagemInput">Local</label>
-                            <input type="text" id="localMontagemInput" placeholder="Ex.: Sala 101">
+                            <input type="text" id="localMontagemInput" placeholder="Ex.: Sala 101"  oninput="atualizarEstadoBotaoRegistrar()">
                         </div>
                         <div class="field-block">
                             <label for="eventoInput">Evento / Reunião</label>
-                            <input type="text" id="eventoInput" placeholder="Ex.: Reunião Mensal">
+                            <input type="text" id="eventoInput" placeholder="Ex.: Reunião Mensal"  oninput="atualizarEstadoBotaoRegistrar()">
                         </div>
                     </div>
 
@@ -244,7 +244,7 @@
                     </div>
 
                     <div class="action-buttons">
-                        <button id="submitButton" onclick="registrarRetirada()">
+                        <button id="submitButton" onclick="registrarRetirada()" disabled>
                             ✔ Registrar Retirada
                         </button>
                         <button id="cancelButton" class="cancelButton"
@@ -606,6 +606,7 @@
         tag.style.display = 'block';
         atualizarOperador2();
         autoPreencherLocalEEvento();
+        atualizarEstadoBotaoRegistrar();
     }
 
     function limparSelecaoOperador1() {
@@ -613,6 +614,7 @@
         const tag = document.getElementById('operador1Selecionado');
         tag.textContent   = '';
         tag.style.display = 'none';
+        atualizarEstadoBotaoRegistrar();
     }
 
     function fecharListaOperador1() {
@@ -932,6 +934,7 @@
             `;
             list.prepend(row);
         });
+        atualizarEstadoBotaoRegistrar();
     }
 
     function removerPatrimonio(index) {
@@ -948,6 +951,16 @@
         document.getElementById("limparNRPsBtn").style.display = "none";
         setProgress("Lista limpa.");
     }
+
+    function atualizarEstadoBotaoRegistrar() {
+    const operador1     = document.getElementById("operador1Select").value.trim();
+    const local         = document.getElementById("localMontagemInput").value.trim();
+    const evento        = document.getElementById("eventoInput").value.trim();
+    const temPatrimonio = patrimoniosSelecionados.length > 0;
+
+    const pronto = operador1 && local && evento && temPatrimonio;
+    document.getElementById("submitButton").disabled = !pronto;
+}
 
     // ══════════════════════════════════════════════════════
     //  REGISTRAR / SALVAR
