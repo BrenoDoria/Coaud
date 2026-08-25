@@ -908,7 +908,7 @@
 
             if (jaNaLista) {
             jaNaLista.quantidade = (jaNaLista.quantidade || 1) + 1;
-            setProgress(`✅ NRP "${nrp}" agrupado (${jaNaLista.quantidade}Unidades).`);
+            setProgress(`✅ NRP "${nrp}" agrupado (${jaNaLista.quantidade} Unidades).`);
             } else {
             patrimoniosSelecionados.push({
                 NRP: encontrado[0], Material: encontrado[1],
@@ -932,7 +932,7 @@
         list.innerHTML = "";
             patrimoniosSelecionados.forEach((item, index) => {
         const qtd = item.quantidade || 1;
-        const badgeQtd = qtd > 1 ? ` <span class="badge badge-green">${qtd}Unidades</span>` : "";
+        const badgeQtd = qtd > 1 ? ` <span class="badge badge-green">${qtd} Unidades</span>` : "";
         const row = document.createElement("tr");
         row.innerHTML = `
             <td>${item.NRP || "N/A"}${badgeQtd}</td>
