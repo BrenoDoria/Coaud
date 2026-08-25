@@ -558,13 +558,24 @@ function carregarFicha() {
     set('dataRodape',    data);
 
     // Tabela de equipamentos
+        // Tabela de equipamentos — agrupa repetidos e mostra "N Unidades"
     const tbody = document.querySelector('#listaMaterial tbody');
+    const agrupados = [];
     (f.equipamentos || []).forEach(equip => {
+        const existente = agrupados.find(g => g.equip === equip);
+        if (existente) existente.qtd += 1;
+        else agrupados.push({ equip, qtd: 1 });
+    });
+    agrupados.forEach(({ equip, qtd }) => {
         const [patrimonio, ...partes] = equip.split(' - ');
+        const material = partes.join(' - ') || '-';
+        const selo = qtd > 1
+            ? ` <strong style="color:#2d8c3e;font-size:9pt;margin-left:6px">(${qtd} Unidades)</strong>`
+            : '';
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td style="font-family:monospace;width:120px">${patrimonio || '-'}</td>
-            <td>${partes.join(' - ') || '-'}</td>
+            <td>${material}${selo}</td>
         `;
         tbody.appendChild(tr);
     });

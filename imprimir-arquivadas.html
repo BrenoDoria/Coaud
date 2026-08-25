@@ -388,11 +388,21 @@ function gerarHTMLFicha(f) {
     const ret = formatarDH(f.dataRetirada);
     const dev = formatarDH(f.dataDevolucao);
 
-    const linhasEquip = (f.equipamentos || []).map((equip, i) => {
+       // Agrupa equipamentos repetidos e mostra "N Unidades"
+    const agrupados = [];
+    (f.equipamentos || []).forEach(equip => {
+        const existente = agrupados.find(g => g.equip === equip);
+        if (existente) existente.qtd += 1;
+        else agrupados.push({ equip, qtd: 1 });
+    });
+    const linhasEquip = agrupados.map(({ equip, qtd }) => {
         const [pat, ...partes] = equip.split(' - ');
+        const selo = qtd > 1
+            ? ` <strong style="color:#2d8c3e;font-size:9pt;margin-left:6px">(${qtd} Unidades)</strong>`
+            : '';
         return `<tr>
             <td style="width:120px;font-family:monospace">${esc(pat)}</td>
-            <td>${esc(partes.join(' - '))}</td>
+            <td>${esc(partes.join(' - '))}${selo}</td>
         </tr>`;
     }).join('');
 
