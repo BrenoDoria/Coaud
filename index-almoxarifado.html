@@ -758,9 +758,22 @@
             document.getElementById("localMontagemInput").value = fichaEditando.local;
             document.getElementById("eventoInput").value        = fichaEditando.evento;
 
-            patrimoniosSelecionados = fichaEditando.equipamentos.map(equip => {
+            patrimoniosSelecionados = [];
+            fichaEditando.equipamentos.forEach(equip => {
                 const [nrp, ...partes] = equip.split(' - ');
-                return { NRP: nrp, Material: partes.join(' - ') };
+                const material    = partes.join(' - ');
+                const nrpSemZeros = (nrp || "").replace(/^0+/, "");
+                const podeRepetir = patrimoniosPermitidosParaRepeticao.includes(nrpSemZeros);
+
+                const existente = podeRepetir
+                    ? patrimoniosSelecionados.find(i => i.NRP.replace(/^0+/, "") === nrpSemZeros)
+                    : null;
+
+                if (existente) {
+                    existente.quantidade = (existente.quantidade || 1) + 1;
+                } else {
+                    patrimoniosSelecionados.push({ NRP: nrp, Material: material, quantidade: 1 });
+                }
             });
             atualizarListaPatrimonios();
             document.getElementById("limparNRPsBtn").style.display =

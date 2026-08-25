@@ -704,9 +704,18 @@
             const diffDias  = (new Date() - dataRet) / (1000*60*60*24);
             const isAtras   = diffDias > 14;
 
-            const equips = row[3] ? row[3].split('; ') : [];
-            const equipHTML = equips.length
-                ? equips.map(e => `<div class="equipamento-item">• ${e}</div>`).join('')
+            const equipsRaw = row[3] ? row[3].split('; ') : [];
+            const agrupados = [];
+            equipsRaw.forEach(e => {
+                const existente = agrupados.find(g => g.equip === e);
+                if (existente) existente.qtd += 1;
+                else agrupados.push({ equip: e, qtd: 1 });
+            });
+            const equipHTML = agrupados.length
+                ? agrupados.map(({ equip, qtd }) => {
+                    const selo = qtd > 1 ? ` <span class="badge badge-green">${qtd} Unidades</span>` : '';
+                    return `<div class="equipamento-item">• ${equip}${selo}</div>`;
+                  }).join('')
                 : '-';
 
             const tr = document.createElement("tr");
