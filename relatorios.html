@@ -249,7 +249,7 @@
 
                 <div class="no-print" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
                     <button onclick="carregarDados()" class="btn-blue">&#128260; Atualizar</button>
-                    <button onclick="window.print()">&#128424; Imprimir Relatório</button>
+                    <button onclick="abrirRelatorioImpressao()">&#128424; Imprimir Relatório</button>
                     <select id="filtroPeriodo" onchange="aoMudarPeriodo()" style="width:auto;min-width:190px">
                         <option value="365">Rankings: último ano</option>
                         <option value="30">Rankings: último mês</option>
@@ -578,6 +578,34 @@
             document.getElementById('spinner').style.display = 'none';
         });
     }
+
+    function abrirRelatorioImpressao() {
+    if (!estatisticas) {
+        alert('Aguarde os dados carregarem antes de imprimir.');
+        return;
+    }
+    var filtro = document.getElementById('filtroPeriodo');
+    var payload = {
+        periodoLabel: filtro.options[filtro.selectedIndex].text,
+        kpis: {
+            semana:    estatisticas.semana,
+            mes:       estatisticas.mes,
+            ano:       estatisticas.ano,
+            pendentes: estatisticas.pendentesAgora
+        },
+        evolucaoLabels: estatisticas.evolucaoLabels,
+        evolucaoDados:  estatisticas.evolucaoDados,
+        topEquipamentos: estatisticas.topEquipamentos,
+        topSalas:        estatisticas.topSalas,
+        topOperadores:   estatisticas.topOperadores,
+        topEventos:      estatisticas.topEventos,
+        totalArquivadas: arquivadas.length,
+        totalPendentes:  pendentes.length,
+        emitidoEm: new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+    };
+    localStorage.setItem('relatorioParaImprimir', JSON.stringify(payload));
+    window.location.href = 'relatorio_Imprimir.html';
+}
 
     function aoMudarPeriodo() { recalcularTudo(); }
 

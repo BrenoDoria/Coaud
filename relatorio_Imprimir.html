@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COAUD — Relatório do Almoxarifado (Impressão)</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='4' fill='%2300b04f'/><text y='22' x='5' font-size='17' fill='white' font-family='Arial' font-weight='bold'>C</text></svg>">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 10pt;
+            margin: 0;
+            padding: 0;
+            background: #f0f0f0;
+            color: #111;
+        }
+
+        .pagina-wrapper {
+            max-width: 210mm;
+            margin: 20px auto;
+            background: #fff;
+            padding: 14mm 14mm 12mm;
+            box-shadow: 0 2px 16px rgba(0,0,0,0.15);
+        }
+
+        @page {
+            size: A4 portrait;
+            margin: 12mm;
+        }
+
+        @media print {
+            body { background: #fff; }
+            .pagina-wrapper {
+                margin: 0; padding: 0;
+                box-shadow: none; max-width: 100%;
+            }
+            .no-print { display: none !important; }
+            /* Garante que fundos/cores dos blocos saiam na impressão */
+            body, body * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            .bloco { break-inside: avoid; page-break-inside: avoid; }
+        }
+
+        /* ── CABEÇALHO ── */
+        .header-content {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #1a5fa8;
+            margin-bottom: 10px;
+        }
+        .brasao { width: 58px; height: auto; flex-shrink: 0; }
+        .header-text p { margin: 1px 0; font-size: 9pt; }
+        .header-text .inst-nome { font-size: 11pt; font-weight: bold; color: #1a3a6e; }
+        .header-text .ficha-titulo { font-size: 9pt; font-weight: bold; color: #2d8c3e; margin-top: 3px; }
+
+        /* ── TÍTULOS DE BLOCO ── */
+        .bloco-titulo {
+            font-weight: bold;
+            font-size: 9pt;
+            text-align: center;
+            padding: 5px 0;
+            margin: 12px 0 8px;
+            letter-spacing: 0.6px;
+            color: #fff;
+            border-radius: 3px;
+        }
+        .azul   { background: #1a5fa8; }
+        .verde  { background: #2d8c3e; }
+        .cinza  { background: #555555; }
+
+        /* ── INFO DA EMISSÃO ── */
+        .info-bloco {
+            border: 1px solid #b0c4de;
+            border-radius: 4px;
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            background: #f0f4fb;
+        }
+        .dados-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px 20px;
+        }
+        .dado {
+            display: flex;
+            align-items: baseline;
+            gap: 5px;
+            padding: 3px 0;
+            border-bottom: 1px dotted #ccc;
+        }
+        .dado-label {
+            font-weight: bold;
+            color: #1a3a6e;
+            font-size: 8pt;
+            white-space: nowrap;
+            min-width: 120px;
+        }
+        .dado-valor { font-size: 9.5pt; color: #111; flex: 1; }
+
+        /* ── KPIs ── */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-bottom: 6px;
+        }
+        .kpi-card {
+            border: 1px solid #c8d8f0;
+            border-radius: 6px;
+            padding: 10px 12px;
+            background: #f7f9ff;
+            text-align: center;
+        }
+        .kpi-card .kv { font-size: 22pt; font-weight: 800; color: #1a3a6e; line-height: 1.1; }
+        .kpi-card .kl { font-size: 8pt; color: #444; text-transform: uppercase; letter-spacing: .4px; margin-top: 2px; }
+        .kpi-card.verde  { background: #f0faf3; border-color: #b8dfc4; }
+        .kpi-card.verde .kv { color: #2d8c3e; }
+        .kpi-card.laranja { background: #fffaf0; border-color: #e0c080; }
+        .kpi-card.laranja .kv { color: #b5590a; }
+
+        /* ── GRÁFICOS ── */
+        .chart-box { position: relative; height: 210px; width: 100%; }
+        .chart-box.alto { height: 240px; }
+        .cols-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+        }
+        .painel {
+            border: 1px solid #c8d8f0;
+            border-radius: 6px;
+            padding: 10px 12px;
+            background: #fff;
+        }
+        .painel-titulo {
+            font-size: 9pt; font-weight: bold; color: #1a3a6e;
+            margin: 0 0 8px; padding-bottom: 4px; border-bottom: 1px solid #e2e8f0;
+        }
+
+        /* ── RANKINGS ── */
+        .rank-list { list-style: none; padding: 0; margin: 0; }
+        .rank-item {
+            display: flex; align-items: center; gap: 10px;
+            padding: 6px 0;
+            border-bottom: 1px solid #eef2f7;
+            font-size: 9.5pt;
+        }
+        .rank-item:last-child { border-bottom: none; }
+        .rank-pos {
+            width: 22px; height: 22px; border-radius: 50%;
+            background: #eaf4ee; color: #2d8c3e;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 9pt; font-weight: 700; flex-shrink: 0;
+        }
+        .rank-item:nth-child(1) .rank-pos { background: #fdf0d5; color: #b8860b; }
+        .rank-item:nth-child(2) .rank-pos { background: #eceef1; color: #6b7280; }
+        .rank-item:nth-child(3) .rank-pos { background: #f3e3d3; color: #b5590a; }
+        .rank-nome { flex: 1; color: #222; word-break: break-word; }
+        .rank-qtd { font-weight: 700; color: #2d8c3e; white-space: nowrap; }
+
+        /* ── BOTÕES ── */
+        .no-print-bar {
+            max-width: 210mm;
+            margin: 0 auto;
+            display: flex;
+            gap: 10px;
+            padding: 16px 14mm;
+        }
+        .no-print-bar button {
+            padding: 10px 22px;
+            border: none;
+            border-radius: 7px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .btn-print  { background: #2d8c3e; color: #fff; }
+        .btn-print:hover  { background: #247534; }
+        .btn-voltar { background: #f0f0f0; color: #444; border: 1px solid #ccc !important; }
+        .btn-voltar:hover { background: #e4e4e4; }
+
+        .rodape {
+            margin-top: 12px; text-align: right; font-size: 7.5pt; color: #888;
+            border-top: 1px solid #eee; padding-top: 4px;
+        }
+
+        /* ── RESPONSIVO (tela) ── */
+        @media screen and (max-width: 700px) {
+            .pagina-wrapper { padding: 8mm 6mm; margin: 8px; }
+            .kpi-grid { grid-template-columns: 1fr 1fr; }
+            .cols-2 { grid-template-columns: 1fr; }
+            .dados-grid { grid-template-columns: 1fr; }
+            .no-print-bar { padding: 12px 6mm; }
+        }
+    </style>
+</head>
+<body onload="carregarRelatorio()">
+
+    <div class="no-print no-print-bar">
+        <button class="btn-print"  onclick="window.print()">🖨 Imprimir</button>
+        <button class="btn-voltar" onclick="window.location.href='relatorios.html'">← Voltar</button>
+    </div>
+
+    <div class="pagina-wrapper">
+
+        <!-- ══ CABEÇALHO INSTITUCIONAL ══ -->
+        <div class="header-content">
+            <img src="brasao_republica_brasil.jpg" class="brasao"
+                 alt="Brasão da República Federativa do Brasil"
+                 onerror="this.style.display='none'">
+            <div class="header-text">
+                <p class="inst-nome">CÂMARA DOS DEPUTADOS</p>
+                <p>Coordenação de Engenharia de Telecomunicações e Audiovisual — COAUD</p>
+                <p>Seção de Apoio aos Auditórios e Comissões — SAUDI/SAPCO</p>
+                <p class="ficha-titulo">
+                    RELATÓRIO DO ALMOXARIFADO — EMPRÉSTIMOS E ESTATÍSTICAS
+                </p>
+            </div>
+        </div>
+
+        <!-- ══ INFORMAÇÕES DA EMISSÃO ══ -->
+        <div class="info-bloco bloco">
+            <div class="dados-grid">
+                <div class="dado">
+                    <span class="dado-label">Período dos rankings:</span>
+                    <span class="dado-valor" id="info-periodo">-</span>
+                </div>
+                <div class="dado">
+                    <span class="dado-label">Emitido em:</span>
+                    <span class="dado-valor" id="info-emissao">-</span>
+                </div>
+                <div class="dado">
+                    <span class="dado-label">Fichas arquivadas:</span>
+                    <span class="dado-valor" id="info-arquivadas">-</span>
+                </div>
+                <div class="dado">
+                    <span class="dado-label">Pendentes agora:</span>
+                    <span class="dado-valor" id="info-pendentes">-</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══ INDICADORES ══ -->
+        <div class="bloco-titulo azul">INDICADORES GERAIS</div>
+        <div class="kpi-grid bloco">
+            <div class="kpi-card">
+                <div class="kv" id="kpi-semana">–</div>
+                <div class="kl">Última Semana</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kv" id="kpi-mes">–</div>
+                <div class="kl">Último Mês</div>
+            </div>
+            <div class="kpi-card laranja">
+                <div class="kv" id="kpi-ano">–</div>
+                <div class="kl">Último Ano</div>
+            </div>
+            <div class="kpi-card verde">
+                <div class="kv" id="kpi-pendentes">–</div>
+                <div class="kl">Pendentes</div>
+            </div>
+        </div>
+
+        <!-- ══ EVOLUÇÃO ══ -->
+        <div class="bloco-titulo azul">EVOLUÇÃO DE EMPRÉSTIMOS (ÚLTIMOS 12 MESES)</div>
+        <div class="painel bloco">
+            <div class="chart-box alto">
+                <canvas id="chartEvolucao"></canvas>
+            </div>
+        </div>
+
+        <!-- ══ EQUIPAMENTOS E SALAS ══ -->
+        <div class="bloco-titulo azul">EQUIPAMENTOS E SALAS</div>
+        <div class="cols-2 bloco">
+            <div class="painel">
+                <div class="painel-titulo">🏆 Equipamentos com mais saída</div>
+                <div class="chart-box">
+                    <canvas id="chartEquipamentos"></canvas>
+                </div>
+            </div>
+            <div class="painel">
+                <div class="painel-titulo">📍 Salas que mais solicitam</div>
+                <div class="chart-box">
+                    <canvas id="chartSalas"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══ RANKINGS ══ -->
+        <div class="bloco-titulo verde">RANKINGS DO PERÍODO</div>
+        <div class="cols-2 bloco">
+            <div class="painel">
+                <div class="painel-titulo">👷 Operadores que mais retiram</div>
+                <ul class="rank-list" id="rank-operadores"></ul>
+            </div>
+            <div class="painel">
+                <div class="painel-titulo">🎪 Eventos com mais retiradas</div>
+                <ul class="rank-list" id="rank-eventos"></ul>
+            </div>
+        </div>
+
+        <div class="rodape">
+            COAUD / SAUDI/SAPCO — Relatório do Almoxarifado
+            &nbsp;|&nbsp; Emitido em: <strong id="rodape-data">-</strong>
+        </div>
+
+    </div><!-- /pagina-wrapper -->
+
+    <div class="no-print no-print-bar" style="padding-bottom:24px">
+        <button class="btn-print"  onclick="window.print()">🖨 Imprimir</button>
+        <button class="btn-voltar" onclick="window.location.href='relatorios.html'">← Voltar</button>
+    </div>
+
+<script>
+    function encurtar(txt, max) {
+        txt = String(txt);
+        return txt.length > max ? txt.slice(0, max - 3) + '...' : txt;
+    }
+
+    function set(id, val) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = (val === 0 || val) ? val : '-';
+    }
+
+    function renderRank(elId, dados) {
+        var ul = document.getElementById(elId);
+        ul.textContent = '';
+        if (!dados || !dados.length) {
+            var vazio = document.createElement('li');
+            vazio.style.cssText = 'color:#888;font-size:9pt;padding:8px 0';
+            vazio.textContent = 'Sem dados no período.';
+            ul.appendChild(vazio);
+            return;
+        }
+        dados.forEach(function(entrada, i) {
+            var li = document.createElement('li');
+            li.className = 'rank-item';
+
+            var pos = document.createElement('div');
+            pos.className = 'rank-pos';
+            pos.textContent = (i + 1);
+
+            var nome = document.createElement('div');
+            nome.className = 'rank-nome';
+            nome.textContent = entrada[0];
+
+            var qtd = document.createElement('div');
+            qtd.className = 'rank-qtd';
+            qtd.textContent = entrada[1] + 'x';
+
+            li.appendChild(pos);
+            li.appendChild(nome);
+            li.appendChild(qtd);
+            ul.appendChild(li);
+        });
+    }
+
+    function barChart(canvasId, pares, cor) {
+        return new Chart(document.getElementById(canvasId), {
+            type: 'bar',
+            data: {
+                labels: pares.map(function(x) { return encurtar(x[0], 26); }),
+                datasets: [{
+                    data: pares.map(function(x) { return x[1]; }),
+                    backgroundColor: cor,
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { beginAtZero: true, ticks: { color: '#333', precision: 0 }, grid: { color: 'rgba(0,0,0,0.08)' } },
+                    y: { ticks: { color: '#333', font: { size: 9 } }, grid: { display: false } }
+                }
+            }
+        });
+    }
+
+    function carregarRelatorio() {
+        var r = JSON.parse(localStorage.getItem('relatorioParaImprimir'));
+        if (!r) {
+            alert('Nenhum dado de relatório encontrado. Redirecionando...');
+            window.location.href = 'relatorios.html';
+            return;
+        }
+
+        // Cabeçalho / info
+        set('info-periodo',    r.periodoLabel || '-');
+        set('info-emissao',    r.emitidoEm || '-');
+        set('info-arquivadas', r.totalArquivadas);
+        set('info-pendentes',  r.totalPendentes);
+        set('rodape-data',     r.emitidoEm || '-');
+
+        // KPIs
+        set('kpi-semana',    r.kpis ? r.kpis.semana : '-');
+        set('kpi-mes',       r.kpis ? r.kpis.mes : '-');
+        set('kpi-ano',       r.kpis ? r.kpis.ano : '-');
+        set('kpi-pendentes', r.kpis ? r.kpis.pendentes : '-');
+
+        // Rankings
+        renderRank('rank-operadores', r.topOperadores);
+        renderRank('rank-eventos',    r.topEventos);
+
+        // Gráfico de evolução
+        new Chart(document.getElementById('chartEvolucao'), {
+            type: 'line',
+            data: {
+                labels: r.evolucaoLabels || [],
+                datasets: [{
+                    label: 'Empréstimos',
+                    data: r.evolucaoDados || [],
+                    borderColor: '#2d8c3e',
+                    backgroundColor: 'rgba(45,140,62,0.15)',
+                    fill: true,
+                    tension: 0.3,
+                    pointBackgroundColor: '#2d8c3e',
+                    pointRadius: 3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color: '#333' }, grid: { color: 'rgba(0,0,0,0.08)' } },
+                    y: { beginAtZero: true, ticks: { color: '#333', precision: 0 }, grid: { color: 'rgba(0,0,0,0.08)' } }
+                }
+            }
+        });
+
+        // Gráficos de barras
+        barChart('chartEquipamentos', r.topEquipamentos || [], '#1a5fa8');
+        barChart('chartSalas',        r.topSalas || [],        '#2d8c3e');
+    }
+</script>
+</body>
+</html>
