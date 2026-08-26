@@ -84,7 +84,32 @@
         .print-header { display: none; }
 
         /* ============ IMPRESSAO ============ */
-        @media print {
+               @media print {
+
+            /* Forca RETRATO e margens (resolve "so imprime deitado") */
+            @page {
+                size: A4 portrait;
+                margin: 12mm;
+            }
+
+            /* Neutraliza o tema: forca cores de impressao em QUALQUER tema
+               (resolve "as palavras nao aparecem" nos temas escuros) */
+            html, html[data-tema] {
+                --text: #1a1a1a !important;
+                --text-muted: #555555 !important;
+                --verde: #14532d !important;
+                --verde-light: #eef4ee !important;
+                --border-light: #cccccc !important;
+                --card-bg: #ffffff !important;
+            }
+
+            /* Piso de cor escura para todo texto + garante que fundos/badges saiam */
+            body, body * {
+                color: #1a1a1a !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+
             .sidebar, .topbar, .no-print, .site-footer, #theme-selector {
                 display: none !important;
             }
@@ -113,8 +138,8 @@
             .print-header .ph-3 { font-size: 14px; font-weight: 700; margin-top: 8px; }
             .print-header .ph-4 { font-size: 10px; color: #555; }
             .chart-box { height: 220px; }
-            .dashboard { grid-template-columns: repeat(4, 1fr) !important; }
-            .cards-2col { grid-template-columns: 1fr 1fr !important; }
+            .dashboard { grid-template-columns: repeat(2, 1fr) !important; }
+            .cards-2col { grid-template-columns: 1fr !important; }
 
             /* Imprimir SOMENTE o modal de detalhe quando aberto */
             body.print-modal .app-layout { display: none !important; }
@@ -484,11 +509,14 @@
         return new Date(dmy[2], dmy[1] - 1, dmy[0], hms[0] || 0, hms[1] || 0, hms[2] || 0);
     }
 
+    var modoImpressao = false;
     function corTexto() {
+        if (modoImpressao) return '#333333';
         var tema = document.documentElement.getAttribute('data-tema') || 'verde-neon';
         return tema === 'claro' ? '#475569' : 'rgba(255,255,255,0.6)';
     }
     function corGrade() {
+        if (modoImpressao) return 'rgba(0,0,0,0.15)';
         var tema = document.documentElement.getAttribute('data-tema') || 'verde-neon';
         return tema === 'claro' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)';
     }
@@ -750,6 +778,16 @@
         renderRank('rank-operadores', estatisticas.topOperadores, 'operador');
         renderRank('rank-eventos',    estatisticas.topEventos,    'evento');
     }
+
+        // Redesenha os graficos em cores de impressao e volta ao tema depois
+    window.addEventListener('beforeprint', function() {
+        modoImpressao = true;
+        if (estatisticas) renderizarGraficos();
+    });
+    window.addEventListener('afterprint', function() {
+        modoImpressao = false;
+        if (estatisticas) renderizarGraficos();
+    });
 
     // XSS-safe: usa textContent (nao innerHTML) e permite clicar para o detalhe.
     function renderRank(elementId, dados, tipo) {
