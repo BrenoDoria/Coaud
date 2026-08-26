@@ -80,72 +80,68 @@
         .badge.pend { background: rgba(245,158,11,.2); color: #f59e0b; }
         .btn-fechar { background: transparent; border: 1px solid var(--border-light); color: var(--text); }
 
-        /* Cabecalho institucional que so aparece na impressao (legado - fica escondido) */
+        /* Cabecalho institucional que so aparece na impressao */
         .print-header { display: none; }
 
-        /* ==================================================================
-           AREA EXCLUSIVA DE IMPRESSAO DO RELATORIO
-           Cores fixas (independente do tema). Fica escondida na tela e
-           so aparece na impressao. Mesmo padrao das fichas.
-           ================================================================== */
-        #area-impressao { display: none; }
-
-        #area-impressao {
-            color: #111; font-family: Arial, sans-serif;
-            -webkit-print-color-adjust: exact; print-color-adjust: exact;
-        }
-        #area-impressao .ai-header {
-            text-align: center; border-bottom: 3px solid #15803d;
-            padding-bottom: 12px; margin-bottom: 16px;
-        }
-        #area-impressao .ai-inst   { font-size: 15pt; font-weight: bold; color: #14532d; }
-        #area-impressao .ai-sub    { font-size: 9pt;  color: #555; margin-top: 2px; }
-        #area-impressao .ai-titulo { font-size: 13pt; font-weight: bold; color: #14532d; margin-top: 8px; }
-        #area-impressao .ai-data   { font-size: 9pt;  color: #555; margin-top: 2px; }
-
-        #area-impressao .ai-kpis {
-            display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px;
-        }
-        #area-impressao .ai-kpi {
-            border: 1px solid #cbd5cb; border-radius: 6px; padding: 8px 6px;
-            background: #f4f8f4; text-align: center;
-        }
-        #area-impressao .ai-kpi .v { font-size: 20pt; font-weight: bold; color: #15803d; line-height: 1.1; }
-        #area-impressao .ai-kpi .l { font-size: 7.5pt; color: #555; text-transform: uppercase; letter-spacing: .3px; }
-
-        #area-impressao .ai-secao { margin-bottom: 16px; page-break-inside: avoid; }
-        #area-impressao .ai-secao-titulo {
-            background: #15803d; color: #fff; font-weight: bold; font-size: 9pt;
-            padding: 4px 8px; border-radius: 3px; margin-bottom: 6px;
-        }
-        #area-impressao .ai-chart { width: 100%; height: auto; display: block; }
-
-        #area-impressao .ai-cols {
-            display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;
-        }
-        #area-impressao .ai-cols > div { page-break-inside: avoid; }
-
-        #area-impressao .ai-tabela { width: 100%; border-collapse: collapse; font-size: 9pt; }
-        #area-impressao .ai-tabela th {
-            background: #e7f0e9; color: #14532d; text-align: left;
-            padding: 4px 8px; border: 1px solid #bcd3c2; font-size: 8.5pt;
-        }
-        #area-impressao .ai-tabela td { padding: 4px 8px; border: 1px solid #cfe0d4; }
-        #area-impressao .ai-tabela td.q { text-align: right; font-weight: bold; color: #15803d; width: 54px; white-space: nowrap; }
-        #area-impressao .ai-tabela tr:nth-child(even) td { background: #f5faf6; }
-
         /* ============ IMPRESSAO ============ */
-        @media print {
-            @page { size: A4 portrait; margin: 12mm; }
+               @media print {
 
+            /* Forca RETRATO e margens (resolve "so imprime deitado") */
+            @page {
+                size: A4 portrait;
+                margin: 12mm;
+            }
+
+            /* Neutraliza o tema: forca cores de impressao em QUALQUER tema
+               (resolve "as palavras nao aparecem" nos temas escuros) */
+            html, html[data-tema] {
+                --text: #1a1a1a !important;
+                --text-muted: #555555 !important;
+                --verde: #14532d !important;
+                --verde-light: #eef4ee !important;
+                --border-light: #cccccc !important;
+                --card-bg: #ffffff !important;
+            }
+
+            /* Piso de cor escura para todo texto + garante que fundos/badges saiam */
+            body, body * {
+                color: #1a1a1a !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+
+            .sidebar, .topbar, .no-print, .site-footer, #theme-selector {
+                display: none !important;
+            }
+            .main-area { margin-left: 0 !important; }
+            .page-content { padding: 0 !important; }
             body { background: #fff !important; }
+            .card, .kpi {
+                background: #fff !important;
+                border: 1px solid #ccc !important;
+                box-shadow: none !important;
+                break-inside: avoid;
+            }
+            .card-title, .kpi-value, .rank-qtd { color: #14532d !important; }
+            .kpi-label, .kpi-sub, .rank-nome { color: #333 !important; }
+            .rank-item { border-bottom: 1px solid #ddd !important; }
+            .print-header {
+                display: block !important;
+                text-align: center;
+                border-bottom: 3px solid #15803d;
+                padding-bottom: 12px;
+                margin-bottom: 18px;
+                color: #14532d;
+            }
+            .print-header .ph-1 { font-size: 16px; font-weight: 700; }
+            .print-header .ph-2 { font-size: 11px; color: #555; }
+            .print-header .ph-3 { font-size: 14px; font-weight: 700; margin-top: 8px; }
+            .print-header .ph-4 { font-size: 10px; color: #555; }
+            .chart-box { height: 220px; }
+            .dashboard { grid-template-columns: repeat(2, 1fr) !important; }
+            .cards-2col { grid-template-columns: 1fr !important; }
 
-            /* Padrao: imprime SOMENTE o relatorio limpo (esconde app e modal) */
-            .app-layout, .modal-overlay { display: none !important; }
-            #area-impressao { display: block !important; }
-
-            /* Variante: imprimir SOMENTE o modal de detalhe (drill-down) */
-            body.print-modal #area-impressao { display: none !important; }
+            /* Imprimir SOMENTE o modal de detalhe quando aberto */
             body.print-modal .app-layout { display: none !important; }
             body.print-modal .modal-overlay {
                 display: block !important; position: static !important;
@@ -159,13 +155,9 @@
             body.print-modal .modal-head { border-bottom: 3px solid #15803d; }
             body.print-modal .modal-head h2 { color: #14532d !important; }
             body.print-modal .mini-card { background: #f1f5f1 !important; }
-            body.print-modal .mini-card .mv,
-            body.print-modal .mini-rank h4,
+            body.print-modal .mini-card .mv, body.print-modal .mini-rank h4,
             body.print-modal .tabela-detalhe th { color: #14532d !important; }
             body.print-modal .tabela-detalhe td { color: #000 !important; }
-            body.print-modal .modal-box, body.print-modal .modal-box * {
-                -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
-            }
         }
     </style>
 </head>
@@ -247,7 +239,7 @@
 
             <div class="page-content">
 
-                <!-- Cabecalho institucional legado (nao usado na nova impressao) -->
+                <!-- Cabecalho institucional (aparece somente na impressao) -->
                 <div class="print-header">
                     <div class="ph-1">CÂMARA DOS DEPUTADOS</div>
                     <div class="ph-2">Coordenação de Engenharia de Telecomunicações e Audiovisual — COAUD</div>
@@ -257,7 +249,7 @@
 
                 <div class="no-print" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
                     <button onclick="carregarDados()" class="btn-blue">&#128260; Atualizar</button>
-                    <button onclick="imprimirRelatorio()">&#128424; Imprimir Relatório</button>
+                    <button onclick="window.print()">&#128424; Imprimir Relatório</button>
                     <select id="filtroPeriodo" onchange="aoMudarPeriodo()" style="width:auto;min-width:190px">
                         <option value="365">Rankings: último ano</option>
                         <option value="30">Rankings: último mês</option>
@@ -301,6 +293,23 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- ASSISTENTE IA -->
+                <!--<div class="card no-print" id="card-ia">
+                    <div class="card-title">&#129302; Assistente IA &ndash; pergunte sobre os dados</div>
+                    <div id="ia-msgs" style="max-height:280px;overflow-y:auto;margin-bottom:10px;display:none;flex-direction:column;gap:8px"></div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <input id="ia-input" type="text" placeholder="Ex.: Quantas retiradas o Geraldo fez no último mês?"
+                               style="flex:1;min-width:200px" onkeydown="if(event.key==='Enter'){event.preventDefault();perguntarIA();}">
+                        <button class="btn-blue" id="ia-btn" onclick="perguntarIA()">Perguntar</button>
+                    </div>
+                    <div class="dica-clique" style="margin-top:8px">
+                        Sugestões:
+                        <a href="#" onclick="sugestaoIA(event, 'Qual operador mais retirou equipamentos no último ano?')">operador que mais retira</a> &middot;
+                        <a href="#" onclick="sugestaoIA(event, 'Quais os 5 equipamentos mais retirados?')">equipamentos mais usados</a> &middot;
+                        <a href="#" onclick="sugestaoIA(event, 'Quantas retiradas ainda estão pendentes de devolução?')">pendências</a>
+                    </div>
+                </div>-->
 
                 <!-- GRAFICO DE EVOLUCAO -->
                 <div class="card">
@@ -370,9 +379,6 @@
             <div class="modal-body" id="modal-corpo"></div>
         </div>
     </div>
-
-    <!-- ===== AREA DE IMPRESSAO (preenchida por JS antes de imprimir) ===== -->
-    <div id="area-impressao"></div>
 
     <script>
     // ======================================================
@@ -481,6 +487,10 @@
     // ======================================================
     var FILE_ID = '1q9RCwJ4P--QIH4kkMszffrN8ZwzkSsNoZtPH-Usk4Zw';
 
+    // URL do Web App do Apps Script que fala com a IA (Gemini).
+    // Cole aqui a URL que termina em /exec depois de implantar o "COAUD IA".
+   // var URL_IA = 'https://script.google.com/macros/s/AKfycbz9hL1l0FHj0DQxqZ8yiS8f_OHymr2Y9y_FXhIML_ORad96Kpqn_FQ1YgOfQZxKO6ZL/exec';
+
     var accessToken  = null;
     var arquivadas   = [];
     var pendentes    = [];
@@ -499,11 +509,14 @@
         return new Date(dmy[2], dmy[1] - 1, dmy[0], hms[0] || 0, hms[1] || 0, hms[2] || 0);
     }
 
+    var modoImpressao = false;
     function corTexto() {
+        if (modoImpressao) return '#333333';
         var tema = document.documentElement.getAttribute('data-tema') || 'verde-neon';
         return tema === 'claro' ? '#475569' : 'rgba(255,255,255,0.6)';
     }
     function corGrade() {
+        if (modoImpressao) return 'rgba(0,0,0,0.15)';
         var tema = document.documentElement.getAttribute('data-tema') || 'verde-neon';
         return tema === 'claro' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)';
     }
@@ -759,118 +772,22 @@
     }
 
     // ======================================================
-    //  IMPRESSAO DO RELATORIO (area dedicada, cores fixas)
-    // ======================================================
-    function escapeHTML(s) {
-        return String(s == null ? '' : s)
-            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    }
-
-    // Forca cor escura nos rotulos dos graficos antes de "fotografar" o canvas,
-    // senao nos temas escuros o texto sai branco (invisivel no papel).
-    function prepararGraficosParaImpressao() {
-        [graficos.evolucao, graficos.equipamentos, graficos.salas].forEach(function(c) {
-            if (!c || !c.options || !c.options.scales) return;
-            ['x', 'y'].forEach(function(eixo) {
-                var s = c.options.scales[eixo];
-                if (!s) return;
-                if (s.ticks) s.ticks.color = '#333333';
-                if (s.grid)  s.grid.color  = 'rgba(0,0,0,0.15)';
-            });
-            c.update('none'); // atualiza SEM animacao (sincrono)
-        });
-    }
-
-    function imagemDoGrafico(chart) {
-        try { return chart ? chart.toBase64Image('image/png', 1) : ''; }
-        catch (e) { return ''; }
-    }
-
-    function tabelaRank(pares) {
-        if (!pares || !pares.length) {
-            return '<p style="font-size:9pt;color:#777;margin:4px 0">Sem dados no período.</p>';
-        }
-        var linhas = pares.map(function(p, i) {
-            return '<tr><td>' + (i + 1) + '. ' + escapeHTML(p[0]) + '</td>' +
-                   '<td class="q">' + p[1] + 'x</td></tr>';
-        }).join('');
-        return '<table class="ai-tabela"><tbody>' + linhas + '</tbody></table>';
-    }
-
-    function montarAreaImpressao() {
-        if (!estatisticas) return;
-        prepararGraficosParaImpressao();
-
-        var e = estatisticas;
-        var hoje = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
-        var imgEvo = imagemDoGrafico(graficos.evolucao);
-
-        var kpis = [
-            [e.semana, 'Última semana'],
-            [e.mes, 'Último mês'],
-            [e.ano, 'Último ano'],
-            [e.pendentesAgora, 'Pendentes agora']
-        ].map(function(k) {
-            return '<div class="ai-kpi"><div class="v">' + k[0] + '</div>' +
-                   '<div class="l">' + k[1] + '</div></div>';
-        }).join('');
-
-        document.getElementById('area-impressao').innerHTML =
-            '<div class="ai-header">' +
-                '<div class="ai-inst">CÂMARA DOS DEPUTADOS</div>' +
-                '<div class="ai-sub">Coordenação de Engenharia de Telecomunicações e Audiovisual — COAUD</div>' +
-                '<div class="ai-titulo">RELATÓRIO DO ALMOXARIFADO</div>' +
-                '<div class="ai-data">Emitido em ' + hoje + '</div>' +
-            '</div>' +
-
-            '<div class="ai-kpis">' + kpis + '</div>' +
-
-            '<div class="ai-secao">' +
-                '<div class="ai-secao-titulo">EVOLUÇÃO DE EMPRÉSTIMOS (ÚLTIMOS 12 MESES)</div>' +
-                (imgEvo ? '<img class="ai-chart" src="' + imgEvo + '" alt="Evolução">' : '') +
-            '</div>' +
-
-            '<div class="ai-cols">' +
-                '<div><div class="ai-secao-titulo">EQUIPAMENTOS COM MAIS SAÍDA</div>' +
-                    tabelaRank(e.topEquipamentos) + '</div>' +
-                '<div><div class="ai-secao-titulo">SALAS QUE MAIS SOLICITAM</div>' +
-                    tabelaRank(e.topSalas) + '</div>' +
-            '</div>' +
-
-            '<div class="ai-cols">' +
-                '<div><div class="ai-secao-titulo">OPERADORES QUE MAIS RETIRAM</div>' +
-                    tabelaRank(e.topOperadores) + '</div>' +
-                '<div><div class="ai-secao-titulo">EVENTOS COM MAIS RETIRADAS</div>' +
-                    tabelaRank(e.topEventos) + '</div>' +
-            '</div>';
-    }
-
-    function imprimirRelatorio() {
-        if (!estatisticas) {
-            alert('Os dados ainda não carregaram. Clique em Atualizar e tente novamente.');
-            return;
-        }
-        window.print(); // o beforeprint monta a area; o afterprint restaura as cores
-    }
-
-    // Monta a area de impressao automaticamente tambem no Ctrl+P
-    window.addEventListener('beforeprint', function() {
-        if (document.body.classList.contains('print-modal')) return; // modal tem fluxo proprio
-        if (estatisticas) montarAreaImpressao();
-    });
-    // Depois de imprimir, devolve os graficos as cores do tema atual
-    window.addEventListener('afterprint', function() {
-        if (!document.body.classList.contains('print-modal') && estatisticas) renderizarGraficos();
-    });
-
-    // ======================================================
     //  RENDER RANKINGS
     // ======================================================
     function renderizarRankings() {
         renderRank('rank-operadores', estatisticas.topOperadores, 'operador');
         renderRank('rank-eventos',    estatisticas.topEventos,    'evento');
     }
+
+        // Redesenha os graficos em cores de impressao e volta ao tema depois
+    window.addEventListener('beforeprint', function() {
+        modoImpressao = true;
+        if (estatisticas) renderizarGraficos();
+    });
+    window.addEventListener('afterprint', function() {
+        modoImpressao = false;
+        if (estatisticas) renderizarGraficos();
+    });
 
     // XSS-safe: usa textContent (nao innerHTML) e permite clicar para o detalhe.
     function renderRank(elementId, dados, tipo) {
@@ -914,7 +831,7 @@
             ul.appendChild(li);
         });
     }
-
+    
     // ======================================================
     //  DRILL-DOWN (clicar para ver o detalhe)
     // ======================================================
@@ -1080,6 +997,129 @@
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') fecharDetalhe();
     });
+
+    // ======================================================
+    //  ASSISTENTE IA (Gemini via Apps Script)
+    // ======================================================
+    function sugestaoIA(ev, texto) {
+        ev.preventDefault();
+        document.getElementById('ia-input').value = texto;
+        perguntarIA();
+    }
+
+    // Monta um RESUMO AGREGADO compacto (nao os dados crus) para caber
+    // no limite de tokens da IA. Cobre a maioria das perguntas analiticas.
+    function rankTexto(itens, limite) {
+        var pares = topDe(itens, limite || 40);
+        return pares.map(function(p) { return p[0] + ' \u2014 ' + p[1]; }).join('\n');
+    }
+
+    function construirDadosIA() {
+        var linhas = todasLinhas();
+        linhas.forEach(function(o) { o.data = parseDataBR(o.row[6]); });
+
+        var pend = linhas.filter(function(o) { return o.pend; });
+        var datas = linhas.map(function(o) { return o.data; }).filter(Boolean)
+                          .sort(function(a, b) { return a - b; });
+        var periodo = datas.length
+            ? datas[0].toLocaleDateString('pt-BR') + ' a ' + datas[datas.length - 1].toLocaleDateString('pt-BR')
+            : 'sem datas';
+
+        var ops = [], evs = [], salas = [], equips = [], meses = [];
+        linhas.forEach(function(o) {
+            var r = o.row;
+            if (r[1]) ops.push(r[1]);
+            if (r[5]) evs.push(r[5]);
+            if (r[4]) salas.push(r[4]);
+            materiaisDaLinha(r).forEach(function(m) { equips.push(m); });
+            if (o.data) {
+                meses.push(o.data.getFullYear() + '-' + ('0' + (o.data.getMonth() + 1)).slice(-2));
+            }
+        });
+
+        // pendentes: lista curta (quem/o que/onde)
+        var listaPend = pend.slice(0, 40).map(function(o) {
+            var r = o.row;
+            return '- ' + (r[1] || '?') + ' | ' + materiaisDaLinha(r).join(', ') +
+                   ' | ' + (r[4] || '') + ' | ' + (o.data ? o.data.toLocaleDateString('pt-BR') : '');
+        }).join('\n');
+
+        return [
+            'RESUMO DOS EMPRESTIMOS DO ALMOXARIFADO (COAUD)',
+            'Periodo dos dados: ' + periodo,
+            'Total de retiradas: ' + linhas.length +
+                ' | Devolvidas: ' + (linhas.length - pend.length) +
+                ' | Pendentes: ' + pend.length,
+            '',
+            'RETIRADAS POR OPERADOR (nome - quantidade):',
+            rankTexto(ops, 60),
+            '',
+            'RETIRADAS POR EVENTO:',
+            rankTexto(evs, 50),
+            '',
+            'RETIRADAS POR SALA/LOCAL:',
+            rankTexto(salas, 50),
+            '',
+            'RETIRADAS POR EQUIPAMENTO:',
+            rankTexto(equips, 60),
+            '',
+            'RETIRADAS POR MES (AAAA-MM - quantidade):',
+            rankTexto(meses, 24),
+            '',
+            'PENDENTES NO MOMENTO (' + pend.length + '):',
+            listaPend || '(nenhuma)'
+        ].join('\n');
+    }
+
+    function addMsgIA(quem, texto) {
+        var wrap = document.getElementById('ia-msgs');
+        wrap.style.display = 'flex';
+        var div = document.createElement('div');
+        var ehUser = quem === 'voce';
+        div.style.cssText = 'max-width:85%;padding:8px 12px;border-radius:10px;font-size:13px;white-space:pre-wrap;word-break:break-word;' +
+            (ehUser
+                ? 'align-self:flex-end;background:var(--verde);color:#04240f;font-weight:600'
+                : 'align-self:flex-start;background:var(--verde-light);color:var(--text)');
+        div.textContent = texto;
+        wrap.appendChild(div);
+        wrap.scrollTop = wrap.scrollHeight;
+        return div;
+    }
+
+    function perguntarIA() {
+        var input = document.getElementById('ia-input');
+        var pergunta = (input.value || '').trim();
+        if (!pergunta) return;
+
+        if (URL_IA.indexOf('COLE_AQUI') !== -1) {
+            addMsgIA('ia', 'A IA ainda nao foi configurada. Cole a URL do Apps Script (variavel URL_IA no codigo) para ativar.');
+            return;
+        }
+        if (!arquivadas.length && !pendentes.length) {
+            addMsgIA('ia', 'Os dados ainda nao carregaram. Clique em Atualizar e tente de novo.');
+            return;
+        }
+
+        addMsgIA('voce', pergunta);
+        input.value = '';
+        var btn = document.getElementById('ia-btn');
+        btn.disabled = true;
+        var pensando = addMsgIA('ia', 'Pensando...');
+
+        fetch(URL_IA, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // evita preflight de CORS
+            body: JSON.stringify({ pergunta: pergunta, dados: construirDadosIA() })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+            pensando.textContent = res.ok ? res.resposta : ('Erro: ' + (res.erro || 'desconhecido'));
+        })
+        .catch(function(err) {
+            pensando.textContent = 'Erro de conexao com a IA: ' + err.message;
+        })
+        .finally(function() { btn.disabled = false; });
+    }
 
     // ══ INATIVIDADE ══════════════════════════════════════
     void function() {
