@@ -250,10 +250,10 @@
 
                     <div class="modo-coleta" id="modoColeta">
                         <button type="button" id="btnModoZero" class="ativo" onclick="mudarModo('zero')">
-                            🆕 NOVO INVENTÁRIO
+                            🆕 Começar do zero
                         </button>
                         <button type="button" id="btnModoContinuar" onclick="mudarModo('continuar')">
-                            📂 Continuar de inventário
+                            📂 Continuar de planilha
                         </button>
                     </div>
 
@@ -448,6 +448,7 @@
     // Continuação a partir de planilha
     let modoColeta      = 'zero';     // 'zero' | 'continuar'
     let nrpsCarregados  = new Set();  // NRPs que vieram da planilha anterior
+    let carregadosDaSala = 0;         // quantos desses são da sala atual
 
     let transfPendente = null;
     let novoRespSelecionado = null;
@@ -640,10 +641,15 @@
     //  INICIAR SALA (usado nos dois modos)
     // ══════════════════════════════════════════════════════
     function iniciarSala(sala) {
+        // Usa a grafia da sala como está na COAUD (ex.: "Almoxarifado" → "ALMOXARIFADO")
+        const sel = document.getElementById("salaSelect");
+        const existente = [...sel.options].find(o =>
+            o.value && o.value.trim().toUpperCase() === sala.trim().toUpperCase());
+        if (existente) sala = existente.value;
+
         salaSelecionada = sala;
 
         // Garante que a sala exista no select (pode vir de planilha e não estar na COAUD)
-        const sel = document.getElementById("salaSelect");
         if (![...sel.options].some(o => o.value === sala)) {
             const opt = document.createElement("option");
             opt.value = sala; opt.textContent = sala;
@@ -671,16 +677,7 @@
         document.getElementById("inventarioHeader").style.display = "block";
         document.getElementById("salaTitle").textContent = sala;
 
-        const extra = document.getElementById("salaInfoExtra");
-        if (nrpsCarregados.size) {
-            const jaNaSala = todosDaSala.length - currentSalaInventario.length;
-            extra.textContent = `📂 Continuação: ${nrpsCarregados.size} itens vieram da planilha anterior ` +
-                `(${jaNaSala} desta sala). Abaixo estão só os que ainda faltam.`;
-            extra.style.display = 'block';
-        } else {
-            extra.textContent = '';
-            extra.style.display = 'none';
-        }
+        carregadosDaSala = todosDaSala.length - currentSalaInventario.length;
 
         updateInventarioTable();
         document.getElementById("patrimonioInput").focus();
@@ -937,6 +934,21 @@
             });
             list.appendChild(tr);
         });
+        atualizarInfoContinuacao();
+    }
+
+    function atualizarInfoContinuacao() {
+        const extra = document.getElementById("salaInfoExtra");
+        if (!salaSelecionada || !nrpsCarregados.size) {
+            extra.textContent = '';
+            extra.style.display = 'none';
+            return;
+        }
+        const faltam = currentSalaInventario.filter(i => i.status === 'red').length;
+        extra.textContent =
+            `📂 Continuação: ${nrpsCarregados.size} itens vieram da planilha anterior ` +
+            `(${carregadosDaSala} desta sala). Faltam ${faltam} itens para coletar.`;
+        extra.style.display = 'block';
     }
 
     // ══════════════════════════════════════════════════════
@@ -1244,24 +1256,38 @@
         return [...mapa.values()];
     }
 
+    // Compara só o nome: ignora maiúsculas, acentos, espaços extras e a matrícula "(5302)"
+    function normalizarNome(nome) {
+        return (nome || '').toString()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/\(\s*\d+\s*\)/g, '')
+            .replace(/\s+/g, ' ')
+            .trim().toUpperCase();
+    }
+    const NOMES_COAUD = RESPONSAVEIS_COAUD.map(normalizarNome);
+
     function ehResponsavelCoaud(resp) {
-        const r = (resp || '').toString().trim();
-        return RESPONSAVEIS_COAUD.some(x => x.trim() === r);
+        const r = normalizarNome(resp);
+        return !!r && NOMES_COAUD.includes(r);
     }
 
     function sufixoArquivo() {
         return salaSelecionada ? '_' + nomeArquivoSeguro(salaSelecionada) : '';
     }
 
+    // Responsáveis específicos = planilha carregada (inteira) + novos itens de Alberto, Paulo e José Henrique
     function exportPlanilhaEspecifica() {
-        const dados = coletadosSemDuplicados().filter(item => ehResponsavelCoaud(item.Responsável));
+        const dados = coletadosSemDuplicados().filter(item =>
+            item.origem === 'planilha' || ehResponsavelCoaud(item.Responsável));
         if (!dados.length) { alert("Nenhum patrimônio para responsáveis específicos."); return; }
         exportarXLSX(dados, "Responsaveis_Especificos",
             `Responsaveis_COAUD${sufixoArquivo()}_${formatarData()}.xlsx`);
     }
 
     function exportPlanilhaOutros() {
-        const dados = coletadosSemDuplicados().filter(item => !ehResponsavelCoaud(item.Responsável));
+        // Outros responsáveis = somente itens coletados agora cujo responsável não é um dos 3
+        const dados = coletadosSemDuplicados().filter(item =>
+            item.origem !== 'planilha' && !ehResponsavelCoaud(item.Responsável));
         if (!dados.length) { alert("Nenhum patrimônio para outros responsáveis."); return; }
         exportarXLSX(dados, "Outros_Responsaveis",
             `Outros_Responsaveis${sufixoArquivo()}_${formatarData()}.xlsx`);
