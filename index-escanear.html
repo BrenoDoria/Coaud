@@ -6,6 +6,7 @@
     <title>COAUD — Escaneamento de Patrimônios</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='4' fill='%2300b04f'/><text y='22' x='5' font-size='17' fill='white' font-family='Arial' font-weight='bold'>C</text></svg>">
     <link rel="stylesheet" href="style.css">
+        <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
     <script src="sidebar-init.js" defer></script>
     <style>
@@ -103,6 +104,23 @@
             background: rgba(0,176,79,0.12); color: #4ade80;
         }
         .respon-list li:last-child { border-bottom: none; }
+
+                #reconectar-banner {
+            display: none;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            background: rgba(245,158,11,.12);
+            border: 1px solid rgba(245,158,11,.35);
+            border-radius: 6px;
+            padding: 12px 16px;
+            margin-bottom: 14px;
+        }
+        #reconectar-msg {
+            color: #fbbf24;
+            font-size: 13px;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>
@@ -175,6 +193,14 @@
             </div>
 
             <div class="page-content">
+
+                <!-- ══ BANNER DE RECONEXÃO ══ -->
+                <div id="reconectar-banner">
+                    <span id="reconectar-msg"></span>
+                    <button onclick="solicitarToken()">🔐 Reconectar com Google</button>
+                </div>
+
+                <!-- ═══ SELEÇÃO DE SALA ═══ -->
 
                 <!-- ═══ SELEÇÃO DE SALA ═══ -->
                 <div class="card">
@@ -382,7 +408,8 @@
     // ══════════════════════════════════════════════════════
     //  CONFIGURAÇÃO
     // ══════════════════════════════════════════════════════
-    const FILE_ID = '1iNeSf0wakQ6j9Eg_qOCzVNKcIVVIsukeThL0Phpd5LE';
+        const CLIENT_ID = '286050228811-cv6vsd075480anb1i6auuc421enuaf8q.apps.googleusercontent.com';
+        const FILE_ID = '1iNeSf0wakQ6j9Eg_qOCzVNKcIVVIsukeThL0Phpd5LE';
 
     const RESPONSAVEIS_COAUD = [
         "ALBERTO CESAR SOUZA ALMEIDA (5302)",
@@ -400,6 +427,8 @@
     let transfPendente = null;
     let novoRespSelecionado = null;
     let modalNovoRespSelecionado = null;
+            let tokenClient   = null;
+    let accessToken   = null;
 
     // ══════════════════════════════════════════════════════
     //  HELPERS
@@ -426,17 +455,74 @@
     return `alterado: "${tipo}" data: ${dia}/${mes}/${ano} hora: ${hora}:${min}hs pelo operador: ${operador}`;
 }
 
+            // ══════════════════════════════════════════════════════
+    //  SESSÃO GOOGLE / RECONEXÃO
+    // ══════════════════════════════════════════════════════
+    function tokenExpirado() {
+        const exp = parseInt(localStorage.getItem('token_expira_em') || '0', 10);
+        return !exp || exp < (Date.now() + 60000);   // 1 min de folga
+    }
+    function mostrarReconectar(msg) {
+        const el = document.getElementById('reconectar-banner');
+        if (!el) return;
+        document.getElementById('reconectar-msg').textContent =
+            msg || 'Sessão do Google expirada.';
+        el.style.display = 'flex';
+    }
+    function esconderReconectar() {
+        const el = document.getElementById('reconectar-banner');
+        if (el) el.style.display = 'none';
+    }
+    function sessaoExpirou(msg) {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('token_expira_em');
+        accessToken = null;
+        document.getElementById('spinner').style.display = 'none';
+        mostrarReconectar(msg);
+    }
+    function solicitarToken() {
+        if (tokenClient) tokenClient.requestAccessToken({ prompt: 'select_account' });
+    }
+
     // ══════════════════════════════════════════════════════
     //  CARREGAMENTO INICIAL
     // ══════════════════════════════════════════════════════
-    window.addEventListener("load", function() {
-        const accessToken = localStorage.getItem("access_token");
-        if (!accessToken) {
-            alert("Sessão expirada. Faça login novamente.");
-            window.location.href = "index.html";
-            return;
-        }
-        carregarDados(accessToken);
+        window.addEventListener("load", function() {
+        const inicializarGoogle = () => {
+            if (typeof google === 'undefined' || !google.accounts) {
+                setTimeout(inicializarGoogle, 300);
+                return;
+            }
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: 'https://www.googleapis.com/auth/spreadsheets',
+                callback: (tokenResponse) => {
+                    if (tokenResponse.error) {
+                        setProgress("Erro: " + tokenResponse.error);
+                        return;
+                    }
+                    accessToken = tokenResponse.access_token;
+                    localStorage.setItem("access_token", accessToken);
+                    localStorage.setItem("token_expira_em",
+                        Date.now() + ((tokenResponse.expires_in || 3600) * 1000));
+                    esconderReconectar();
+                    setProgress("✅ Reconectado. Pode continuar de onde parou.");
+                    // Só recarrega a base se ainda não tinha carregado
+                    // (assim o inventário em andamento não é perdido)
+                    if (!sigmasData.length) carregarDados(accessToken);
+                }
+            });
+
+            const savedToken = localStorage.getItem("access_token");
+            if (savedToken) {
+                accessToken = savedToken;
+                esconderReconectar();
+                carregarDados(accessToken);
+            } else {
+                mostrarReconectar('Conecte-se ao Google para carregar as salas.');
+            }
+        };
+        inicializarGoogle();
     });
 
     async function carregarDados(accessToken) {
@@ -449,6 +535,7 @@
                 `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}`,
                 { headers: { 'Authorization': `Bearer ${accessToken}` } }
             );
+                        if (meta.status === 401) throw new Error('SESSAO_EXPIRADA');
             if (!meta.ok) throw new Error("Erro ao obter metadados.");
             const metaData = await meta.json();
             metaData.sheets.forEach(s => { sheetIds[s.properties.title] = s.properties.sheetId; });
@@ -458,6 +545,7 @@
                 `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/SIGMAS!A:D`,
                 { headers: { 'Authorization': `Bearer ${accessToken}` } }
             );
+                        if (r1.status === 401) throw new Error('SESSAO_EXPIRADA');
             if (!r1.ok) { const e = await r1.json(); throw new Error(e.error?.message); }
             sigmasData = (await r1.json()).values || [];
 
@@ -466,6 +554,7 @@
                 `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/COAUD!A:D`,
                 { headers: { 'Authorization': `Bearer ${accessToken}` } }
             );
+                        if (r2.status === 401) throw new Error('SESSAO_EXPIRADA');
             if (!r2.ok) { const e = await r2.json(); throw new Error(e.error?.message); }
             coaudData = (await r2.json()).values || [];
 
@@ -487,7 +576,11 @@
             setProgress(`✅ SIGMAS: ${sigmasData.length-1} | COAUD: ${coaudData.length-1}`);
             document.getElementById("spinner").style.display = "none";
             document.getElementById("salaSelect").focus();
-        } catch (error) {
+                } catch (error) {
+            if (error.message === 'SESSAO_EXPIRADA') {
+                sessaoExpirou('Sessão do Google expirada. Reconecte para continuar.');
+                return;
+            }
             setProgress("Erro: " + error.message);
             document.getElementById("spinner").style.display = "none";
         }
@@ -730,7 +823,6 @@
 
     async function confirmarTransferencia() {
         if (!transfPendente) return;
-        const accessToken = localStorage.getItem("access_token");
         const opcao       = document.getElementById("modalRespOpcao").value;
 
         if (opcao === "alterar" && !novoRespSelecionado) {
@@ -741,6 +833,11 @@
         const respFinal = (opcao === "alterar")
             ? novoRespSelecionado
             : transfPendente.responsavelAtual;
+
+                if (!accessToken || tokenExpirado()) {
+            mostrarReconectar('Sessão expirada. Reconecte e confirme a transferência novamente.');
+            return;
+        }
 
         document.getElementById("spinner").style.display = "inline-block";
         setProgress("Aplicando transferência...");
@@ -776,7 +873,11 @@
             marcarComoColetado(linha, 'yellow');
             setProgress(`✅ Transferido de ${transfPendente.salaOriginal} → ${salaSelecionada}.`);
             fecharModalTransf();
-        } catch (error) {
+                } catch (error) {
+            if (error.message === 'SESSAO_EXPIRADA') {
+                sessaoExpirou('Sessão expirada. Reconecte e confirme a transferência novamente.');
+                return;
+            }
             setProgress("Erro: " + error.message);
             alert("Erro ao transferir: " + error.message);
         } finally {
@@ -844,10 +945,14 @@
         const nrp      = document.getElementById("modalNovoNRP").value.trim();
         const material = document.getElementById("modalNovoMaterial").value.trim();
         const respFinal = modalNovoRespSelecionado || "";
-        const accessToken = localStorage.getItem("access_token");
 
         if (!material) { alert("Digite a descrição do material."); return; }
         if (!respFinal) { alert("Selecione um responsável."); return; }
+
+                if (!accessToken || tokenExpirado()) {
+            mostrarReconectar('Sessão expirada. Reconecte e cadastre novamente.');
+            return;
+        }
 
         document.getElementById("spinner").style.display = "inline-block";
         setProgress("Cadastrando novo patrimônio...");
@@ -869,7 +974,11 @@
 
             marcarComoColetado(linha, 'yellow');
             fecharModalNovo();
-        } catch (error) {
+                } catch (error) {
+            if (error.message === 'SESSAO_EXPIRADA') {
+                sessaoExpirou('Sessão expirada. Reconecte e cadastre novamente.');
+                return;
+            }
             setProgress("Erro: " + error.message);
             alert("Erro ao cadastrar: " + error.message);
         } finally {
@@ -887,6 +996,7 @@
               headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
               body: JSON.stringify({ values: [valores] }) }
         );
+                if (r.status === 401) throw new Error('SESSAO_EXPIRADA');
         if (!r.ok) { const e = await r.json(); throw new Error(`Erro em ${aba}: ${e.error?.message}`); }
     }
 
@@ -897,6 +1007,7 @@
               headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
               body: JSON.stringify({ values: [valores] }) }
         );
+                if (r.status === 401) throw new Error('SESSAO_EXPIRADA');
         if (!r.ok) { const e = await r.json(); throw new Error(`Erro append ${aba}: ${e.error?.message}`); }
     }
 
@@ -912,6 +1023,7 @@
                 }}
               }]}) }
         );
+                if (r.status === 401) throw new Error('SESSAO_EXPIRADA');
         if (!r.ok) { const e = await r.json(); throw new Error(`Erro delete ${aba}: ${e.error?.message}`); }
     }
 
