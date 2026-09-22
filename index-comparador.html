@@ -12,6 +12,7 @@
             localStorage.getItem('tema-coaud') || 'verde-neon');
     </script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    <script src="sidebar-init.js" defer></script>
     <style>
         .file-upload {
             display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
@@ -42,55 +43,6 @@
             color: #fbbf24;
         }
 
-        /* ── Opções de comparação ── */
-        .opcoes-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 14px;
-            margin-bottom: 14px;
-        }
-        .opcao-label {
-            display: block;
-            font-size: 11px;
-            font-weight: 600;
-            color: var(--text-muted);
-            margin-bottom: 6px;
-        }
-        .segmented {
-            display: flex;
-            border: 1px solid var(--card-border);
-            border-radius: var(--radius-sm);
-            overflow: hidden;
-        }
-        .segmented button {
-            flex: 1;
-            margin: 0;
-            border: none;
-            border-radius: 0;
-            background: transparent;
-            color: var(--text-muted);
-            font-size: 12px;
-            font-weight: 600;
-            padding: 8px 10px;
-            cursor: pointer;
-        }
-        .segmented button + button { border-left: 1px solid var(--card-border); }
-        .segmented button.ativo {
-            background: var(--verde);
-            color: #fff;
-        }
-        .segmented button:focus-visible { outline: 2px solid #60a5fa; outline-offset: -2px; }
-
-        .filtros-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr auto;
-            gap: 12px;
-            align-items: end;
-        }
-        .filtros-grid select,
-        .filtros-grid input {
-            width: 100%;
-        }
         .ajuda {
             font-size: 11px;
             color: var(--text-muted);
@@ -113,12 +65,7 @@
         }
         .resumo-item strong { color: var(--text); }
 
-        .obs-outra-aba { color: #60a5fa; font-size: 11px; }
-        .obs-nenhuma   { color: #fbbf24; font-size: 11px; }
-
-        @media (max-width: 700px) {
-            .opcoes-grid, .filtros-grid { grid-template-columns: 1fr; }
-        }
+        #card-sala select { width: 100%; }
     </style>
 </head>
 <body>
@@ -148,9 +95,20 @@
                 <a class="nav-item" id="nav-escanear" href="index-escanear.html">
                     <span class="nav-icon">📷</span> Sistema de Escaneamento
                 </a>
-                <a class="nav-item active" id="nav-comparador" href="index-comparador.html">
+
+                <!-- Comparador com subgrupo -->
+                <a class="nav-item nav-parent active" id="nav-comparador" href="index-comparador.html">
                     <span class="nav-icon">🔍</span> Comparador de Patrimônios
                 </a>
+                <div class="nav-subgroup">
+                    <a class="nav-subitem" id="tab-sigmas" onclick="mudarBase('SIGMAS');return false;" href="#">
+                        <span class="nav-sub-icon">↳</span> SIGMAS (todos)
+                    </a>
+                    <a class="nav-subitem" id="tab-coaud" onclick="mudarBase('COAUD');return false;" href="#">
+                        <span class="nav-sub-icon">↳</span> COAUD (responsáveis)
+                    </a>
+                </div>
+
                 <a class="nav-item" id="nav-localizador" href="index_Local.html">
                     <span class="nav-icon">📍</span> Localizador e Transferência
                 </a>
@@ -158,7 +116,7 @@
                     <span class="nav-icon">📋</span> Controle de Almoxarifado
                 </a>
                 <a class="nav-item" href="index.html">
-                    <span class="nav-icon">🏠</span> Página Inicial
+                    <span class="nav-icon">🏠</span> Portal
                 </a>
             </nav>
             <div class="sidebar-footer">
@@ -176,7 +134,8 @@
                 <div>
                     <div class="topbar-title">Comparador de Patrimônios</div>
                     <div class="topbar-sub">
-                        Base atual: <span id="base-atual-label" style="color:var(--verde);font-weight:700">COAUD</span>
+                        Comparando com: <span id="base-atual-label" style="color:var(--verde);font-weight:700">COAUD</span>
+                        <span id="sala-atual-label"></span>
                     </div>
                 </div>
                 <div class="topbar-right">
@@ -188,6 +147,18 @@
             </div>
 
             <div class="page-content">
+
+                <!-- ═══ SALA (só COAUD) ═══ -->
+                <div class="card" id="card-sala">
+                    <div class="card-title">Sala</div>
+                    <div class="field-block">
+                        <label for="salaSelect">Comparar com a sala</label>
+                        <select id="salaSelect">
+                            <option value="">Carregando salas...</option>
+                        </select>
+                    </div>
+                    <p class="ajuda">Escolha uma sala para conferir só o levantamento dela, ou "Todas as salas" para a aba COAUD inteira.</p>
+                </div>
 
                 <!-- ═══ UPLOAD ═══ -->
                 <div class="card">
@@ -201,55 +172,14 @@
                         <span class="file-name" id="fileName">Nenhum arquivo escolhido</span>
                     </div>
                     <p class="ajuda">
-                        O NRP deve estar na primeira coluna. Se a planilha tiver várias abas (uma por sala, por exemplo), todas são lidas.
+                        O NRP deve estar na primeira coluna. Se a planilha tiver várias abas, todas são lidas.
                     </p>
-                </div>
-
-                <!-- ═══ OPÇÕES ═══ -->
-                <div class="card">
-                    <div class="card-title">Como comparar</div>
-
-                    <div class="opcoes-grid">
-                        <div>
-                            <span class="opcao-label">Comparar com a aba</span>
-                            <div class="segmented" id="seg-base">
-                                <button type="button" data-base="SIGMAS">📘 SIGMAS (todos)</button>
-                                <button type="button" data-base="COAUD">📗 COAUD (responsáveis)</button>
-                            </div>
-                        </div>
-                        <div>
-                            <span class="opcao-label">Mostrar</span>
-                            <div class="segmented" id="seg-modo">
-                                <button type="button" data-modo="pendentes">Na base, não coletados</button>
-                                <button type="button" data-modo="fora">Coletados, fora da base</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="filtros-grid">
-                        <div class="field-block">
-                            <label for="filtroLocal">Setor / localização (contém)</label>
-                            <input type="text" id="filtroLocal" list="lista-locais"
-                                placeholder="Ex.: ANEXO IV, SALA 12..." autocomplete="off">
-                            <datalist id="lista-locais"></datalist>
-                        </div>
-                        <div class="field-block">
-                            <label for="filtroResp">Responsável</label>
-                            <select id="filtroResp">
-                                <option value="">Todos</option>
-                            </select>
-                        </div>
-                        <div>
-                            <button type="button" class="cancelButton" onclick="limparFiltros()">✕ Limpar filtros</button>
-                        </div>
-                    </div>
-                    <p class="ajuda" id="ajuda-modo"></p>
 
                     <div id="statContainer"></div>
 
                     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
                         <button onclick="exportarResultado()" class="btn-blue">
-                            ⬇ Exportar resultado (.xlsx)
+                            ⬇ Exportar não encontrados (.xlsx)
                         </button>
                     </div>
                 </div>
@@ -258,14 +188,21 @@
                 <div class="card" style="padding:0;overflow:hidden">
                     <div style="padding:14px 16px 8px">
                         <div class="card-title" id="titulo-tabela" style="margin:0;border:none;padding:0">
-                            Resultado da comparação
+                            Patrimônios não encontrados
                         </div>
                     </div>
                     <div class="table-wrapper">
                         <table id="patrimonioTable">
-                            <thead id="patrimonioHead"></thead>
+                            <thead>
+                                <tr>
+                                    <th>NRP</th>
+                                    <th>Material</th>
+                                    <th>Localização</th>
+                                    <th>Responsável</th>
+                                </tr>
+                            </thead>
                             <tbody id="patrimonioList">
-                                <tr><td style="text-align:center;color:var(--text-muted);padding:24px">
+                                <tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px">
                                     Carregue a planilha do levantamento para ver o resultado.
                                 </td></tr>
                             </tbody>
@@ -282,106 +219,8 @@
     </div>
 
     <script>
-    // ══════════════════════════════════════════════════════
-    //  SIDEBAR — usuário, permissões e tema
-    // ══════════════════════════════════════════════════════
-    function preencherUsuarioSidebar() {
-        const u = JSON.parse(localStorage.getItem('usuarioLogado'));
-        if (!u) { window.location.href = 'index.html'; return; }
-        const initials = nome => nome
-            ? nome.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()
-            : '?';
-        const avatarEl = document.getElementById('user-avatar');
-        const nameEl   = document.getElementById('user-name');
-        const roleEl   = document.getElementById('user-role');
-        if (avatarEl) avatarEl.textContent = initials(u.nome);
-        if (nameEl)   nameEl.textContent   = u.nome || 'Usuário';
-        if (roleEl)   roleEl.textContent   = u.permissao || '';
-    }
+    // Sidebar (usuário, permissões, tema, logout, menu mobile) vem do sidebar-init.js
 
-    function aplicarPermissoesSidebar() {
-        const u = JSON.parse(localStorage.getItem('usuarioLogado')) || {};
-        const perm = u.permissao;
-        const PERMS_SIDEBAR = {
-            supervisor:   ['nav-escanear', 'nav-comparador', 'nav-localizador', 'nav-almoxarifado'],
-            almoxarifado: ['nav-almoxarifado'],
-        };
-        const liberados = PERMS_SIDEBAR[perm] || [];
-        ['nav-escanear', 'nav-comparador', 'nav-localizador', 'nav-almoxarifado']
-            .forEach(id => {
-                const el = document.getElementById(id);
-                if (el && !liberados.includes(id)) el.style.display = 'none';
-            });
-        const paginaAtual = window.location.pathname.split('/').pop();
-        const paginasPorPermissao = {
-            'index-escanear.html':      'nav-escanear',
-            'index-comparador.html':    'nav-comparador',
-            'index_Local.html':         'nav-localizador',
-            'index-almoxarifado.html':  'nav-almoxarifado',
-            'fichas.html':              'nav-almoxarifado',
-            'fichas-arquivadas.html':   'nav-almoxarifado',
-        };
-        const permNecessaria = paginasPorPermissao[paginaAtual];
-        if (permNecessaria && !liberados.includes(permNecessaria)) {
-            alert('Você não tem permissão para acessar esta página.');
-            window.location.href = 'index.html';
-        }
-    }
-
-    // ── Seletor de tema no rodapé da sidebar ──
-    function criarSeletorTema() {
-        if (document.getElementById('theme-selector')) return;
-        const footer = document.querySelector('.sidebar-footer');
-        if (!footer) return;
-
-        const container = document.createElement('div');
-        container.id = 'theme-selector';
-        container.style.cssText = 'margin-bottom:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.08)';
-        container.innerHTML = `
-            <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">
-                Tema
-            </div>
-            <div style="display:flex;gap:5px">
-                <button class="theme-btn" data-tema="verde-neon" title="Verde Neon"
-                    style="flex:1;padding:5px;border-radius:3px;border:1px solid rgba(255,255,255,.15);background:linear-gradient(135deg,#0a2d17 50%,#00b04f 50%);cursor:pointer;height:22px"></button>
-                <button class="theme-btn" data-tema="dark-neutro" title="Dark Neutro"
-                    style="flex:1;padding:5px;border-radius:3px;border:1px solid rgba(255,255,255,.15);background:linear-gradient(135deg,#1e1e1e 50%,#4a90e2 50%);cursor:pointer;height:22px"></button>
-                <button class="theme-btn" data-tema="claro" title="Claro"
-                    style="flex:1;padding:5px;border-radius:3px;border:1px solid rgba(255,255,255,.15);background:linear-gradient(135deg,#f5f5f5 50%,#1e6b2e 50%);cursor:pointer;height:22px"></button>
-            </div>
-        `;
-        footer.parentNode.insertBefore(container, footer);
-
-        const temaAtivo = localStorage.getItem('tema-coaud') || 'verde-neon';
-        container.querySelectorAll('.theme-btn').forEach(btn => {
-            if (btn.dataset.tema === temaAtivo) btn.style.outline = '2px solid #00b04f';
-            btn.addEventListener('click', () => {
-                container.querySelectorAll('.theme-btn').forEach(b => b.style.outline = 'none');
-                btn.style.outline = '2px solid #00b04f';
-                document.documentElement.setAttribute('data-tema', btn.dataset.tema);
-                localStorage.setItem('tema-coaud', btn.dataset.tema);
-            });
-        });
-    }
-
-    function initSidebar() {
-        preencherUsuarioSidebar();
-        aplicarPermissoesSidebar();
-        criarSeletorTema();
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initSidebar);
-    } else {
-        initSidebar();
-    }
-
-    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
-    function fazerLogout() {
-        localStorage.removeItem('usuarioLogado');
-        localStorage.removeItem('access_token');
-        window.location.href = 'index.html';
-    }
     function setProgress(msg) {
         const el = document.getElementById("progressText");
         if (el) el.textContent = msg;
@@ -392,26 +231,21 @@
     // ══════════════════════════════════════════════════════
     const FILE_ID = '1iNeSf0wakQ6j9Eg_qOCzVNKcIVVIsukeThL0Phpd5LE';
     const ABAS    = ['SIGMAS', 'COAUD'];
+    const TODAS   = '__TODAS__';
 
-    let accessToken   = null;
-    let bases         = { SIGMAS: [], COAUD: [] };   // linhas [NRP, Material, Local, Responsável]
-    let indicesBases  = { SIGMAS: new Map(), COAUD: new Map() }; // NRP normalizado -> linha
-    let escaneados    = new Map();   // NRP normalizado -> { nrp, material, local, origem }
+    let accessToken       = null;
+    let bases             = { SIGMAS: [], COAUD: [] };  // [NRP, Material, Local, Responsável]
+    let nrpsEscaneados    = new Set();
     let planilhaCarregada = false;
+    let basesCarregadas   = false;
 
     let baseAtual = 'COAUD';
-    let modoAtual = 'pendentes';
-    let resultado = [];   // linhas exibidas (para exportar)
+    let salaAtual = TODAS;
+    let resultado = [];
 
     function normalizeNRP(nrp) {
         if (nrp === undefined || nrp === null) return "";
         return nrp.toString().replace(/\./g, "").replace(/^0+/, "").trim();
-    }
-
-    function normalizarTexto(t) {
-        return (t || "").toString()
-            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-            .toUpperCase().trim();
     }
 
     function esc(t) {
@@ -425,10 +259,36 @@
     }
 
     // ══════════════════════════════════════════════════════
+    //  TROCA DE BASE (sidebar)
+    // ══════════════════════════════════════════════════════
+    function mudarBase(base) {
+        baseAtual = base;
+        document.getElementById('tab-sigmas').classList.toggle('active', base === 'SIGMAS');
+        document.getElementById('tab-coaud').classList.toggle('active', base === 'COAUD');
+        document.getElementById('base-atual-label').textContent = base;
+
+        // Seleção de sala só existe na COAUD
+        document.getElementById('card-sala').style.display = base === 'COAUD' ? 'block' : 'none';
+        if (base === 'SIGMAS') salaAtual = TODAS;
+        else salaAtual = document.getElementById('salaSelect').value || TODAS;
+
+        atualizarLabelSala();
+        document.getElementById('sidebar').classList.remove('open');
+        renderizar();
+    }
+
+    function atualizarLabelSala() {
+        const el = document.getElementById('sala-atual-label');
+        el.textContent = (baseAtual === 'COAUD' && salaAtual !== TODAS) ? `— Sala: ${salaAtual}` : '';
+    }
+
+    // ══════════════════════════════════════════════════════
     //  CARREGAMENTO DAS DUAS ABAS
     // ══════════════════════════════════════════════════════
     window.addEventListener('load', () => {
         configurarControles();
+        mudarBase('COAUD');
+
         accessToken = localStorage.getItem('access_token');
         if (!accessToken) {
             alert('Sessão expirada. Faça login novamente.');
@@ -460,15 +320,11 @@
             const data = await r.json();
 
             (data.valueRanges || []).forEach((vr, i) => {
-                const aba   = ABAS[i];
-                const linhas = (vr.values || []).slice(1).filter(row => normalizeNRP(row[0]));
-                bases[aba] = linhas;
-                const mapa = new Map();
-                linhas.forEach(row => mapa.set(normalizeNRP(row[0]), row));
-                indicesBases[aba] = mapa;
+                bases[ABAS[i]] = (vr.values || []).slice(1).filter(row => normalizeNRP(row[0]));
             });
 
-            atualizarListasFiltro();
+            popularSalas();
+            basesCarregadas = true;
             setProgress(`✅ Bases carregadas — SIGMAS: ${bases.SIGMAS.length} | COAUD: ${bases.COAUD.length}.`);
             renderizar();
         } catch (error) {
@@ -478,30 +334,29 @@
         }
     }
 
+    // Salas vêm da aba COAUD (igual ao Escaneamento)
+    function popularSalas() {
+        const salas = [...new Set(
+            bases.COAUD.map(row => (row[2] || '').toString().trim()).filter(Boolean)
+        )].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+        const sel = document.getElementById('salaSelect');
+        sel.innerHTML = `<option value="${TODAS}">Todas as salas</option>` +
+            salas.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+        sel.value = TODAS;
+        salaAtual = TODAS;
+        atualizarLabelSala();
+    }
+
     // ══════════════════════════════════════════════════════
-    //  CONTROLES (base, modo, filtros)
+    //  CONTROLES
     // ══════════════════════════════════════════════════════
     function configurarControles() {
-        document.querySelectorAll('#seg-base button').forEach(btn => {
-            btn.addEventListener('click', () => {
-                baseAtual = btn.dataset.base;
-                atualizarListasFiltro();
-                renderizar();
-            });
+        document.getElementById('salaSelect').addEventListener('change', function () {
+            salaAtual = this.value || TODAS;
+            atualizarLabelSala();
+            renderizar();
         });
-        document.querySelectorAll('#seg-modo button').forEach(btn => {
-            btn.addEventListener('click', () => {
-                modoAtual = btn.dataset.modo;
-                renderizar();
-            });
-        });
-
-        let timer;
-        document.getElementById('filtroLocal').addEventListener('input', () => {
-            clearTimeout(timer);
-            timer = setTimeout(renderizar, 250);
-        });
-        document.getElementById('filtroResp').addEventListener('change', renderizar);
 
         document.getElementById('fileInputExportada').addEventListener('change', function () {
             const nameEl = document.getElementById('fileName');
@@ -516,48 +371,6 @@
             processarPlanilha(file);
             this.value = '';   // permite recarregar o mesmo arquivo
         });
-
-        atualizarBotoes();
-    }
-
-    function atualizarBotoes() {
-        document.querySelectorAll('#seg-base button').forEach(b =>
-            b.classList.toggle('ativo', b.dataset.base === baseAtual));
-        document.querySelectorAll('#seg-modo button').forEach(b =>
-            b.classList.toggle('ativo', b.dataset.modo === modoAtual));
-        document.getElementById('base-atual-label').textContent = baseAtual;
-
-        const respSel = document.getElementById('filtroResp');
-        respSel.disabled = (modoAtual === 'fora');
-
-        document.getElementById('ajuda-modo').textContent = modoAtual === 'pendentes'
-            ? `Lista os patrimônios que estão na aba ${baseAtual} (dentro do setor/responsável filtrado) e não aparecem na planilha carregada.`
-            : `Lista os NRPs da planilha carregada que não existem na aba ${baseAtual}. O filtro de setor usa a localização/aba da própria planilha.`;
-    }
-
-    function atualizarListasFiltro() {
-        const base = bases[baseAtual];
-
-        // Locais (datalist)
-        const locais = [...new Set(base.map(r => (r[2] || '').toString().trim()).filter(Boolean))]
-            .sort((a, b) => a.localeCompare(b, 'pt-BR'));
-        document.getElementById('lista-locais').innerHTML =
-            locais.map(l => `<option value="${esc(l)}"></option>`).join('');
-
-        // Responsáveis (select) — mantém a seleção se ainda existir
-        const sel   = document.getElementById('filtroResp');
-        const atual = sel.value;
-        const resps = [...new Set(base.map(r => (r[3] || '').toString().trim()).filter(Boolean))]
-            .sort((a, b) => a.localeCompare(b, 'pt-BR'));
-        sel.innerHTML = '<option value="">Todos</option>' +
-            resps.map(r => `<option value="${esc(r)}">${esc(r)}</option>`).join('');
-        if (resps.includes(atual)) sel.value = atual;
-    }
-
-    function limparFiltros() {
-        document.getElementById('filtroLocal').value = '';
-        document.getElementById('filtroResp').value = '';
-        renderizar();
     }
 
     // ══════════════════════════════════════════════════════
@@ -573,24 +386,17 @@
                 const data     = new Uint8Array(e.target.result);
                 const workbook = XLSX.read(data, { type: 'array' });
 
-                escaneados = new Map();
+                nrpsEscaneados = new Set();
                 workbook.SheetNames.forEach(sheetName => {
-                    const ws   = workbook.Sheets[sheetName];
-                    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+                    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: '' });
                     rows.slice(1).forEach(row => {
                         const n = normalizeNRP(row[0]);
-                        if (!n || escaneados.has(n)) return;
-                        escaneados.set(n, {
-                            nrp:      row[0],
-                            material: row[1] || '',
-                            local:    row[2] || '',
-                            origem:   sheetName
-                        });
+                        if (n) nrpsEscaneados.add(n);
                     });
                 });
 
                 planilhaCarregada = true;
-                setProgress(`📄 ${escaneados.size} NRPs lidos da planilha.`);
+                setProgress(`📄 ${nrpsEscaneados.size} NRPs lidos da planilha.`);
                 renderizar();
             } catch (error) {
                 setProgress('Erro ao ler a planilha: ' + error.message);
@@ -606,129 +412,75 @@
     }
 
     // ══════════════════════════════════════════════════════
-    //  COMPARAÇÃO + EXIBIÇÃO
+    //  COMPARAÇÃO — base (ou sala) − planilha
     // ══════════════════════════════════════════════════════
-    function renderizar() {
-        atualizarBotoes();
+    function recorteAtual() {
+        const base = bases[baseAtual];
+        if (baseAtual === 'COAUD' && salaAtual !== TODAS) {
+            const alvo = salaAtual.toUpperCase();
+            return base.filter(row => (row[2] || '').toString().trim().toUpperCase() === alvo);
+        }
+        return base;
+    }
 
-        const head  = document.getElementById('patrimonioHead');
-        const list  = document.getElementById('patrimonioList');
-        const stat  = document.getElementById('statContainer');
+    function descricaoRecorte() {
+        if (baseAtual === 'COAUD' && salaAtual !== TODAS) return `sala ${salaAtual}`;
+        return `aba ${baseAtual}`;
+    }
+
+    function renderizar() {
+        const list   = document.getElementById('patrimonioList');
+        const stat   = document.getElementById('statContainer');
         const titulo = document.getElementById('titulo-tabela');
 
-        const filtroLocal = normalizarTexto(document.getElementById('filtroLocal').value);
-        const filtroResp  = document.getElementById('filtroResp').value;
-        const base        = bases[baseAtual];
-        const outraAba    = baseAtual === 'SIGMAS' ? 'COAUD' : 'SIGMAS';
+        titulo.textContent = `Não encontrados — ${descricaoRecorte()}`;
 
-        if (!planilhaCarregada) {
-            head.innerHTML = '';
-            list.innerHTML = `<tr><td style="text-align:center;color:var(--text-muted);padding:24px">
-                Carregue a planilha do levantamento para ver o resultado.</td></tr>`;
-            stat.innerHTML = '';
+        if (!basesCarregadas || !planilhaCarregada) {
             resultado = [];
+            stat.innerHTML = '';
+            list.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px">
+                ${basesCarregadas ? 'Carregue a planilha do levantamento para ver o resultado.' : 'Carregando bases...'}
+            </td></tr>`;
             return;
         }
 
-        if (modoAtual === 'pendentes') {
-            // Base filtrada pelo setor/responsável
-            const baseFiltrada = base.filter(row => {
-                if (filtroLocal && !normalizarTexto(row[2]).includes(filtroLocal)) return false;
-                if (filtroResp && (row[3] || '').toString().trim() !== filtroResp) return false;
-                return true;
-            });
-            resultado = baseFiltrada.filter(row => !escaneados.has(normalizeNRP(row[0])));
-            const coletados = baseFiltrada.length - resultado.length;
-            const pct = baseFiltrada.length ? Math.round(coletados / baseFiltrada.length * 100) : 0;
+        const recorte = recorteAtual();
+        resultado = recorte.filter(row => !nrpsEscaneados.has(normalizeNRP(row[0])));
+        const encontrados = recorte.length - resultado.length;
+        const pct = recorte.length ? Math.round(encontrados / recorte.length * 100) : 0;
 
-            titulo.textContent = `Na aba ${baseAtual}, não coletados`;
-            head.innerHTML = `<tr><th>NRP</th><th>Material</th><th>Localização</th><th>Responsável</th></tr>`;
-
-            if (!resultado.length) {
-                list.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px">
-                    🎉 Todos os patrimônios deste recorte foram coletados.</td></tr>`;
-            } else {
-                list.innerHTML = resultado.map(row => `
-                    <tr>
-                        <td>${esc(row[0]) || '-'}</td>
-                        <td>${esc(row[1]) || '-'}</td>
-                        <td>${esc(row[2]) || '-'}</td>
-                        <td>${esc(row[3]) || '-'}</td>
-                    </tr>`).join('');
-            }
-
-            stat.innerHTML = `
-                <div class="stat-result ${resultado.length ? 'warn' : ''}">
-                    ${resultado.length
-                        ? `⚠ ${resultado.length} patrimônios da aba ${baseAtual} ainda não foram coletados.`
-                        : `✅ Recorte completo na aba ${baseAtual}.`}
-                </div>
-                <div class="resumo-linha">
-                    <span class="resumo-item">No recorte: <strong>${baseFiltrada.length}</strong></span>
-                    <span class="resumo-item">Coletados: <strong>${coletados}</strong> (${pct}%)</span>
-                    <span class="resumo-item">Faltando: <strong>${resultado.length}</strong></span>
-                </div>`;
-            setProgress(`${baseAtual}: ${resultado.length} pendentes de ${baseFiltrada.length} no recorte.`);
-
+        if (!recorte.length) {
+            list.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px">
+                Nenhum patrimônio cadastrado na ${esc(descricaoRecorte())}.</td></tr>`;
+        } else if (!resultado.length) {
+            list.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px">
+                🎉 Todos os patrimônios da ${esc(descricaoRecorte())} foram encontrados.</td></tr>`;
         } else {
-            const indice = indicesBases[baseAtual];
-            const indiceOutra = indicesBases[outraAba];
-
-            const coletadosFiltrados = [...escaneados.entries()].filter(([n, item]) => {
-                if (!filtroLocal) return true;
-                return normalizarTexto(item.local).includes(filtroLocal) ||
-                       normalizarTexto(item.origem).includes(filtroLocal);
-            });
-
-            resultado = coletadosFiltrados
-                .filter(([n]) => !indice.has(n))
-                .map(([n, item]) => {
-                    const naOutra = indiceOutra.get(n);
-                    return {
-                        nrp: item.nrp,
-                        material: item.material || (naOutra ? naOutra[1] : ''),
-                        local: item.local || item.origem,
-                        observacao: naOutra
-                            ? `Existe em ${outraAba} — ${naOutra[2] || 'sem local'} / ${naOutra[3] || 'sem responsável'}`
-                            : 'Não existe em nenhuma aba'
-                    };
-                });
-
-            titulo.textContent = `Coletados, fora da aba ${baseAtual}`;
-            head.innerHTML = `<tr><th>NRP</th><th>Material</th><th>Local (planilha)</th><th>Observação</th></tr>`;
-
-            if (!resultado.length) {
-                list.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px">
-                    ✅ Todos os NRPs coletados deste recorte existem na aba ${baseAtual}.</td></tr>`;
-            } else {
-                list.innerHTML = resultado.map(item => `
-                    <tr>
-                        <td>${esc(item.nrp) || '-'}</td>
-                        <td>${esc(item.material) || '-'}</td>
-                        <td>${esc(item.local) || '-'}</td>
-                        <td class="${item.observacao.startsWith('Existe') ? 'obs-outra-aba' : 'obs-nenhuma'}">${esc(item.observacao)}</td>
-                    </tr>`).join('');
-            }
-
-            const semNenhuma = resultado.filter(r => r.observacao.startsWith('Não')).length;
-            stat.innerHTML = `
-                <div class="stat-result ${resultado.length ? 'warn' : ''}">
-                    ${resultado.length
-                        ? `⚠ ${resultado.length} NRPs coletados não estão na aba ${baseAtual}.`
-                        : `✅ Nenhum NRP coletado fora da aba ${baseAtual}.`}
-                </div>
-                <div class="resumo-linha">
-                    <span class="resumo-item">Coletados no recorte: <strong>${coletadosFiltrados.length}</strong></span>
-                    <span class="resumo-item">Fora de ${baseAtual}: <strong>${resultado.length}</strong></span>
-                    <span class="resumo-item">Presentes só em ${outraAba}: <strong>${resultado.length - semNenhuma}</strong></span>
-                    <span class="resumo-item">Sem cadastro em nenhuma: <strong>${semNenhuma}</strong></span>
-                </div>`;
-            setProgress(`${resultado.length} NRPs coletados fora da aba ${baseAtual}.`);
+            list.innerHTML = resultado.map(row => `
+                <tr>
+                    <td>${esc(row[0]) || '-'}</td>
+                    <td>${esc(row[1]) || '-'}</td>
+                    <td>${esc(row[2]) || '-'}</td>
+                    <td>${esc(row[3]) || '-'}</td>
+                </tr>`).join('');
         }
+
+        stat.innerHTML = `
+            <div class="stat-result ${resultado.length ? 'warn' : ''}">
+                ${resultado.length
+                    ? `⚠ ${resultado.length} patrimônios da ${esc(descricaoRecorte())} não foram encontrados.`
+                    : `✅ Levantamento completo na ${esc(descricaoRecorte())}.`}
+            </div>
+            <div class="resumo-linha">
+                <span class="resumo-item">Cadastrados: <strong>${recorte.length}</strong></span>
+                <span class="resumo-item">Encontrados: <strong>${encontrados}</strong> (${pct}%)</span>
+                <span class="resumo-item">Não encontrados: <strong>${resultado.length}</strong></span>
+            </div>`;
+        setProgress(`${resultado.length} não encontrados de ${recorte.length} na ${descricaoRecorte()}.`);
     }
 
     // ══════════════════════════════════════════════════════
-    //  EXPORTAÇÃO DO RESULTADO ATUAL
+    //  EXPORTAÇÃO
     // ══════════════════════════════════════════════════════
     function exportarResultado() {
         if (!planilhaCarregada) {
@@ -736,40 +488,25 @@
             return;
         }
         if (!resultado.length) {
-            alert('Não há itens no resultado atual para exportar.');
+            alert('Nenhum patrimônio não encontrado para exportar.');
             return;
         }
 
-        let dados, nomeAba, prefixo;
-        if (modoAtual === 'pendentes') {
-            dados = resultado.map(row => ({
-                NRP: row[0] || '',
-                Material: row[1] || '',
-                Localização: row[2] || '',
-                Responsável: row[3] || ''
-            }));
-            nomeAba = `Pendentes_${baseAtual}`;
-            prefixo = `Pendentes_${baseAtual}`;
-        } else {
-            dados = resultado.map(item => ({
-                NRP: item.nrp || '',
-                Material: item.material || '',
-                'Local (planilha)': item.local || '',
-                Observação: item.observacao
-            }));
-            nomeAba = `Fora_${baseAtual}`;
-            prefixo = `Fora_da_${baseAtual}`;
-        }
+        const dados = resultado.map(row => ({
+            NRP: row[0] || '',
+            Material: row[1] || '',
+            Localização: row[2] || '',
+            Responsável: row[3] || ''
+        }));
 
-        const filtroLocal = document.getElementById('filtroLocal').value.trim();
-        const sufixoSetor = filtroLocal
-            ? '_' + filtroLocal.replace(/[^\w\-]+/g, '_').slice(0, 30)
+        const sufixoSala = (baseAtual === 'COAUD' && salaAtual !== TODAS)
+            ? '_' + salaAtual.replace(/[^\w\-]+/g, '_').slice(0, 30)
             : '';
 
         const worksheet = XLSX.utils.json_to_sheet(dados);
         const workbook  = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, nomeAba.slice(0, 31));
-        XLSX.writeFile(workbook, `${prefixo}${sufixoSetor}_${formatarData()}.xlsx`);
+        XLSX.utils.book_append_sheet(workbook, worksheet, `Nao_encontrados_${baseAtual}`.slice(0, 31));
+        XLSX.writeFile(workbook, `Nao_encontrados_${baseAtual}${sufixoSala}_${formatarData()}.xlsx`);
     }
     </script>
 </body>
