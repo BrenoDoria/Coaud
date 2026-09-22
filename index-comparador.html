@@ -157,7 +157,7 @@
                             <option value="">Carregando salas...</option>
                         </select>
                     </div>
-                    <p class="ajuda">Escolha uma sala para conferir só o levantamento dela, ou "Todas as salas" para a aba COAUD inteira.</p>
+                    <p class="ajuda">A sala é reconhecida automaticamente pela coluna C (Localização) da planilha carregada. Se precisar, você pode trocar aqui.</p>
                 </div>
 
                 <!-- ═══ UPLOAD ═══ -->
@@ -387,17 +387,21 @@
                 const workbook = XLSX.read(data, { type: 'array' });
 
                 nrpsEscaneados = new Set();
+                const contagemSalas = {};
                 workbook.SheetNames.forEach(sheetName => {
                     const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: '' });
                     rows.slice(1).forEach(row => {
                         const n = normalizeNRP(row[0]);
                         if (n) nrpsEscaneados.add(n);
+                        const sala = (row[2] || '').toString().trim();
+                        if (n && sala) contagemSalas[sala] = (contagemSalas[sala] || 0) + 1;
                     });
                 });
 
                 planilhaCarregada = true;
-                setProgress(`📄 ${nrpsEscaneados.size} NRPs lidos da planilha.`);
+                const msgSala = detectarSala(contagemSalas);
                 renderizar();
+                if (msgSala) setProgress(document.getElementById('progressText').textContent + msgSala);
             } catch (error) {
                 setProgress('Erro ao ler a planilha: ' + error.message);
             } finally {
@@ -409,6 +413,37 @@
             document.getElementById('spinner').style.display = 'none';
         };
         reader.readAsArrayBuffer(file);
+    }
+
+    // Sala = valor mais frequente da coluna C, casado com as salas da COAUD
+    // (ignora maiúsculas/minúsculas: "Almoxarifado" = "ALMOXARIFADO")
+    function detectarSala(contagemSalas) {
+        const sel = document.getElementById('salaSelect');
+        const ordenadas = Object.entries(contagemSalas).sort((a, b) => b[1] - a[1]);
+
+        if (!ordenadas.length) {
+            sel.value = TODAS;
+            salaAtual = baseAtual === 'COAUD' ? TODAS : salaAtual;
+            atualizarLabelSala();
+            return ' Coluna C vazia: comparando com todas as salas.';
+        }
+
+        const salaPlanilha = ordenadas[0][0];
+        const opcao = [...sel.options].find(o =>
+            o.value !== TODAS && o.value.trim().toUpperCase() === salaPlanilha.toUpperCase());
+
+        if (!opcao) {
+            sel.value = TODAS;
+            if (baseAtual === 'COAUD') salaAtual = TODAS;
+            atualizarLabelSala();
+            alert(`A sala "${salaPlanilha}" da planilha não existe na aba COAUD.\nComparando com todas as salas; se quiser, escolha a sala manualmente.`);
+            return ` Sala "${salaPlanilha}" não encontrada na COAUD.`;
+        }
+
+        sel.value = opcao.value;
+        if (baseAtual === 'COAUD') salaAtual = opcao.value;
+        atualizarLabelSala();
+        return ` Sala identificada: ${opcao.value}.`;
     }
 
     // ══════════════════════════════════════════════════════
