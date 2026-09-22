@@ -27,6 +27,7 @@
         .file-upload input[type="file"] { display: none; }
         .file-name { font-size: 12px; color: var(--text-muted); font-style: italic; }
         .file-name.loaded { color: var(--verde); font-style: normal; font-weight: 600; }
+
         .stat-result {
             display: inline-block;
             background: rgba(0,176,79,0.1);
@@ -39,6 +40,84 @@
             background: rgba(245,158,11,0.1);
             border-color: rgba(245,158,11,0.3);
             color: #fbbf24;
+        }
+
+        /* ── Opções de comparação ── */
+        .opcoes-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+            margin-bottom: 14px;
+        }
+        .opcao-label {
+            display: block;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+        .segmented {
+            display: flex;
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+        }
+        .segmented button {
+            flex: 1;
+            margin: 0;
+            border: none;
+            border-radius: 0;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 12px;
+            font-weight: 600;
+            padding: 8px 10px;
+            cursor: pointer;
+        }
+        .segmented button + button { border-left: 1px solid var(--card-border); }
+        .segmented button.ativo {
+            background: var(--verde);
+            color: #fff;
+        }
+        .segmented button:focus-visible { outline: 2px solid #60a5fa; outline-offset: -2px; }
+
+        .filtros-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: 12px;
+            align-items: end;
+        }
+        .filtros-grid select,
+        .filtros-grid input {
+            width: 100%;
+        }
+        .ajuda {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 8px;
+        }
+
+        .resumo-linha {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .resumo-item {
+            font-size: 11px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--card-border);
+            color: var(--text-muted);
+        }
+        .resumo-item strong { color: var(--text); }
+
+        .obs-outra-aba { color: #60a5fa; font-size: 11px; }
+        .obs-nenhuma   { color: #fbbf24; font-size: 11px; }
+
+        @media (max-width: 700px) {
+            .opcoes-grid, .filtros-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -96,12 +175,14 @@
                 <button class="btn-menu" onclick="toggleSidebar()">☰</button>
                 <div>
                     <div class="topbar-title">Comparador de Patrimônios</div>
-                    <div class="topbar-sub">Localiza patrimônios dos 3 responsáveis ainda não coletados</div>
+                    <div class="topbar-sub">
+                        Base atual: <span id="base-atual-label" style="color:var(--verde);font-weight:700">COAUD</span>
+                    </div>
                 </div>
                 <div class="topbar-right">
                     <div id="spinner" class="spinner" style="margin:0"></div>
                     <p id="progressText" style="font-size:11px;color:var(--text-muted);margin:0">
-                        Carregando base SIGMAS...
+                        Carregando bases SIGMAS e COAUD...
                     </p>
                 </div>
             </div>
@@ -110,21 +191,65 @@
 
                 <!-- ═══ UPLOAD ═══ -->
                 <div class="card">
-                    <div class="card-title">Planilha Consolidada do Levantamento</div>
+                    <div class="card-title">Planilha do levantamento</div>
 
                     <div class="file-upload">
                         <label for="fileInputExportada" class="file-upload-label">
-                            📄 Escolher Planilha Consolidada (Total Escaneado)
+                            📄 Escolher planilha (.xlsx)
                         </label>
-                        <input type="file" id="fileInputExportada" accept=".xlsx">
+                        <input type="file" id="fileInputExportada" accept=".xlsx,.xls,.csv">
                         <span class="file-name" id="fileName">Nenhum arquivo escolhido</span>
                     </div>
+                    <p class="ajuda">
+                        O NRP deve estar na primeira coluna. Se a planilha tiver várias abas (uma por sala, por exemplo), todas são lidas.
+                    </p>
+                </div>
+
+                <!-- ═══ OPÇÕES ═══ -->
+                <div class="card">
+                    <div class="card-title">Como comparar</div>
+
+                    <div class="opcoes-grid">
+                        <div>
+                            <span class="opcao-label">Comparar com a aba</span>
+                            <div class="segmented" id="seg-base">
+                                <button type="button" data-base="SIGMAS">📘 SIGMAS (todos)</button>
+                                <button type="button" data-base="COAUD">📗 COAUD (responsáveis)</button>
+                            </div>
+                        </div>
+                        <div>
+                            <span class="opcao-label">Mostrar</span>
+                            <div class="segmented" id="seg-modo">
+                                <button type="button" data-modo="pendentes">Na base, não coletados</button>
+                                <button type="button" data-modo="fora">Coletados, fora da base</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="filtros-grid">
+                        <div class="field-block">
+                            <label for="filtroLocal">Setor / localização (contém)</label>
+                            <input type="text" id="filtroLocal" list="lista-locais"
+                                placeholder="Ex.: ANEXO IV, SALA 12..." autocomplete="off">
+                            <datalist id="lista-locais"></datalist>
+                        </div>
+                        <div class="field-block">
+                            <label for="filtroResp">Responsável</label>
+                            <select id="filtroResp">
+                                <option value="">Todos</option>
+                            </select>
+                        </div>
+                        <div>
+                            <button type="button" class="cancelButton" onclick="limparFiltros()">✕ Limpar filtros</button>
+                        </div>
+                    </div>
+                    <p class="ajuda" id="ajuda-modo"></p>
 
                     <div id="statContainer"></div>
 
                     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
-                        <button onclick="exportarNaoEncontrados()" class="btn-blue">
-                            ⬇ Exportar Patrimônios Ausentes (.xlsx)
+                        <button onclick="exportarResultado()" class="btn-blue">
+                            ⬇ Exportar resultado (.xlsx)
                         </button>
                     </div>
                 </div>
@@ -132,21 +257,18 @@
                 <!-- ═══ TABELA ═══ -->
                 <div class="card" style="padding:0;overflow:hidden">
                     <div style="padding:14px 16px 8px">
-                        <div class="card-title" style="margin:0;border:none;padding:0">
-                            Patrimônios Pendentes de Coleta (dos 3 Responsáveis)
+                        <div class="card-title" id="titulo-tabela" style="margin:0;border:none;padding:0">
+                            Resultado da comparação
                         </div>
                     </div>
                     <div class="table-wrapper">
                         <table id="patrimonioTable">
-                            <thead>
-                                <tr>
-                                    <th>NRP</th>
-                                    <th>Material</th>
-                                    <th>Localização</th>
-                                    <th>Responsável</th>
-                                </tr>
-                            </thead>
-                            <tbody id="patrimonioList"></tbody>
+                            <thead id="patrimonioHead"></thead>
+                            <tbody id="patrimonioList">
+                                <tr><td style="text-align:center;color:var(--text-muted);padding:24px">
+                                    Carregue a planilha do levantamento para ver o resultado.
+                                </td></tr>
+                            </tbody>
                         </table>
                     </div>
                 </div>
@@ -167,7 +289,7 @@
         const u = JSON.parse(localStorage.getItem('usuarioLogado'));
         if (!u) { window.location.href = 'index.html'; return; }
         const initials = nome => nome
-            ? nome.split(' ').slice(0,2).map(n=>n[0]).join('').toUpperCase()
+            ? nome.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()
             : '?';
         const avatarEl = document.getElementById('user-avatar');
         const nameEl   = document.getElementById('user-name');
@@ -266,74 +388,89 @@
     }
 
     // ══════════════════════════════════════════════════════
-    //  CONFIGURAÇÃO — Comparador
+    //  CONFIGURAÇÃO — mesma planilha do Localizador
     // ══════════════════════════════════════════════════════
-    const FILE_ID = '1EJOqQOe5lu42Y2B-p6A0wIySAsv1gna3Tt1_fTBY9b4';
-    const ABA_BASE = 'SIGMAS';
+    const FILE_ID = '1iNeSf0wakQ6j9Eg_qOCzVNKcIVVIsukeThL0Phpd5LE';
+    const ABAS    = ['SIGMAS', 'COAUD'];
 
-    const responsaveisEspecificos = [
-        "ALBERTO CESAR SOUZA ALMEIDA (5302)",
-        "PAULO FERNANDO VOLPE (5933)",
-        "JOSE HENRIQUE FERREIRA DA SILVA (7913)"
-    ];
+    let accessToken   = null;
+    let bases         = { SIGMAS: [], COAUD: [] };   // linhas [NRP, Material, Local, Responsável]
+    let indicesBases  = { SIGMAS: new Map(), COAUD: new Map() }; // NRP normalizado -> linha
+    let escaneados    = new Map();   // NRP normalizado -> { nrp, material, local, origem }
+    let planilhaCarregada = false;
 
-    let accessToken       = null;
-    let baseSigmas        = [];   // apenas linhas dos 3 responsáveis
-    let nrpsEscaneados    = new Set();
-    let pendentes         = [];   // resultado da comparação
+    let baseAtual = 'COAUD';
+    let modoAtual = 'pendentes';
+    let resultado = [];   // linhas exibidas (para exportar)
 
     function normalizeNRP(nrp) {
-        if (!nrp) return "";
+        if (nrp === undefined || nrp === null) return "";
         return nrp.toString().replace(/\./g, "").replace(/^0+/, "").trim();
+    }
+
+    function normalizarTexto(t) {
+        return (t || "").toString()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .toUpperCase().trim();
+    }
+
+    function esc(t) {
+        return (t === undefined || t === null ? '' : t.toString())
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
     function formatarData() {
         const d = new Date();
-        return `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
+        return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
     }
 
     // ══════════════════════════════════════════════════════
-    //  CARREGAMENTO DA BASE (SIGMAS filtrada nos 3)
+    //  CARREGAMENTO DAS DUAS ABAS
     // ══════════════════════════════════════════════════════
     window.addEventListener('load', () => {
+        configurarControles();
         accessToken = localStorage.getItem('access_token');
         if (!accessToken) {
             alert('Sessão expirada. Faça login novamente.');
             window.location.href = 'index.html';
             return;
         }
-        carregarBase();
+        carregarBases();
     });
 
-    async function carregarBase() {
+    async function carregarBases() {
         document.getElementById('spinner').style.display = 'inline-block';
-        setProgress('Carregando base SIGMAS...');
+        setProgress('Carregando bases SIGMAS e COAUD...');
         try {
+            const ranges = ABAS.map(a => `ranges=${encodeURIComponent(a + '!A:D')}`).join('&');
             const r = await fetch(
-                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/${ABA_BASE}!A:D`,
+                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values:batchGet?${ranges}`,
                 { headers: { 'Authorization': `Bearer ${accessToken}` } }
             );
             if (!r.ok) {
-                const e = await r.json();
                 if (r.status === 401) {
                     localStorage.removeItem('access_token');
                     alert('Sessão expirada. Faça login novamente.');
                     window.location.href = 'index.html';
                     return;
                 }
+                const e = await r.json().catch(() => ({}));
                 throw new Error(e.error?.message || r.statusText);
             }
-            const data  = await r.json();
-            const todas = (data.values || []).slice(1);
+            const data = await r.json();
 
-            // Filtra APENAS os patrimônios dos 3 responsáveis
-            baseSigmas = todas.filter(row =>
-                row[3] && responsaveisEspecificos.some(resp =>
-                    resp.trim().toUpperCase() === row[3].toString().trim().toUpperCase()
-                )
-            );
+            (data.valueRanges || []).forEach((vr, i) => {
+                const aba   = ABAS[i];
+                const linhas = (vr.values || []).slice(1).filter(row => normalizeNRP(row[0]));
+                bases[aba] = linhas;
+                const mapa = new Map();
+                linhas.forEach(row => mapa.set(normalizeNRP(row[0]), row));
+                indicesBases[aba] = mapa;
+            });
 
-            setProgress(`✅ Base SIGMAS vinculada (${baseSigmas.length} patrimônios dos 3 responsáveis).`);
+            atualizarListasFiltro();
+            setProgress(`✅ Bases carregadas — SIGMAS: ${bases.SIGMAS.length} | COAUD: ${bases.COAUD.length}.`);
+            renderizar();
         } catch (error) {
             setProgress('Erro: ' + error.message);
         } finally {
@@ -342,58 +479,126 @@
     }
 
     // ══════════════════════════════════════════════════════
-    //  UPLOAD DA PLANILHA CONSOLIDADA
+    //  CONTROLES (base, modo, filtros)
     // ══════════════════════════════════════════════════════
-    document.getElementById('fileInputExportada').addEventListener('change', function() {
-        const nameEl = document.getElementById('fileName');
-        const file = this.files[0];
-        if (!file) {
-            nameEl.textContent = 'Nenhum arquivo escolhido';
-            nameEl.classList.remove('loaded');
-            return;
-        }
-        nameEl.textContent = '📎 ' + file.name;
-        nameEl.classList.add('loaded');
-        processarConsolidada(file);
-    });
+    function configurarControles() {
+        document.querySelectorAll('#seg-base button').forEach(btn => {
+            btn.addEventListener('click', () => {
+                baseAtual = btn.dataset.base;
+                atualizarListasFiltro();
+                renderizar();
+            });
+        });
+        document.querySelectorAll('#seg-modo button').forEach(btn => {
+            btn.addEventListener('click', () => {
+                modoAtual = btn.dataset.modo;
+                renderizar();
+            });
+        });
 
-    function processarConsolidada(file) {
-        if (!baseSigmas.length) {
-            setProgress('Aguarde a base SIGMAS ser carregada primeiro.');
-            return;
-        }
+        let timer;
+        document.getElementById('filtroLocal').addEventListener('input', () => {
+            clearTimeout(timer);
+            timer = setTimeout(renderizar, 250);
+        });
+        document.getElementById('filtroResp').addEventListener('change', renderizar);
+
+        document.getElementById('fileInputExportada').addEventListener('change', function () {
+            const nameEl = document.getElementById('fileName');
+            const file = this.files[0];
+            if (!file) {
+                nameEl.textContent = 'Nenhum arquivo escolhido';
+                nameEl.classList.remove('loaded');
+                return;
+            }
+            nameEl.textContent = '📎 ' + file.name;
+            nameEl.classList.add('loaded');
+            processarPlanilha(file);
+            this.value = '';   // permite recarregar o mesmo arquivo
+        });
+
+        atualizarBotoes();
+    }
+
+    function atualizarBotoes() {
+        document.querySelectorAll('#seg-base button').forEach(b =>
+            b.classList.toggle('ativo', b.dataset.base === baseAtual));
+        document.querySelectorAll('#seg-modo button').forEach(b =>
+            b.classList.toggle('ativo', b.dataset.modo === modoAtual));
+        document.getElementById('base-atual-label').textContent = baseAtual;
+
+        const respSel = document.getElementById('filtroResp');
+        respSel.disabled = (modoAtual === 'fora');
+
+        document.getElementById('ajuda-modo').textContent = modoAtual === 'pendentes'
+            ? `Lista os patrimônios que estão na aba ${baseAtual} (dentro do setor/responsável filtrado) e não aparecem na planilha carregada.`
+            : `Lista os NRPs da planilha carregada que não existem na aba ${baseAtual}. O filtro de setor usa a localização/aba da própria planilha.`;
+    }
+
+    function atualizarListasFiltro() {
+        const base = bases[baseAtual];
+
+        // Locais (datalist)
+        const locais = [...new Set(base.map(r => (r[2] || '').toString().trim()).filter(Boolean))]
+            .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+        document.getElementById('lista-locais').innerHTML =
+            locais.map(l => `<option value="${esc(l)}"></option>`).join('');
+
+        // Responsáveis (select) — mantém a seleção se ainda existir
+        const sel   = document.getElementById('filtroResp');
+        const atual = sel.value;
+        const resps = [...new Set(base.map(r => (r[3] || '').toString().trim()).filter(Boolean))]
+            .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+        sel.innerHTML = '<option value="">Todos</option>' +
+            resps.map(r => `<option value="${esc(r)}">${esc(r)}</option>`).join('');
+        if (resps.includes(atual)) sel.value = atual;
+    }
+
+    function limparFiltros() {
+        document.getElementById('filtroLocal').value = '';
+        document.getElementById('filtroResp').value = '';
+        renderizar();
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  LEITURA DA PLANILHA DO LEVANTAMENTO
+    // ══════════════════════════════════════════════════════
+    function processarPlanilha(file) {
         document.getElementById('spinner').style.display = 'inline-block';
-        setProgress('Lendo planilha consolidada...');
+        setProgress('Lendo planilha...');
 
         const reader = new FileReader();
-        reader.onload = function(e) {
+        reader.onload = function (e) {
             try {
                 const data     = new Uint8Array(e.target.result);
                 const workbook = XLSX.read(data, { type: 'array' });
 
-                // Junta NRPs de TODAS as abas do arquivo (caso venha 1 aba por sala)
-                nrpsEscaneados = new Set();
+                escaneados = new Map();
                 workbook.SheetNames.forEach(sheetName => {
                     const ws   = workbook.Sheets[sheetName];
-                    const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+                    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
                     rows.slice(1).forEach(row => {
-                        if (row[0] !== undefined && row[0] !== null && row[0] !== '') {
-                            const n = normalizeNRP(row[0]);
-                            if (n) nrpsEscaneados.add(n);
-                        }
+                        const n = normalizeNRP(row[0]);
+                        if (!n || escaneados.has(n)) return;
+                        escaneados.set(n, {
+                            nrp:      row[0],
+                            material: row[1] || '',
+                            local:    row[2] || '',
+                            origem:   sheetName
+                        });
                     });
                 });
 
-                setProgress(`Comparando ${nrpsEscaneados.size} NRPs coletados com ${baseSigmas.length} da base...`);
-                compararEExibir();
-
+                planilhaCarregada = true;
+                setProgress(`📄 ${escaneados.size} NRPs lidos da planilha.`);
+                renderizar();
             } catch (error) {
                 setProgress('Erro ao ler a planilha: ' + error.message);
             } finally {
                 document.getElementById('spinner').style.display = 'none';
             }
         };
-        reader.onerror = function() {
+        reader.onerror = function () {
             setProgress('Erro ao ler o arquivo.');
             document.getElementById('spinner').style.display = 'none';
         };
@@ -401,66 +606,170 @@
     }
 
     // ══════════════════════════════════════════════════════
-    //  COMPARAÇÃO — pendentes = base dos 3 − escaneados
+    //  COMPARAÇÃO + EXIBIÇÃO
     // ══════════════════════════════════════════════════════
-    function compararEExibir() {
-        pendentes = baseSigmas.filter(row => {
-            const n = normalizeNRP(row[0]);
-            return n && !nrpsEscaneados.has(n);
-        });
+    function renderizar() {
+        atualizarBotoes();
 
-        const list = document.getElementById('patrimonioList');
-        list.innerHTML = '';
+        const head  = document.getElementById('patrimonioHead');
+        const list  = document.getElementById('patrimonioList');
+        const stat  = document.getElementById('statContainer');
+        const titulo = document.getElementById('titulo-tabela');
 
-        if (!pendentes.length) {
-            list.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px">
-                🎉 Todos os patrimônios dos 3 responsáveis foram coletados!
-            </td></tr>`;
-        } else {
-            pendentes.forEach(row => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${row[0] || '-'}</td>
-                    <td>${row[1] || '-'}</td>
-                    <td>${row[2] || '-'}</td>
-                    <td>${row[3] || '-'}</td>
-                `;
-                list.appendChild(tr);
-            });
+        const filtroLocal = normalizarTexto(document.getElementById('filtroLocal').value);
+        const filtroResp  = document.getElementById('filtroResp').value;
+        const base        = bases[baseAtual];
+        const outraAba    = baseAtual === 'SIGMAS' ? 'COAUD' : 'SIGMAS';
+
+        if (!planilhaCarregada) {
+            head.innerHTML = '';
+            list.innerHTML = `<tr><td style="text-align:center;color:var(--text-muted);padding:24px">
+                Carregue a planilha do levantamento para ver o resultado.</td></tr>`;
+            stat.innerHTML = '';
+            resultado = [];
+            return;
         }
 
-        const c = document.getElementById('statContainer');
-        if (pendentes.length > 0) {
-            c.innerHTML = `<div class="stat-result warn">
-                ⚠ ${pendentes.length} patrimônios dos 3 responsáveis ainda NÃO foram coletados.
-            </div>`;
-            setProgress(`${pendentes.length} pendentes de coleta.`);
+        if (modoAtual === 'pendentes') {
+            // Base filtrada pelo setor/responsável
+            const baseFiltrada = base.filter(row => {
+                if (filtroLocal && !normalizarTexto(row[2]).includes(filtroLocal)) return false;
+                if (filtroResp && (row[3] || '').toString().trim() !== filtroResp) return false;
+                return true;
+            });
+            resultado = baseFiltrada.filter(row => !escaneados.has(normalizeNRP(row[0])));
+            const coletados = baseFiltrada.length - resultado.length;
+            const pct = baseFiltrada.length ? Math.round(coletados / baseFiltrada.length * 100) : 0;
+
+            titulo.textContent = `Na aba ${baseAtual}, não coletados`;
+            head.innerHTML = `<tr><th>NRP</th><th>Material</th><th>Localização</th><th>Responsável</th></tr>`;
+
+            if (!resultado.length) {
+                list.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px">
+                    🎉 Todos os patrimônios deste recorte foram coletados.</td></tr>`;
+            } else {
+                list.innerHTML = resultado.map(row => `
+                    <tr>
+                        <td>${esc(row[0]) || '-'}</td>
+                        <td>${esc(row[1]) || '-'}</td>
+                        <td>${esc(row[2]) || '-'}</td>
+                        <td>${esc(row[3]) || '-'}</td>
+                    </tr>`).join('');
+            }
+
+            stat.innerHTML = `
+                <div class="stat-result ${resultado.length ? 'warn' : ''}">
+                    ${resultado.length
+                        ? `⚠ ${resultado.length} patrimônios da aba ${baseAtual} ainda não foram coletados.`
+                        : `✅ Recorte completo na aba ${baseAtual}.`}
+                </div>
+                <div class="resumo-linha">
+                    <span class="resumo-item">No recorte: <strong>${baseFiltrada.length}</strong></span>
+                    <span class="resumo-item">Coletados: <strong>${coletados}</strong> (${pct}%)</span>
+                    <span class="resumo-item">Faltando: <strong>${resultado.length}</strong></span>
+                </div>`;
+            setProgress(`${baseAtual}: ${resultado.length} pendentes de ${baseFiltrada.length} no recorte.`);
+
         } else {
-            c.innerHTML = `<div class="stat-result">
-                ✅ Levantamento completo! Nenhum patrimônio pendente.
-            </div>`;
-            setProgress('Levantamento 100% completo.');
+            const indice = indicesBases[baseAtual];
+            const indiceOutra = indicesBases[outraAba];
+
+            const coletadosFiltrados = [...escaneados.entries()].filter(([n, item]) => {
+                if (!filtroLocal) return true;
+                return normalizarTexto(item.local).includes(filtroLocal) ||
+                       normalizarTexto(item.origem).includes(filtroLocal);
+            });
+
+            resultado = coletadosFiltrados
+                .filter(([n]) => !indice.has(n))
+                .map(([n, item]) => {
+                    const naOutra = indiceOutra.get(n);
+                    return {
+                        nrp: item.nrp,
+                        material: item.material || (naOutra ? naOutra[1] : ''),
+                        local: item.local || item.origem,
+                        observacao: naOutra
+                            ? `Existe em ${outraAba} — ${naOutra[2] || 'sem local'} / ${naOutra[3] || 'sem responsável'}`
+                            : 'Não existe em nenhuma aba'
+                    };
+                });
+
+            titulo.textContent = `Coletados, fora da aba ${baseAtual}`;
+            head.innerHTML = `<tr><th>NRP</th><th>Material</th><th>Local (planilha)</th><th>Observação</th></tr>`;
+
+            if (!resultado.length) {
+                list.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px">
+                    ✅ Todos os NRPs coletados deste recorte existem na aba ${baseAtual}.</td></tr>`;
+            } else {
+                list.innerHTML = resultado.map(item => `
+                    <tr>
+                        <td>${esc(item.nrp) || '-'}</td>
+                        <td>${esc(item.material) || '-'}</td>
+                        <td>${esc(item.local) || '-'}</td>
+                        <td class="${item.observacao.startsWith('Existe') ? 'obs-outra-aba' : 'obs-nenhuma'}">${esc(item.observacao)}</td>
+                    </tr>`).join('');
+            }
+
+            const semNenhuma = resultado.filter(r => r.observacao.startsWith('Não')).length;
+            stat.innerHTML = `
+                <div class="stat-result ${resultado.length ? 'warn' : ''}">
+                    ${resultado.length
+                        ? `⚠ ${resultado.length} NRPs coletados não estão na aba ${baseAtual}.`
+                        : `✅ Nenhum NRP coletado fora da aba ${baseAtual}.`}
+                </div>
+                <div class="resumo-linha">
+                    <span class="resumo-item">Coletados no recorte: <strong>${coletadosFiltrados.length}</strong></span>
+                    <span class="resumo-item">Fora de ${baseAtual}: <strong>${resultado.length}</strong></span>
+                    <span class="resumo-item">Presentes só em ${outraAba}: <strong>${resultado.length - semNenhuma}</strong></span>
+                    <span class="resumo-item">Sem cadastro em nenhuma: <strong>${semNenhuma}</strong></span>
+                </div>`;
+            setProgress(`${resultado.length} NRPs coletados fora da aba ${baseAtual}.`);
         }
     }
 
     // ══════════════════════════════════════════════════════
-    //  EXPORTAÇÃO DOS PENDENTES
+    //  EXPORTAÇÃO DO RESULTADO ATUAL
     // ══════════════════════════════════════════════════════
-    function exportarNaoEncontrados() {
-        if (!pendentes.length) {
-            alert('Nenhum patrimônio pendente para exportar. Carregue a planilha consolidada primeiro.');
+    function exportarResultado() {
+        if (!planilhaCarregada) {
+            alert('Carregue a planilha do levantamento primeiro.');
             return;
         }
-        const dados = pendentes.map(row => ({
-            NRP: row[0] || '',
-            Material: row[1] || '',
-            Localização: row[2] || '',
-            Responsável: row[3] || ''
-        }));
+        if (!resultado.length) {
+            alert('Não há itens no resultado atual para exportar.');
+            return;
+        }
+
+        let dados, nomeAba, prefixo;
+        if (modoAtual === 'pendentes') {
+            dados = resultado.map(row => ({
+                NRP: row[0] || '',
+                Material: row[1] || '',
+                Localização: row[2] || '',
+                Responsável: row[3] || ''
+            }));
+            nomeAba = `Pendentes_${baseAtual}`;
+            prefixo = `Pendentes_${baseAtual}`;
+        } else {
+            dados = resultado.map(item => ({
+                NRP: item.nrp || '',
+                Material: item.material || '',
+                'Local (planilha)': item.local || '',
+                Observação: item.observacao
+            }));
+            nomeAba = `Fora_${baseAtual}`;
+            prefixo = `Fora_da_${baseAtual}`;
+        }
+
+        const filtroLocal = document.getElementById('filtroLocal').value.trim();
+        const sufixoSetor = filtroLocal
+            ? '_' + filtroLocal.replace(/[^\w\-]+/g, '_').slice(0, 30)
+            : '';
+
         const worksheet = XLSX.utils.json_to_sheet(dados);
         const workbook  = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, 'Pendentes_Coleta');
-        XLSX.writeFile(workbook, `Patrimonios_Pendentes_${formatarData()}.xlsx`);
+        XLSX.utils.book_append_sheet(workbook, worksheet, nomeAba.slice(0, 31));
+        XLSX.writeFile(workbook, `${prefixo}${sufixoSetor}_${formatarData()}.xlsx`);
     }
     </script>
 </body>
