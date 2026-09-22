@@ -414,6 +414,18 @@
         return nrp.toString().replace(/^0+/, "").trim();
     }
 
+    function montarLog(tipo) {
+    const u = JSON.parse(localStorage.getItem('usuarioLogado')) || {};
+    const operador = u.email || u.mail || u.nome || 'desconhecido';
+    const d = new Date();
+    const dia  = String(d.getDate()).padStart(2, '0');
+    const mes  = String(d.getMonth() + 1).padStart(2, '0');
+    const ano  = d.getFullYear();
+    const hora = String(d.getHours()).padStart(2, '0');
+    const min  = String(d.getMinutes()).padStart(2, '0');
+    return `alterado: "${tipo}" data: ${dia}/${mes}/${ano} hora: ${hora}:${min}hs pelo operador: ${operador}`;
+}
+
     // ══════════════════════════════════════════════════════
     //  CARREGAMENTO INICIAL
     // ══════════════════════════════════════════════════════
@@ -513,6 +525,18 @@
         if (e.key === "Enter") addPatrimonio();
     });
 
+        // Mantém o cursor sempre no campo de coleta.
+    // Só devolve o foco se houver sala confirmada e nenhum modal aberto.
+    document.getElementById("patrimonioInput").addEventListener("blur", function() {
+        setTimeout(() => {
+            const modalTransfAberto = document.getElementById("modalTransf").classList.contains("aberto");
+            const modalNovoAberto   = document.getElementById("modalNovo").classList.contains("aberto");
+            if (salaSelecionada && !modalTransfAberto && !modalNovoAberto) {
+                document.getElementById("patrimonioInput").focus();
+            }
+        }, 120);
+    });
+
     // ══════════════════════════════════════════════════════
     //  FLUXO PRINCIPAL — ADICIONAR PATRIMÔNIO
     // ══════════════════════════════════════════════════════
@@ -528,10 +552,13 @@
             normalizeNRP(item.NRP) === n
         );
 
-        if (idxInventario !== -1) {
+               if (idxInventario !== -1) {
             const item = currentSalaInventario[idxInventario];
             if (item.status === 'red') {
                 item.status = 'green';
+                // move o item encontrado para o TOPO da lista
+                currentSalaInventario.splice(idxInventario, 1);
+                currentSalaInventario.unshift(item);
                 patrimoniosColetados.push({
                     NRP: item.NRP, Material: item.Material,
                     Localização: salaSelecionada, Responsável: item.Responsável
@@ -539,6 +566,8 @@
                 updateInventarioTable();
                 setProgress(`✅ NRP "${input}" localizado na sala.`);
             } else {
+                // já estava verde/amarelo → popup de aviso
+                alert(`⚠ O patrimônio "${input}" já foi coletado nesta sala.`);
                 setProgress(`⚠ NRP "${input}" já foi coletado nesta sala.`);
             }
             document.getElementById("patrimonioInput").value = "";
@@ -593,10 +622,13 @@
     function marcarComoColetado(rowRef, status) {
         const n = normalizeNRP(rowRef[0]);
         const idx = currentSalaInventario.findIndex(item => normalizeNRP(item.NRP) === n);
-        if (idx !== -1) {
+               if (idx !== -1) {
             currentSalaInventario[idx].status      = status;
             currentSalaInventario[idx].Responsável = rowRef[3] || '';
             currentSalaInventario[idx].Material    = rowRef[1] || '';
+            // move para o topo
+            const [movido] = currentSalaInventario.splice(idx, 1);
+            currentSalaInventario.unshift(movido);
         } else {
             currentSalaInventario.unshift({
                 NRP: rowRef[0]?.toString(),
@@ -716,7 +748,7 @@
         try {
             const nrp      = transfPendente.nrp;
             const material = transfPendente.material;
-            const linha    = [nrp, material, salaSelecionada, respFinal];
+            const linha    = [nrp, material, salaSelecionada, respFinal, montarLog("sala")];
             const isNovoRespCoaud = RESPONSAVEIS_COAUD.includes(respFinal);
 
             // SIGMAS: sempre atualiza
@@ -821,7 +853,7 @@
         setProgress("Cadastrando novo patrimônio...");
 
         try {
-            const linha = [nrp, material, salaSelecionada, respFinal];
+            const linha = [nrp, material, salaSelecionada, respFinal, montarLog("cadastro")];
             const isCoaud = RESPONSAVEIS_COAUD.includes(respFinal);
 
             await appendLinha(accessToken, 'SIGMAS', linha);
@@ -850,7 +882,7 @@
     // ══════════════════════════════════════════════════════
     async function atualizarLinha(accessToken, aba, linha, valores) {
         const r = await fetch(
-            `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/${aba}!A${linha}:D${linha}?valueInputOption=RAW`,
+            `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/${aba}!A${linha}:E${linha}?valueInputOption=RAW`,
             { method: 'PUT',
               headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
               body: JSON.stringify({ values: [valores] }) }
@@ -860,7 +892,7 @@
 
     async function appendLinha(accessToken, aba, valores) {
         const r = await fetch(
-            `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/${aba}!A:D:append?valueInputOption=RAW`,
+            `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/${aba}!A:E:append?valueInputOption=RAW`,
             { method: 'POST',
               headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
               body: JSON.stringify({ values: [valores] }) }
