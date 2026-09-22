@@ -662,7 +662,7 @@ if (document.readyState === 'loading') {
         try {
             const material = (p.rowSigmas || p.rowCoaud)[1];
             const nrp      = p.nrp;
-            const linhaNova = [nrp, material, novoLocal, novoResp];
+const linhaNova = [nrp, material, novoLocal, novoResp, montarLog("sala/responsável")];
             const isNovoRespCoaud = RESPONSAVEIS_COAUD.includes(novoResp);
 
             // ── SIGMAS: sempre atualiza (nunca apaga) ──
@@ -708,7 +708,7 @@ if (document.readyState === 'loading') {
 
     async function atualizarLinha(aba, linha, valores) {
         const r = await fetch(
-            `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/${aba}!A${linha}:D${linha}?valueInputOption=RAW`,
+`https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/${aba}!A${linha}:E${linha}?valueInputOption=RAW`,
             { method: 'PUT',
               headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
               body: JSON.stringify({ values: [valores] }) }
@@ -718,7 +718,7 @@ if (document.readyState === 'loading') {
 
     async function appendLinha(aba, valores) {
         const r = await fetch(
-            `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/${aba}!A:D:append?valueInputOption=RAW`,
+`https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/${aba}!A:E:append?valueInputOption=RAW`,
             { method: 'POST',
               headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
               body: JSON.stringify({ values: [valores] }) }
@@ -757,8 +757,8 @@ if (document.readyState === 'loading') {
         setProgress("Inserindo em SIGMAS...");
 
         try {
-            const linha = [nrp, material, localizacao, responsavel];
-
+const linha = [nrp, material, localizacao, responsavel, montarLog("cadastro")];
+            
             // Sempre em SIGMAS
             await appendLinha('SIGMAS', linha);
             sigmasData.push(linha);
