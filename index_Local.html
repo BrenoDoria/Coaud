@@ -484,7 +484,7 @@ if (document.readyState === 'loading') {
         return nrp.toString().replace(/^0+/, "").trim();
     }
 
-       // ══ BUSCA (respeita a aba selecionada) ═══════════════
+          // ══ BUSCA (respeita a aba selecionada) ═══════════════
     function buscarPatrimonio() {
         const nrp = document.getElementById("patrimonioInput").value.trim().replace(/\./g, "");
         if (!nrp) { setProgress("Digite um NRP."); return; }
