@@ -315,39 +315,38 @@
     </div>
 
     <script>
-    // ══ SIDEBAR / LOGOUT ═════════════════════════════════
-    // ══ FILTRA SIDEBAR CONFORME PERMISSÃO ═════════════════
-// ══ Preenche dados do usuário na sidebar ═══════════════
-function preencherUsuarioSidebar() {
-    const u = JSON.parse(localStorage.getItem('usuarioLogado'));
-    if (!u) { window.location.href = 'index.html'; return; }
+    // ══ SIDEBAR / USUÁRIO ════════════════════════════════
+    function preencherUsuarioSidebar() {
+        const u = JSON.parse(localStorage.getItem('usuarioLogado'));
+        if (!u) { window.location.href = 'index.html'; return; }
 
-    const initials = nome => nome
-        ? nome.split(' ').slice(0,2).map(n=>n[0]).join('').toUpperCase()
-        : '?';
+        const initials = nome => nome
+            ? nome.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()
+            : '?';
 
-    const avatarEl = document.getElementById('user-avatar');
-    const nameEl   = document.getElementById('user-name');
-    const roleEl   = document.getElementById('user-role');
+        const avatarEl = document.getElementById('user-avatar');
+        const nameEl   = document.getElementById('user-name');
+        const roleEl   = document.getElementById('user-role');
 
-    if (avatarEl) avatarEl.textContent = initials(u.nome);
-    if (nameEl)   nameEl.textContent   = u.nome || 'Usuário';
-    if (roleEl)   roleEl.textContent   = u.permissao || '';
-}
+        if (avatarEl) avatarEl.textContent = initials(u.nome);
+        if (nameEl)   nameEl.textContent   = u.nome || 'Usuário';
+        if (roleEl)   roleEl.textContent   = u.permissao || '';
+    }
 
-// Executa quando o DOM estiver pronto
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', preencherUsuarioSidebar);
-} else {
-    preencherUsuarioSidebar();
-}
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', preencherUsuarioSidebar);
+    } else {
+        preencherUsuarioSidebar();
+    }
 
     function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
+
     function fazerLogout() {
         localStorage.removeItem('usuarioLogado');
         localStorage.removeItem('access_token');
         window.location.href = 'index.html';
     }
+
     function setProgress(msg) {
         const el = document.getElementById("progressText");
         if (el) el.textContent = msg;
@@ -365,17 +364,31 @@ if (document.readyState === 'loading') {
     ];
 
     let tokenClient;
-    let accessToken               = null;
-    let sigmasData                = [];
-    let coaudData                 = [];
-    let sheetIds                  = {};
-    let abaAtual                  = "COAUD";
-    let patrimonioEditando        = null;   // { emSigmas, emCoaud, rowSigmas, rowCoaud, idxSigmas, idxCoaud }
-    let responsavelSelecionado    = null;
+    let accessToken                = null;
+    let sigmasData                 = [];
+    let coaudData                  = [];
+    let sheetIds                   = {};
+    let abaAtual                   = "SIGMAS";
+    let patrimonioEditando         = null;
+    let responsavelSelecionado     = null;
     let novoResponsavelSelecionado = null;
+
+    // ══ LOG (usa a do sidebar-init.js se existir) ═════════
+    function gerarLog(acao) {
+        if (typeof window.montarLog === 'function' && window.montarLog !== gerarLog) {
+            return window.montarLog(acao);
+        }
+        let nome = 'Desconhecido';
+        try {
+            const u = JSON.parse(localStorage.getItem('usuarioLogado') || '{}');
+            if (u && u.nome) nome = u.nome;
+        } catch (e) { /* ignora */ }
+        return `${new Date().toLocaleString('pt-BR')} - ${nome} - ${acao}`;
+    }
 
     function solicitarToken() {
         if (tokenClient) tokenClient.requestAccessToken();
+        else setProgress("Aguarde, carregando login do Google...");
     }
 
     function mudarAba(aba) {
@@ -386,11 +399,11 @@ if (document.readyState === 'loading') {
         setProgress(`Aba ativa: ${aba}. Nova busca considerará esta aba.`);
         // Fecha resultados anteriores
         document.getElementById('result-container').style.display = 'none';
+        document.getElementById('editor-section').style.display = 'none';
         document.getElementById('novo-patrimonio-container').style.display = 'none';
     }
 
     window.addEventListener('load', () => {
-        // Aba inicial: SIGMAS
         mudarAba('SIGMAS');
 
         const inicializarGoogle = () => {
@@ -436,11 +449,11 @@ if (document.readyState === 'loading') {
         setProgress("Consultando servidor...");
 
         try {
-            // sheet IDs
             const meta = await fetch(
                 `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}`,
                 { headers: { 'Authorization': `Bearer ${accessToken}` } }
             );
+            if (meta.status === 401) throw new Error("401");
             if (!meta.ok) throw new Error("Erro ao obter metadados.");
             const metaData = await meta.json();
             metaData.sheets.forEach(s => { sheetIds[s.properties.title] = s.properties.sheetId; });
@@ -461,30 +474,32 @@ if (document.readyState === 'loading') {
             if (!r2.ok) { const e = await r2.json(); throw new Error(e.error?.message); }
             coaudData = (await r2.json()).values || [];
 
-            setProgress(`✅ SIGMAS: ${sigmasData.length-1} registros | COAUD: ${coaudData.length-1} registros.`);
+            setProgress(`✅ SIGMAS: ${sigmasData.length - 1} registros | COAUD: ${coaudData.length - 1} registros.`);
             document.getElementById("spinner").style.display = "none";
             document.getElementById("patrimonioInput").focus();
         } catch (error) {
-            if (error.message.includes("401")) {
+            const msg = error.message || "";
+            if (msg.includes("401") || msg.toLowerCase().includes("invalid authentication")) {
                 localStorage.removeItem("access_token");
                 accessToken = null;
                 document.getElementById("login-section").style.display = "block";
                 document.getElementById("busca-section").style.display = "none";
                 document.getElementById("regras-info").style.display   = "none";
-                solicitarToken();
+                document.getElementById("spinner").style.display = "none";
+                setProgress("Sessão expirada. Faça login novamente.");
                 return;
             }
-            setProgress("Erro: " + error.message);
+            setProgress("Erro: " + msg);
             document.getElementById("spinner").style.display = "none";
         }
     }
 
     function normalizeNRP(nrp) {
         if (!nrp) return "";
-        return nrp.toString().replace(/^0+/, "").trim();
+        return nrp.toString().replace(/\./g, "").replace(/^0+/, "").trim();
     }
 
-          // ══ BUSCA (respeita a aba selecionada) ═══════════════
+    // ══ BUSCA (respeita a aba selecionada) ═══════════════
     function buscarPatrimonio() {
         const nrp = document.getElementById("patrimonioInput").value.trim().replace(/\./g, "");
         if (!nrp) { setProgress("Digite um NRP."); return; }
@@ -560,7 +575,7 @@ if (document.readyState === 'loading') {
             </div>
         `;
         document.getElementById("result-container").style.display = "block";
-        setProgress(`✅ Encontrado na aba ${abaAtual}. Presente em: ${rowS?'SIGMAS':''}${rowS&&rowC?' + ':''}${rowC?'COAUD':''}.`);
+        setProgress(`✅ Encontrado na aba ${abaAtual}. Presente em: ${rowS ? 'SIGMAS' : ''}${rowS && rowC ? ' + ' : ''}${rowC ? 'COAUD' : ''}.`);
     }
 
     function abrirFormularioNovo(nrp, material) {
@@ -575,7 +590,7 @@ if (document.readyState === 'loading') {
 
     function abrirEditor() {
         if (!patrimonioEditando) return;
-                const p = patrimonioEditando.rowExibida;
+        const p = patrimonioEditando.rowExibida;
         document.getElementById("novoLocal").value = p[2] || "";
         document.getElementById("responsavelInput").value = "";
         document.getElementById("responsavel-list").innerHTML = "";
@@ -600,13 +615,13 @@ if (document.readyState === 'loading') {
     }
 
     // ══ FILTRO DE RESPONSÁVEIS ═══════════════════════════
-    function filtrarResponsavel() {
-        const busca = document.getElementById("responsavelInput").value.trim().toLowerCase();
-        const lista = document.getElementById("responsavel-list");
+    function montarListaResponsaveis(inputId, listaId, aoSelecionar) {
+        const busca = document.getElementById(inputId).value.trim().toLowerCase();
+        const lista = document.getElementById(listaId);
         lista.innerHTML = "";
         if (busca.length < 3) { lista.style.display = 'none'; return; }
 
-        // Coleta todos os responsáveis únicos da base SIGMAS
+        // Responsáveis únicos da base SIGMAS
         const todosResp = [...new Set(sigmasData.slice(1).map(r => r[3]).filter(Boolean))];
         const filtrados = todosResp.filter(r => r.toLowerCase().includes(busca));
 
@@ -621,9 +636,8 @@ if (document.readyState === 'loading') {
                 const isCoaud = RESPONSAVEIS_COAUD.includes(nome);
                 li.innerHTML = `${nome} ${isCoaud ? '<span class="aba-info-chip chip-coaud" style="font-size:9px;margin-left:4px">COAUD</span>' : ''}`;
                 li.onmousedown = () => {
-                    responsavelSelecionado = nome;
-                    document.getElementById("responsavelInput").value = nome;
-                    document.getElementById("resp-selecionado-info").textContent = `Selecionado: ${nome}`;
+                    aoSelecionar(nome);
+                    document.getElementById(inputId).value = nome;
                     lista.style.display = 'none';
                 };
                 lista.appendChild(li);
@@ -632,36 +646,22 @@ if (document.readyState === 'loading') {
         lista.style.display = 'block';
     }
 
+    function filtrarResponsavel() {
+        montarListaResponsaveis("responsavelInput", "responsavel-list", nome => {
+            responsavelSelecionado = nome;
+            const info = document.getElementById("resp-selecionado-info");
+            info.textContent = `Selecionado: ${nome}`;
+            info.style.display = 'block';
+        });
+    }
+
     function filtrarNovoResponsavel() {
-        const busca = document.getElementById("novoResponsavelInput").value.trim().toLowerCase();
-        const lista = document.getElementById("novo-responsavel-list");
-        lista.innerHTML = "";
-        if (busca.length < 3) { lista.style.display = 'none'; return; }
-
-        const todosResp = [...new Set(sigmasData.slice(1).map(r => r[3]).filter(Boolean))];
-        const filtrados = todosResp.filter(r => r.toLowerCase().includes(busca));
-
-        if (!filtrados.length) {
-            const li = document.createElement("li");
-            li.textContent = 'Nenhum responsável encontrado.';
-            li.style.color = 'var(--text-muted)';
-            lista.appendChild(li);
-        } else {
-            filtrados.forEach(nome => {
-                const li = document.createElement("li");
-                const isCoaud = RESPONSAVEIS_COAUD.includes(nome);
-                li.innerHTML = `${nome} ${isCoaud ? '<span class="aba-info-chip chip-coaud" style="font-size:9px;margin-left:4px">COAUD</span>' : ''}`;
-                li.onmousedown = () => {
-                    novoResponsavelSelecionado = nome;
-                    document.getElementById("novoResponsavelInput").value = nome;
-                    document.getElementById("novo-resp-info").textContent = `Selecionado: ${nome}`;
-                    document.getElementById("novo-resp-info").style.display = 'block';
-                    lista.style.display = 'none';
-                };
-                lista.appendChild(li);
-            });
-        }
-        lista.style.display = 'block';
+        montarListaResponsaveis("novoResponsavelInput", "novo-responsavel-list", nome => {
+            novoResponsavelSelecionado = nome;
+            const info = document.getElementById("novo-resp-info");
+            info.textContent = `Selecionado: ${nome}`;
+            info.style.display = 'block';
+        });
     }
 
     // ══ SALVAR (APLICA AS REGRAS) ════════════════════════
@@ -678,43 +678,42 @@ if (document.readyState === 'loading') {
         setProgress("Aplicando regras e salvando...");
 
         try {
-            const material = (p.rowSigmas || p.rowCoaud)[1];
-            const nrp      = p.nrp;
-            const linhaNova = [nrp, material, novoLocal, novoResp, montarLog("sala/responsável")];
+            const material  = (p.rowSigmas || p.rowCoaud)[1];
+            const nrp       = p.nrp;
+            const linhaNova = [nrp, material, novoLocal, novoResp, gerarLog("sala/responsável")];
             const isNovoRespCoaud = RESPONSAVEIS_COAUD.includes(novoResp);
 
-            // ── SIGMAS: sempre atualiza (nunca apaga) ──
+            // ── SIGMAS: sempre atualiza ou cria (nunca apaga) ──
             if (p.emSigmas) {
                 await atualizarLinha('SIGMAS', p.idxSigmas + 1, linhaNova);
                 sigmasData[p.idxSigmas] = linhaNova;
+            } else {
+                await appendLinha('SIGMAS', linhaNova);
+                sigmasData.push(linhaNova);
             }
 
             // ── COAUD: aplica regras ──
             if (isNovoRespCoaud) {
-                // Deve estar em COAUD
                 if (p.emCoaud) {
-                    // Já está: atualiza
                     await atualizarLinha('COAUD', p.idxCoaud + 1, linhaNova);
                     coaudData[p.idxCoaud] = linhaNova;
                 } else {
-                    // Não está: cria
                     await appendLinha('COAUD', linhaNova);
                     coaudData.push(linhaNova);
                 }
-            } else {
-                // NÃO deve estar em COAUD
-                if (p.emCoaud) {
-                    // Está mas não deveria: remove
-                    await deletarLinha('COAUD', p.idxCoaud);
-                    coaudData.splice(p.idxCoaud, 1);
-                }
-                // Se não estava, não faz nada
+            } else if (p.emCoaud) {
+                await deletarLinha('COAUD', p.idxCoaud);
+                coaudData.splice(p.idxCoaud, 1);
             }
 
-            setProgress(`✅ Alterações salvas. ${isNovoRespCoaud?'Presente em SIGMAS + COAUD.':'Presente apenas em SIGMAS.'}`);
             document.getElementById("editor-section").style.display = "none";
             document.getElementById("patrimonioInput").value = nrp;
+
+            // Se saiu da COAUD e o usuário estava nessa aba, mostra em SIGMAS
+            if (!isNovoRespCoaud && abaAtual === 'COAUD') mudarAba('SIGMAS');
             buscarPatrimonio();
+
+            setProgress(`✅ Alterações salvas. ${isNovoRespCoaud ? 'Presente em SIGMAS + COAUD.' : 'Presente apenas em SIGMAS.'}`);
 
         } catch (error) {
             setProgress("Erro: " + error.message);
@@ -726,7 +725,7 @@ if (document.readyState === 'loading') {
 
     async function atualizarLinha(aba, linha, valores) {
         const r = await fetch(
-`https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/${aba}!A${linha}:E${linha}?valueInputOption=RAW`,
+            `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/${aba}!A${linha}:E${linha}?valueInputOption=RAW`,
             { method: 'PUT',
               headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
               body: JSON.stringify({ values: [valores] }) }
@@ -736,7 +735,7 @@ if (document.readyState === 'loading') {
 
     async function appendLinha(aba, valores) {
         const r = await fetch(
-`https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/${aba}!A:E:append?valueInputOption=RAW`,
+            `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/${aba}!A:E:append?valueInputOption=RAW`,
             { method: 'POST',
               headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
               body: JSON.stringify({ values: [valores] }) }
@@ -761,8 +760,8 @@ if (document.readyState === 'loading') {
 
     // ══ INSERIR NOVO ══════════════════════════════════════
     async function inserirNovoPatrimonio() {
-        const nrp        = document.getElementById("novoNRP").value.trim();
-        const material   = document.getElementById("novoMaterial").value.trim();
+        const nrp         = document.getElementById("novoNRP").value.trim();
+        const material    = document.getElementById("novoMaterial").value.trim();
         const localizacao = document.getElementById("novaLocalizacao").value.trim();
         const responsavel = novoResponsavelSelecionado || "";
 
@@ -775,25 +774,33 @@ if (document.readyState === 'loading') {
         setProgress("Inserindo em SIGMAS...");
 
         try {
-            const linha = [nrp, material, localizacao, responsavel, montarLog("cadastro")];
-            
-            // Sempre em SIGMAS
-            await appendLinha('SIGMAS', linha);
-            sigmasData.push(linha);
+            const linha = [nrp, material, localizacao, responsavel, gerarLog("cadastro")];
+            const n = normalizeNRP(nrp);
 
-            // Se responsável é COAUD, também em COAUD
-                        const jaEmCoaud = coaudData.some((r, i) => i > 0 && normalizeNRP(r[0]) === normalizeNRP(nrp));
-            if (RESPONSAVEIS_COAUD.includes(responsavel) && !jaEmCoaud) { {
+            // SIGMAS: insere só se ainda não existir
+            const jaEmSigmas = sigmasData.some((r, i) => i > 0 && normalizeNRP(r[0]) === n);
+            if (!jaEmSigmas) {
+                await appendLinha('SIGMAS', linha);
+                sigmasData.push(linha);
+            }
+
+            // COAUD: só se o responsável for da COAUD e ainda não estiver lá
+            const jaEmCoaud = coaudData.some((r, i) => i > 0 && normalizeNRP(r[0]) === n);
+            const vaiParaCoaud = RESPONSAVEIS_COAUD.includes(responsavel);
+
+            if (vaiParaCoaud && !jaEmCoaud) {
                 await appendLinha('COAUD', linha);
                 coaudData.push(linha);
-                setProgress(`✅ Patrimônio ${nrp} inserido em SIGMAS + COAUD.`);
-            } else {
-                setProgress(`✅ Patrimônio ${nrp} inserido em SIGMAS.`);
             }
 
             document.getElementById("novo-patrimonio-container").style.display = "none";
             document.getElementById("patrimonioInput").value = nrp;
+
+            // Mostra o resultado numa aba onde ele exista
+            if (abaAtual === 'COAUD' && !vaiParaCoaud && !jaEmCoaud) mudarAba('SIGMAS');
             buscarPatrimonio();
+
+            setProgress(`✅ Patrimônio ${nrp} inserido em SIGMAS${vaiParaCoaud ? ' + COAUD' : ''}.`);
 
         } catch (error) {
             setProgress("Erro: " + error.message);
