@@ -228,7 +228,7 @@
                 <button class="btn-menu" onclick="toggleSidebar()">☰</button>
                 <div>
                     <div class="topbar-title">Escaneamento de Patrimônios</div>
-                    <div class="topbar-sub">Inventário por sala com transferência automática</div>
+                    
                 </div>
                 <div class="topbar-right">
                     <div id="spinner" class="spinner" style="margin:0"></div>
@@ -299,7 +299,7 @@
 
                     <div class="actions-bar">
                         <button class="btn-export" onclick="exportPlanilhaEspecifica()">
-                            ⬇ Exportar — Responsáveis Específicos
+                            ⬇ Exportar — Responsáveis COAUD
                         </button>
                         <button class="btn-export" onclick="exportPlanilhaOutros()">
                             ⬇ Exportar — Outros Responsáveis
@@ -1080,9 +1080,9 @@
         }
     }
 
-    // ══════════════════════════════════════════════════════
+    
     //  MODAL DE NOVO PATRIMÔNIO
-    // ══════════════════════════════════════════════════════
+    
     function abrirModalNovo(nrp) {
         document.getElementById("modalNovoNRP").value = nrp;
         document.getElementById("modalNovoMaterial").value = "";
