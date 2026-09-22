@@ -6,7 +6,7 @@
     <title>COAUD — Escaneamento de Patrimônios</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='4' fill='%2300b04f'/><text y='22' x='5' font-size='17' fill='white' font-family='Arial' font-weight='bold'>C</text></svg>">
     <link rel="stylesheet" href="style.css">
-        <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
     <script src="sidebar-init.js" defer></script>
     <style>
@@ -21,6 +21,11 @@
         .inventario-header h3 {
             font-size: 13px; font-weight: 700;
             color: var(--verde); margin-bottom: 4px;
+        }
+        #salaInfoExtra {
+            font-size: 11px;
+            color: #60a5fa;
+            margin-bottom: 4px;
         }
         .nrp-row {
             display: flex; gap: 8px; align-items: flex-end;
@@ -45,6 +50,45 @@
             border: 1px solid rgba(231,76,60,0.25);
         }
         .btn-reset:hover { background: rgba(231,76,60,0.25); }
+
+        /* ── Modo de coleta ── */
+        .modo-coleta {
+            display: flex;
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+            margin-bottom: 14px;
+        }
+        .modo-coleta button {
+            flex: 1;
+            margin: 0;
+            border: none;
+            border-radius: 0;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 12px;
+            font-weight: 600;
+            padding: 9px 10px;
+            cursor: pointer;
+        }
+        .modo-coleta button + button { border-left: 1px solid var(--card-border); }
+        .modo-coleta button.ativo { background: var(--verde); color: #fff; }
+        .modo-coleta button:disabled { opacity: .5; cursor: not-allowed; }
+
+        .file-upload {
+            display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+        }
+        .file-upload-label {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 8px 16px; background: var(--verde); color: #fff;
+            border-radius: var(--radius-sm); font-size: 12px;
+            font-weight: 600; cursor: pointer;
+        }
+        .file-upload-label:hover { background: var(--verde-dark); }
+        .file-upload input[type="file"] { display: none; }
+        .file-name { font-size: 12px; color: var(--text-muted); font-style: italic; }
+        .file-name.loaded { color: var(--verde); font-style: normal; font-weight: 600; }
+        .ajuda { font-size: 11px; color: var(--text-muted); margin-top: 8px; }
 
         /* ── Modais customizados ── */
         .modal-transf {
@@ -105,7 +149,7 @@
         }
         .respon-list li:last-child { border-bottom: none; }
 
-                #reconectar-banner {
+        #reconectar-banner {
             display: none;
             align-items: center;
             gap: 12px;
@@ -201,25 +245,52 @@
                 </div>
 
                 <!-- ═══ SELEÇÃO DE SALA ═══ -->
-
-                <!-- ═══ SELEÇÃO DE SALA ═══ -->
                 <div class="card">
                     <div class="card-title">Seleção de Sala</div>
 
-                    <div class="field-block" style="margin-bottom:14px">
-                        <label>Selecione a sala</label>
-                        <select id="salaSelect">
-                            <option value="">Carregando salas...</option>
-                        </select>
+                    <div class="modo-coleta" id="modoColeta">
+                        <button type="button" id="btnModoZero" class="ativo" onclick="mudarModo('zero')">
+                            🆕 Começar do zero
+                        </button>
+                        <button type="button" id="btnModoContinuar" onclick="mudarModo('continuar')">
+                            📂 Continuar de planilha
+                        </button>
                     </div>
 
-                    <div class="actions-bar">
-                        <button id="confirmarSala">✔ Confirmar Sala</button>
+                    <!-- Modo: começar do zero -->
+                    <div id="painelZero">
+                        <div class="field-block" style="margin-bottom:14px">
+                            <label for="salaSelect">Selecione a sala</label>
+                            <select id="salaSelect">
+                                <option value="">Carregando salas...</option>
+                            </select>
+                        </div>
+                        <div class="actions-bar">
+                            <button id="confirmarSala">✔ Confirmar Sala</button>
+                        </div>
+                    </div>
+
+                    <!-- Modo: continuar de planilha -->
+                    <div id="painelContinuar" style="display:none;margin-bottom:12px">
+                        <div class="file-upload">
+                            <label for="fileContinuar" class="file-upload-label">
+                                📄 Escolher planilha exportada
+                            </label>
+                            <input type="file" id="fileContinuar" accept=".xlsx,.xls,.csv">
+                            <span class="file-name" id="fileContinuarNome">Nenhum arquivo escolhido</span>
+                        </div>
+                        <p class="ajuda">
+                            Use a planilha exportada por este sistema. A sala é identificada pela coluna C (Localização).
+                            A tabela vai mostrar só o que ainda falta coletar, e a próxima exportação junta os itens da planilha com os novos.
+                        </p>
+                    </div>
+
+                    <div class="actions-bar" style="margin-top:0">
                         <button id="resetarColeta" class="backButton">↩ Nova Sala</button>
                     </div>
 
                     <div class="field-block" style="margin-bottom:14px">
-                        <label>Patrimônio (NRP)</label>
+                        <label for="patrimonioInput">Patrimônio (NRP)</label>
                         <div class="nrp-row">
                             <input type="text" id="patrimonioInput"
                                 placeholder="Digite ou bipe o patrimônio e pressione Enter">
@@ -240,6 +311,7 @@
                 <!-- ═══ INVENTÁRIO ═══ -->
                 <div class="inventario-header" id="inventarioHeader">
                     <h3>📦 Inventário da Sala: <span id="salaTitle"></span></h3>
+                    <div id="salaInfoExtra"></div>
                     <div class="legend">
                         🔴 Vermelho = Ainda não encontrado &nbsp;|&nbsp;
                         🟢 Verde = Bipado / Encontrado &nbsp;|&nbsp;
@@ -345,61 +417,10 @@
 
     <!-- ══════════════════════════════════════════════════
          SCRIPTS
+         (sidebar: usuário, permissões, tema, logout e menu
+          mobile vêm do sidebar-init.js)
     ══════════════════════════════════════════════════ -->
     <script>
-    // ══════════════════════════════════════════════════════
-    //  SIDEBAR — dados do usuário e permissões
-    // ══════════════════════════════════════════════════════
-  
-
-    function aplicarPermissoesSidebar() {
-        const u = JSON.parse(localStorage.getItem('usuarioLogado')) || {};
-        const perm = u.permissao;
-
-        const PERMS_SIDEBAR = {
-            supervisor:   ['nav-escanear', 'nav-comparador', 'nav-localizador', 'nav-almoxarifado'],
-            almoxarifado: ['nav-almoxarifado'],
-        };
-
-        const liberados = PERMS_SIDEBAR[perm] || [];
-        ['nav-escanear', 'nav-comparador', 'nav-localizador', 'nav-almoxarifado']
-            .forEach(id => {
-                const el = document.getElementById(id);
-                if (el && !liberados.includes(id)) el.style.display = 'none';
-            });
-
-        const paginaAtual = window.location.pathname.split('/').pop();
-        const paginasPorPermissao = {
-            'index-escanear.html':      'nav-escanear',
-            'index-comparador.html':    'nav-comparador',
-            'index_Local.html':         'nav-localizador',
-            'index-almoxarifado.html':  'nav-almoxarifado',
-            'fichas.html':              'nav-almoxarifado',
-            'fichas-arquivadas.html':   'nav-almoxarifado',
-        };
-        const permNecessaria = paginasPorPermissao[paginaAtual];
-        if (permNecessaria && !liberados.includes(permNecessaria)) {
-            alert('Você não tem permissão para acessar esta página.');
-            window.location.href = 'index.html';
-        }
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-            preencherUsuarioSidebar();
-            aplicarPermissoesSidebar();
-        });
-    } else {
-        preencherUsuarioSidebar();
-        aplicarPermissoesSidebar();
-    }
-
-    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
-    function fazerLogout() {
-        localStorage.removeItem('usuarioLogado');
-        localStorage.removeItem('access_token');
-        window.location.href = 'index.html';
-    }
     function setProgress(msg) {
         const el = document.getElementById("progressText");
         if (el) el.textContent = msg;
@@ -408,8 +429,8 @@
     // ══════════════════════════════════════════════════════
     //  CONFIGURAÇÃO
     // ══════════════════════════════════════════════════════
-        const CLIENT_ID = '286050228811-cv6vsd075480anb1i6auuc421enuaf8q.apps.googleusercontent.com';
-        const FILE_ID = '1iNeSf0wakQ6j9Eg_qOCzVNKcIVVIsukeThL0Phpd5LE';
+    const CLIENT_ID = '286050228811-cv6vsd075480anb1i6auuc421enuaf8q.apps.googleusercontent.com';
+    const FILE_ID   = '1iNeSf0wakQ6j9Eg_qOCzVNKcIVVIsukeThL0Phpd5LE';
 
     const RESPONSAVEIS_COAUD = [
         "ALBERTO CESAR SOUZA ALMEIDA (5302)",
@@ -424,10 +445,14 @@
     let sheetIds              = {};
     let currentSalaInventario = [];
 
+    // Continuação a partir de planilha
+    let modoColeta      = 'zero';     // 'zero' | 'continuar'
+    let nrpsCarregados  = new Set();  // NRPs que vieram da planilha anterior
+
     let transfPendente = null;
     let novoRespSelecionado = null;
     let modalNovoRespSelecionado = null;
-            let tokenClient   = null;
+    let tokenClient   = null;
     let accessToken   = null;
 
     // ══════════════════════════════════════════════════════
@@ -439,23 +464,28 @@
     }
 
     function normalizeNRP(nrp) {
-        if (!nrp) return "";
-        return nrp.toString().replace(/^0+/, "").trim();
+        if (nrp === undefined || nrp === null) return "";
+        return nrp.toString().replace(/\./g, "").replace(/^0+/, "").trim();
+    }
+
+    function nomeArquivoSeguro(t) {
+        return (t || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^\w\-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').slice(0, 40);
     }
 
     function montarLog(tipo) {
-    const u = JSON.parse(localStorage.getItem('usuarioLogado')) || {};
-    const operador = u.email || u.mail || u.nome || 'desconhecido';
-    const d = new Date();
-    const dia  = String(d.getDate()).padStart(2, '0');
-    const mes  = String(d.getMonth() + 1).padStart(2, '0');
-    const ano  = d.getFullYear();
-    const hora = String(d.getHours()).padStart(2, '0');
-    const min  = String(d.getMinutes()).padStart(2, '0');
-    return `alterado: "${tipo}" data: ${dia}/${mes}/${ano} hora: ${hora}:${min}hs pelo operador: ${operador}`;
-}
+        const u = JSON.parse(localStorage.getItem('usuarioLogado')) || {};
+        const operador = u.email || u.mail || u.nome || 'desconhecido';
+        const d = new Date();
+        const dia  = String(d.getDate()).padStart(2, '0');
+        const mes  = String(d.getMonth() + 1).padStart(2, '0');
+        const ano  = d.getFullYear();
+        const hora = String(d.getHours()).padStart(2, '0');
+        const min  = String(d.getMinutes()).padStart(2, '0');
+        return `alterado: "${tipo}" data: ${dia}/${mes}/${ano} hora: ${hora}:${min}hs pelo operador: ${operador}`;
+    }
 
-            // ══════════════════════════════════════════════════════
+    // ══════════════════════════════════════════════════════
     //  SESSÃO GOOGLE / RECONEXÃO
     // ══════════════════════════════════════════════════════
     function tokenExpirado() {
@@ -487,7 +517,7 @@
     // ══════════════════════════════════════════════════════
     //  CARREGAMENTO INICIAL
     // ══════════════════════════════════════════════════════
-        window.addEventListener("load", function() {
+    window.addEventListener("load", function() {
         const inicializarGoogle = () => {
             if (typeof google === 'undefined' || !google.accounts) {
                 setTimeout(inicializarGoogle, 300);
@@ -535,7 +565,7 @@
                 `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}`,
                 { headers: { 'Authorization': `Bearer ${accessToken}` } }
             );
-                        if (meta.status === 401) throw new Error('SESSAO_EXPIRADA');
+            if (meta.status === 401) throw new Error('SESSAO_EXPIRADA');
             if (!meta.ok) throw new Error("Erro ao obter metadados.");
             const metaData = await meta.json();
             metaData.sheets.forEach(s => { sheetIds[s.properties.title] = s.properties.sheetId; });
@@ -545,7 +575,7 @@
                 `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/SIGMAS!A:D`,
                 { headers: { 'Authorization': `Bearer ${accessToken}` } }
             );
-                        if (r1.status === 401) throw new Error('SESSAO_EXPIRADA');
+            if (r1.status === 401) throw new Error('SESSAO_EXPIRADA');
             if (!r1.ok) { const e = await r1.json(); throw new Error(e.error?.message); }
             sigmasData = (await r1.json()).values || [];
 
@@ -554,7 +584,7 @@
                 `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/COAUD!A:D`,
                 { headers: { 'Authorization': `Bearer ${accessToken}` } }
             );
-                        if (r2.status === 401) throw new Error('SESSAO_EXPIRADA');
+            if (r2.status === 401) throw new Error('SESSAO_EXPIRADA');
             if (!r2.ok) { const e = await r2.json(); throw new Error(e.error?.message); }
             coaudData = (await r2.json()).values || [];
 
@@ -576,7 +606,7 @@
             setProgress(`✅ SIGMAS: ${sigmasData.length-1} | COAUD: ${coaudData.length-1}`);
             document.getElementById("spinner").style.display = "none";
             document.getElementById("salaSelect").focus();
-                } catch (error) {
+        } catch (error) {
             if (error.message === 'SESSAO_EXPIRADA') {
                 sessaoExpirou('Sessão do Google expirada. Reconecte para continuar.');
                 return;
@@ -587,38 +617,185 @@
     }
 
     // ══════════════════════════════════════════════════════
-    //  SELEÇÃO DE SALA
+    //  MODO DE COLETA (zero / continuar)
     // ══════════════════════════════════════════════════════
-    document.getElementById("confirmarSala").addEventListener("click", function() {
-        salaSelecionada = document.getElementById("salaSelect").value.trim();
-        if (!salaSelecionada) { alert("Selecione uma sala."); return; }
+    function mudarModo(modo) {
+        if (salaSelecionada) {
+            alert('Há uma sala em andamento. Clique em "Nova Sala" antes de trocar o modo.');
+            return;
+        }
+        modoColeta = modo;
+        document.getElementById('btnModoZero').classList.toggle('ativo', modo === 'zero');
+        document.getElementById('btnModoContinuar').classList.toggle('ativo', modo === 'continuar');
+        document.getElementById('painelZero').style.display      = modo === 'zero' ? 'block' : 'none';
+        document.getElementById('painelContinuar').style.display = modo === 'continuar' ? 'block' : 'none';
+    }
 
-        document.getElementById("salaSelect").disabled = true;
+    function travarModo(travar) {
+        document.getElementById('btnModoZero').disabled      = travar;
+        document.getElementById('btnModoContinuar').disabled = travar;
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  INICIAR SALA (usado nos dois modos)
+    // ══════════════════════════════════════════════════════
+    function iniciarSala(sala) {
+        salaSelecionada = sala;
+
+        // Garante que a sala exista no select (pode vir de planilha e não estar na COAUD)
+        const sel = document.getElementById("salaSelect");
+        if (![...sel.options].some(o => o.value === sala)) {
+            const opt = document.createElement("option");
+            opt.value = sala; opt.textContent = sala;
+            sel.appendChild(opt);
+        }
+        sel.value = sala;
+        sel.disabled = true;
         document.getElementById("confirmarSala").disabled = true;
+        travarModo(true);
 
-        // Inventário inicial vem da COAUD
-        currentSalaInventario = coaudData.slice(1)
-            .filter(row => (row[2] || '').trim().toUpperCase() === salaSelecionada.toUpperCase())
+        // Inventário vem da COAUD, sem os itens que já estavam na planilha carregada
+        const todosDaSala = coaudData.slice(1)
+            .filter(row => (row[2] || '').trim().toUpperCase() === sala.toUpperCase());
+
+        currentSalaInventario = todosDaSala
+            .filter(row => !nrpsCarregados.has(normalizeNRP(row[0])))
             .map(row => ({
                 NRP: row[0]?.toString() || '',
                 Material: row[1]?.toString() || '',
-                Localização: salaSelecionada,
+                Localização: sala,
                 Responsável: row[3]?.toString() || '',
                 status: 'red'
             }));
 
         document.getElementById("inventarioHeader").style.display = "block";
-        document.getElementById("salaTitle").textContent = salaSelecionada;
+        document.getElementById("salaTitle").textContent = sala;
+
+        const extra = document.getElementById("salaInfoExtra");
+        if (nrpsCarregados.size) {
+            const jaNaSala = todosDaSala.length - currentSalaInventario.length;
+            extra.textContent = `📂 Continuação: ${nrpsCarregados.size} itens vieram da planilha anterior ` +
+                `(${jaNaSala} desta sala). Abaixo estão só os que ainda faltam.`;
+            extra.style.display = 'block';
+        } else {
+            extra.textContent = '';
+            extra.style.display = 'none';
+        }
+
         updateInventarioTable();
         document.getElementById("patrimonioInput").focus();
-        setProgress(`✅ Sala "${salaSelecionada}" confirmada. ${currentSalaInventario.length} itens aguardando bipagem.`);
+        setProgress(`✅ Sala "${sala}" pronta. ${currentSalaInventario.length} itens aguardando bipagem.`);
+    }
+
+    document.getElementById("confirmarSala").addEventListener("click", function() {
+        const sala = document.getElementById("salaSelect").value.trim();
+        if (!sala) { alert("Selecione uma sala."); return; }
+        nrpsCarregados = new Set();
+        iniciarSala(sala);
     });
 
+    // ══════════════════════════════════════════════════════
+    //  CONTINUAR A PARTIR DE PLANILHA
+    // ══════════════════════════════════════════════════════
+    document.getElementById("fileContinuar").addEventListener("change", function() {
+        const file = this.files[0];
+        this.value = '';   // permite escolher o mesmo arquivo de novo
+        if (!file) return;
+
+        if (salaSelecionada) {
+            alert('Há uma sala em andamento. Clique em "Nova Sala" antes de carregar uma planilha.');
+            return;
+        }
+        if (coaudData.length <= 1) {
+            alert('Aguarde as salas carregarem antes de escolher a planilha.');
+            return;
+        }
+
+        const nomeEl = document.getElementById("fileContinuarNome");
+        nomeEl.textContent = '📎 ' + file.name;
+        nomeEl.classList.add('loaded');
+        document.getElementById("spinner").style.display = "inline-block";
+        setProgress("Lendo planilha...");
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const workbook = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+                const itens = [];
+                const contagemSalas = {};
+
+                workbook.SheetNames.forEach(nome => {
+                    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[nome], { header: 1, defval: '' });
+                    rows.slice(1).forEach(row => {
+                        const n = normalizeNRP(row[0]);
+                        if (!n) return;
+                        const sala = (row[2] || '').toString().trim();
+                        if (sala) contagemSalas[sala] = (contagemSalas[sala] || 0) + 1;
+                        itens.push({
+                            NRP: row[0].toString().trim(),
+                            Material: (row[1] || '').toString(),
+                            Localização: sala,
+                            Responsável: (row[3] || '').toString()
+                        });
+                    });
+                });
+
+                if (!itens.length) {
+                    alert('A planilha não tem nenhum NRP na coluna A.');
+                    setProgress('Planilha sem NRPs.');
+                    return;
+                }
+
+                // Sala = valor mais frequente na coluna C
+                const salas = Object.entries(contagemSalas).sort((a, b) => b[1] - a[1]);
+                if (!salas.length) {
+                    alert('Não foi possível identificar a sala: a coluna C (Localização) está vazia.');
+                    setProgress('Sala não identificada.');
+                    return;
+                }
+                const sala = salas[0][0];
+
+                let msg = `Planilha com ${itens.length} itens.\nSala identificada: ${sala}`;
+                if (salas.length > 1) {
+                    msg += `\n\nAtenção: a planilha também tem itens de outras localizações ` +
+                           `(${salas.slice(1).map(s => s[0]).join(', ')}). ` +
+                           `Eles serão mantidos na exportação.`;
+                }
+                msg += `\n\nContinuar a coleta desta sala?`;
+                if (!confirm(msg)) {
+                    setProgress('Continuação cancelada.');
+                    nomeEl.textContent = 'Nenhum arquivo escolhido';
+                    nomeEl.classList.remove('loaded');
+                    return;
+                }
+
+                // Guarda os itens anteriores para concatenar na exportação
+                nrpsCarregados = new Set(itens.map(i => normalizeNRP(i.NRP)));
+                itens.forEach(i => patrimoniosColetados.push({ ...i, origem: 'planilha' }));
+
+                iniciarSala(sala);
+            } catch (err) {
+                setProgress('Erro ao ler a planilha: ' + err.message);
+                alert('Erro ao ler a planilha: ' + err.message);
+            } finally {
+                document.getElementById("spinner").style.display = "none";
+            }
+        };
+        reader.onerror = function() {
+            setProgress('Erro ao ler o arquivo.');
+            document.getElementById("spinner").style.display = "none";
+        };
+        reader.readAsArrayBuffer(file);
+    });
+
+    // ══════════════════════════════════════════════════════
+    //  CAMPO DE COLETA
+    // ══════════════════════════════════════════════════════
     document.getElementById("patrimonioInput").addEventListener("keydown", function(e) {
         if (e.key === "Enter") addPatrimonio();
     });
 
-        // Mantém o cursor sempre no campo de coleta.
+    // Mantém o cursor sempre no campo de coleta.
     // Só devolve o foco se houver sala confirmada e nenhum modal aberto.
     document.getElementById("patrimonioInput").addEventListener("blur", function() {
         setTimeout(() => {
@@ -640,12 +817,21 @@
 
         const n = normalizeNRP(input);
 
+        // ── Passo 0: já estava na planilha carregada? ──
+        if (nrpsCarregados.has(n)) {
+            alert(`⚠ O patrimônio "${input}" já foi coletado (está na planilha carregada).`);
+            setProgress(`⚠ NRP "${input}" já consta na planilha anterior.`);
+            document.getElementById("patrimonioInput").value = "";
+            document.getElementById("patrimonioInput").focus();
+            return;
+        }
+
         // ── Passo 1: já está no inventário desta sala? ──
         const idxInventario = currentSalaInventario.findIndex(item =>
             normalizeNRP(item.NRP) === n
         );
 
-               if (idxInventario !== -1) {
+        if (idxInventario !== -1) {
             const item = currentSalaInventario[idxInventario];
             if (item.status === 'red') {
                 item.status = 'green';
@@ -659,7 +845,6 @@
                 updateInventarioTable();
                 setProgress(`✅ NRP "${input}" localizado na sala.`);
             } else {
-                // já estava verde/amarelo → popup de aviso
                 alert(`⚠ O patrimônio "${input}" já foi coletado nesta sala.`);
                 setProgress(`⚠ NRP "${input}" já foi coletado nesta sala.`);
             }
@@ -715,11 +900,10 @@
     function marcarComoColetado(rowRef, status) {
         const n = normalizeNRP(rowRef[0]);
         const idx = currentSalaInventario.findIndex(item => normalizeNRP(item.NRP) === n);
-               if (idx !== -1) {
+        if (idx !== -1) {
             currentSalaInventario[idx].status      = status;
             currentSalaInventario[idx].Responsável = rowRef[3] || '';
             currentSalaInventario[idx].Material    = rowRef[1] || '';
-            // move para o topo
             const [movido] = currentSalaInventario.splice(idx, 1);
             currentSalaInventario.unshift(movido);
         } else {
@@ -823,7 +1007,7 @@
 
     async function confirmarTransferencia() {
         if (!transfPendente) return;
-        const opcao       = document.getElementById("modalRespOpcao").value;
+        const opcao = document.getElementById("modalRespOpcao").value;
 
         if (opcao === "alterar" && !novoRespSelecionado) {
             alert("Selecione o novo responsável ou escolha 'Manter'.");
@@ -834,7 +1018,7 @@
             ? novoRespSelecionado
             : transfPendente.responsavelAtual;
 
-                if (!accessToken || tokenExpirado()) {
+        if (!accessToken || tokenExpirado()) {
             mostrarReconectar('Sessão expirada. Reconecte e confirme a transferência novamente.');
             return;
         }
@@ -873,7 +1057,7 @@
             marcarComoColetado(linha, 'yellow');
             setProgress(`✅ Transferido de ${transfPendente.salaOriginal} → ${salaSelecionada}.`);
             fecharModalTransf();
-                } catch (error) {
+        } catch (error) {
             if (error.message === 'SESSAO_EXPIRADA') {
                 sessaoExpirou('Sessão expirada. Reconecte e confirme a transferência novamente.');
                 return;
@@ -942,14 +1126,14 @@
     }
 
     async function confirmarNovoPatrimonio() {
-        const nrp      = document.getElementById("modalNovoNRP").value.trim();
-        const material = document.getElementById("modalNovoMaterial").value.trim();
+        const nrp       = document.getElementById("modalNovoNRP").value.trim();
+        const material  = document.getElementById("modalNovoMaterial").value.trim();
         const respFinal = modalNovoRespSelecionado || "";
 
         if (!material) { alert("Digite a descrição do material."); return; }
         if (!respFinal) { alert("Selecione um responsável."); return; }
 
-                if (!accessToken || tokenExpirado()) {
+        if (!accessToken || tokenExpirado()) {
             mostrarReconectar('Sessão expirada. Reconecte e cadastre novamente.');
             return;
         }
@@ -974,7 +1158,7 @@
 
             marcarComoColetado(linha, 'yellow');
             fecharModalNovo();
-                } catch (error) {
+        } catch (error) {
             if (error.message === 'SESSAO_EXPIRADA') {
                 sessaoExpirou('Sessão expirada. Reconecte e cadastre novamente.');
                 return;
@@ -996,7 +1180,7 @@
               headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
               body: JSON.stringify({ values: [valores] }) }
         );
-                if (r.status === 401) throw new Error('SESSAO_EXPIRADA');
+        if (r.status === 401) throw new Error('SESSAO_EXPIRADA');
         if (!r.ok) { const e = await r.json(); throw new Error(`Erro em ${aba}: ${e.error?.message}`); }
     }
 
@@ -1007,7 +1191,7 @@
               headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
               body: JSON.stringify({ values: [valores] }) }
         );
-                if (r.status === 401) throw new Error('SESSAO_EXPIRADA');
+        if (r.status === 401) throw new Error('SESSAO_EXPIRADA');
         if (!r.ok) { const e = await r.json(); throw new Error(`Erro append ${aba}: ${e.error?.message}`); }
     }
 
@@ -1023,12 +1207,12 @@
                 }}
               }]}) }
         );
-                if (r.status === 401) throw new Error('SESSAO_EXPIRADA');
+        if (r.status === 401) throw new Error('SESSAO_EXPIRADA');
         if (!r.ok) { const e = await r.json(); throw new Error(`Erro delete ${aba}: ${e.error?.message}`); }
     }
 
     // ══════════════════════════════════════════════════════
-    //  RESETAR SALA
+    //  NOVA SALA
     // ══════════════════════════════════════════════════════
     document.getElementById("resetarColeta").addEventListener("click", function() {
         document.getElementById("salaSelect").disabled = false;
@@ -1036,28 +1220,51 @@
         document.getElementById("confirmarSala").disabled = false;
         salaSelecionada = "";
         currentSalaInventario = [];
+        nrpsCarregados = new Set();
+        travarModo(false);
+        const nomeEl = document.getElementById("fileContinuarNome");
+        nomeEl.textContent = 'Nenhum arquivo escolhido';
+        nomeEl.classList.remove('loaded');
         document.getElementById("inventarioHeader").style.display = "none";
         updateInventarioTable();
-        setProgress("Sala desbloqueada. Selecione uma nova sala.");
+        setProgress("Sala desbloqueada. Escolha começar do zero ou continuar de uma planilha.");
     });
 
     // ══════════════════════════════════════════════════════
-    //  EXPORTS XLSX
+    //  EXPORTS XLSX (planilha carregada + novos, sem duplicar)
     // ══════════════════════════════════════════════════════
+    function coletadosSemDuplicados() {
+        const mapa = new Map();
+        patrimoniosColetados.forEach(item => {
+            const n = normalizeNRP(item.NRP);
+            if (!n) return;
+            // O registro mais recente prevalece (ex.: transferido depois de carregado)
+            mapa.set(n, item);
+        });
+        return [...mapa.values()];
+    }
+
+    function ehResponsavelCoaud(resp) {
+        const r = (resp || '').toString().trim();
+        return RESPONSAVEIS_COAUD.some(x => x.trim() === r);
+    }
+
+    function sufixoArquivo() {
+        return salaSelecionada ? '_' + nomeArquivoSeguro(salaSelecionada) : '';
+    }
+
     function exportPlanilhaEspecifica() {
-        const dados = patrimoniosColetados.filter(item =>
-            RESPONSAVEIS_COAUD.some(r => r.trim() === item.Responsável.trim())
-        );
+        const dados = coletadosSemDuplicados().filter(item => ehResponsavelCoaud(item.Responsável));
         if (!dados.length) { alert("Nenhum patrimônio para responsáveis específicos."); return; }
-        exportarXLSX(dados, "Responsaveis_Especificos", `Responsaveis_COAUD_${formatarData()}.xlsx`);
+        exportarXLSX(dados, "Responsaveis_Especificos",
+            `Responsaveis_COAUD${sufixoArquivo()}_${formatarData()}.xlsx`);
     }
 
     function exportPlanilhaOutros() {
-        const dados = patrimoniosColetados.filter(item =>
-            !RESPONSAVEIS_COAUD.some(r => r.trim() === item.Responsável.trim())
-        );
+        const dados = coletadosSemDuplicados().filter(item => !ehResponsavelCoaud(item.Responsável));
         if (!dados.length) { alert("Nenhum patrimônio para outros responsáveis."); return; }
-        exportarXLSX(dados, "Outros_Responsaveis", `Outros_Responsaveis_${formatarData()}.xlsx`);
+        exportarXLSX(dados, "Outros_Responsaveis",
+            `Outros_Responsaveis${sufixoArquivo()}_${formatarData()}.xlsx`);
     }
 
     function exportarXLSX(dados, nomePlanilha, nomeArquivo) {
@@ -1069,6 +1276,11 @@
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, nomePlanilha);
         XLSX.writeFile(wb, nomeArquivo);
+
+        const daPlanilha = dados.filter(d => d.origem === 'planilha').length;
+        setProgress(daPlanilha
+            ? `⬇ Exportados ${dados.length} itens (${daPlanilha} da planilha anterior + ${dados.length - daPlanilha} novos).`
+            : `⬇ Exportados ${dados.length} itens.`);
     }
 
     // ══════════════════════════════════════════════════════
@@ -1079,6 +1291,12 @@
         salaSelecionada = "";
         patrimoniosColetados = [];
         currentSalaInventario = [];
+        nrpsCarregados = new Set();
+        travarModo(false);
+        mudarModo('zero');
+        const nomeEl = document.getElementById("fileContinuarNome");
+        nomeEl.textContent = 'Nenhum arquivo escolhido';
+        nomeEl.classList.remove('loaded');
         document.getElementById("salaSelect").value = "";
         document.getElementById("salaSelect").disabled = false;
         document.getElementById("confirmarSala").disabled = false;
