@@ -484,53 +484,59 @@ if (document.readyState === 'loading') {
         return nrp.toString().replace(/^0+/, "").trim();
     }
 
-    // ══ BUSCA (procura em ambas, mostra onde está) ═══════
+       // ══ BUSCA (respeita a aba selecionada) ═══════════════
     function buscarPatrimonio() {
         const nrp = document.getElementById("patrimonioInput").value.trim().replace(/\./g, "");
         if (!nrp) { setProgress("Digite um NRP."); return; }
         const n = normalizeNRP(nrp);
 
-        // Procura em SIGMAS
-        let idxS = -1, rowS = null;
-        for (let i = 1; i < sigmasData.length; i++) {
-            if (normalizeNRP(sigmasData[i][0]) === n) {
-                idxS = i; rowS = sigmasData[i]; break;
+        // Localiza nas duas abas (necessário para aplicar as regras ao salvar)
+        const acharEm = (dados) => {
+            for (let i = 1; i < dados.length; i++) {
+                if (normalizeNRP(dados[i][0]) === n) return { idx: i, row: dados[i] };
             }
-        }
-        // Procura em COAUD
-        let idxC = -1, rowC = null;
-        for (let i = 1; i < coaudData.length; i++) {
-            if (normalizeNRP(coaudData[i][0]) === n) {
-                idxC = i; rowC = coaudData[i]; break;
-            }
-        }
+            return { idx: -1, row: null };
+        };
+        const { idx: idxS, row: rowS } = acharEm(sigmasData);
+        const { idx: idxC, row: rowC } = acharEm(coaudData);
 
         // Esconde tudo
         document.getElementById("result-container").style.display = "none";
         document.getElementById("editor-section").style.display    = "none";
         document.getElementById("novo-patrimonio-container").style.display = "none";
 
-        if (!rowS && !rowC) {
-            const ok = confirm(`Patrimônio "${nrp}" não encontrado em nenhuma aba.\n\nDeseja cadastrá-lo agora em SIGMAS?`);
-            if (ok) {
-                document.getElementById("novoNRP").value = nrp;
-                document.getElementById("novoMaterial").value = "";
-                document.getElementById("novaLocalizacao").value = "";
-                document.getElementById("novoResponsavelInput").value = "";
-                document.getElementById("novo-resp-info").style.display = "none";
-                novoResponsavelSelecionado = null;
-                document.getElementById("novo-patrimonio-container").style.display = "block";
+        // Exibe SOMENTE o registro da aba selecionada
+        const rowExibida = abaAtual === 'COAUD' ? rowC : rowS;
+
+        if (!rowExibida) {
+            if (abaAtual === 'COAUD') {
+                if (rowS) {
+                    const ok = confirm(
+                        `Patrimônio "${nrp}" não está na aba COAUD.\n` +
+                        `Ele existe em SIGMAS com responsável: ${rowS[3] || '(vazio)'}.\n\n` +
+                        `Deseja abrir na aba SIGMAS?`
+                    );
+                    if (ok) { mudarAba('SIGMAS'); buscarPatrimonio(); }
+                    else setProgress(`❌ "${nrp}" não está em COAUD.`);
+                } else {
+                    const ok = confirm(`Patrimônio "${nrp}" não encontrado em COAUD nem em SIGMAS.\n\nDeseja cadastrá-lo agora?`);
+                    if (ok) abrirFormularioNovo(nrp, "");
+                    else setProgress(`❌ "${nrp}" não encontrado.`);
+                }
+            } else {
+                const aviso = rowC ? `\n\n(Atenção: ele existe apenas em COAUD — dados inconsistentes.)` : '';
+                const ok = confirm(`Patrimônio "${nrp}" não encontrado em SIGMAS.${aviso}\n\nDeseja cadastrá-lo agora em SIGMAS?`);
+                if (ok) abrirFormularioNovo(nrp, rowC ? (rowC[1] || "") : "");
+                else setProgress(`❌ "${nrp}" não encontrado em SIGMAS.`);
             }
             return;
         }
-
-        // Se está em ambos, mostra dados de SIGMAS (mais completo/fonte)
-        const rowExibida = rowS || rowC;
 
         patrimonioEditando = {
             emSigmas: !!rowS, emCoaud: !!rowC,
             rowSigmas: rowS, rowCoaud: rowC,
             idxSigmas: idxS, idxCoaud: idxC,
+            rowExibida: rowExibida,
             nrp: rowExibida[0]
         };
 
@@ -540,7 +546,9 @@ if (document.readyState === 'loading') {
         ].join('');
 
         document.getElementById("ficha-resultado").innerHTML = `
-            <div style="margin-bottom:10px">${chipsHTML}</div>
+            <div style="margin-bottom:10px">${chipsHTML}
+                <span style="font-size:11px;color:var(--text-muted)">Exibindo dados da aba <strong>${abaAtual}</strong></span>
+            </div>
             <div class="ficha-resultado">
                 <div class="campo"><strong>NRP</strong><span>${rowExibida[0] || '-'}</span></div>
                 <div class="campo"><strong>Material</strong><span>${rowExibida[1] || '-'}</span></div>
@@ -552,12 +560,22 @@ if (document.readyState === 'loading') {
             </div>
         `;
         document.getElementById("result-container").style.display = "block";
-        setProgress(`✅ Encontrado. Presente em: ${rowS?'SIGMAS':''}${rowS&&rowC?' + ':''}${rowC?'COAUD':''}.`);
+        setProgress(`✅ Encontrado na aba ${abaAtual}. Presente em: ${rowS?'SIGMAS':''}${rowS&&rowC?' + ':''}${rowC?'COAUD':''}.`);
+    }
+
+    function abrirFormularioNovo(nrp, material) {
+        document.getElementById("novoNRP").value = nrp;
+        document.getElementById("novoMaterial").value = material || "";
+        document.getElementById("novaLocalizacao").value = "";
+        document.getElementById("novoResponsavelInput").value = "";
+        document.getElementById("novo-resp-info").style.display = "none";
+        novoResponsavelSelecionado = null;
+        document.getElementById("novo-patrimonio-container").style.display = "block";
     }
 
     function abrirEditor() {
         if (!patrimonioEditando) return;
-        const p = patrimonioEditando.rowSigmas || patrimonioEditando.rowCoaud;
+                const p = patrimonioEditando.rowExibida;
         document.getElementById("novoLocal").value = p[2] || "";
         document.getElementById("responsavelInput").value = "";
         document.getElementById("responsavel-list").innerHTML = "";
@@ -662,7 +680,7 @@ if (document.readyState === 'loading') {
         try {
             const material = (p.rowSigmas || p.rowCoaud)[1];
             const nrp      = p.nrp;
-const linhaNova = [nrp, material, novoLocal, novoResp, montarLog("sala/responsável")];
+            const linhaNova = [nrp, material, novoLocal, novoResp, montarLog("sala/responsável")];
             const isNovoRespCoaud = RESPONSAVEIS_COAUD.includes(novoResp);
 
             // ── SIGMAS: sempre atualiza (nunca apaga) ──
@@ -757,14 +775,15 @@ const linhaNova = [nrp, material, novoLocal, novoResp, montarLog("sala/responsá
         setProgress("Inserindo em SIGMAS...");
 
         try {
-const linha = [nrp, material, localizacao, responsavel, montarLog("cadastro")];
+            const linha = [nrp, material, localizacao, responsavel, montarLog("cadastro")];
             
             // Sempre em SIGMAS
             await appendLinha('SIGMAS', linha);
             sigmasData.push(linha);
 
             // Se responsável é COAUD, também em COAUD
-            if (RESPONSAVEIS_COAUD.includes(responsavel)) {
+                        const jaEmCoaud = coaudData.some((r, i) => i > 0 && normalizeNRP(r[0]) === normalizeNRP(nrp));
+            if (RESPONSAVEIS_COAUD.includes(responsavel) && !jaEmCoaud) { {
                 await appendLinha('COAUD', linha);
                 coaudData.push(linha);
                 setProgress(`✅ Patrimônio ${nrp} inserido em SIGMAS + COAUD.`);
