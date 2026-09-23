@@ -110,6 +110,29 @@
 
         .vazio { padding: 16px; font-size: 12px; color: var(--text-muted); }
 
+        /* Abas do detalhe */
+        .abas-det {
+            display: flex; gap: 0; margin-bottom: 14px;
+            border: 1px solid var(--card-border); border-radius: var(--radius-sm); overflow: hidden;
+            width: fit-content; max-width: 100%;
+        }
+        .abas-det .aba-det {
+            margin: 0; border: none; border-radius: 0; background: transparent;
+            color: var(--text-muted); font-size: 12px; font-weight: 700; padding: 9px 18px; cursor: pointer;
+        }
+        .abas-det .aba-det + .aba-det { border-left: 1px solid var(--card-border); }
+        .abas-det .aba-det.ativa { background: var(--verde); color: #fff; }
+        .qtd-sobras {
+            display: inline-block; min-width: 20px; padding: 0 6px; margin-left: 4px;
+            border-radius: 10px; background: rgba(168,85,247,.25); color: #e9d5ff; font-size: 11px;
+        }
+        .abas-det .aba-det.ativa .qtd-sobras { background: rgba(255,255,255,.25); color: #fff; }
+        .sobras-topo { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+        .sobras-topo input[type="text"] { flex: 1; min-width: 180px; margin: 0; }
+        .sobras-topo select { width: auto; max-width: 100%; margin: 0; }
+        .sobras-topo button { margin: 0; }
+        #tabelaSobras td.nrp { font-family: monospace; white-space: nowrap; }
+
         /* Modal faltantes */
         .modal-falt { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 500; align-items: center; justify-content: center; }
         .modal-falt.aberto { display: flex; }
@@ -221,6 +244,45 @@
                         <button type="button" class="backButton" onclick="carregarTudo()">🔄 Atualizar</button>
                     </div>
 
+                    <div class="abas-det" role="tablist">
+                        <button type="button" class="aba-det ativa" data-painel="andamento" role="tab">📊 Andamento</button>
+                        <button type="button" class="aba-det" data-painel="sobras" role="tab">🟣 Sobras <span class="qtd-sobras" id="qtdSobras">0</span></button>
+                    </div>
+
+                    <!-- ═══ ABA: SOBRAS ═══ -->
+                    <div id="painelSobras" style="display:none">
+                        <div class="card">
+                            <div class="card-title">Sobras — patrimônios de outros responsáveis encontrados no inventário</div>
+                            <div class="sobras-topo">
+                                <input type="text" id="buscaSobra" placeholder="🔎 Buscar NRP, material ou responsável..." autocomplete="off">
+                                <select id="salaSobra"><option value="">Todas as salas</option></select>
+                                <button type="button" onclick="imprimirSobras()">🖨 Imprimir</button>
+                            </div>
+                            <div class="table-wrapper">
+                                <table id="tabelaSobras">
+                                    <thead>
+                                        <tr>
+                                            <th>NRP</th>
+                                            <th>Material</th>
+                                            <th>Localização</th>
+                                            <th>Responsável</th>
+                                            <th>Local na SIGMAS</th>
+                                            <th>Bipado em</th>
+                                            <th>Operador</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="listaSobras"></tbody>
+                                </table>
+                            </div>
+                            <p style="font-size:11px;color:var(--text-muted);margin-top:10px">
+                                "Localização" é onde o item foi encontrado. A impressão sai com NRP, Material, Localização e Responsável,
+                                respeitando a busca e a sala escolhidas.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- ═══ ABA: ANDAMENTO ═══ -->
+                    <div id="painelAndamento">
                     <div id="detConcluido"></div>
 
                     <div class="dashboard" id="detKpis"></div>
@@ -252,6 +314,7 @@
                             <div class="grafico-dias" id="porDia"></div>
                         </div>
                     </div>
+                    </div><!-- /painelAndamento -->
                 </div>
 
             </div>
@@ -298,6 +361,8 @@
     let nrpsCoaud    = new Set();
     let inventarios  = [];     // da planilha (abas "INV ...")
     let dadosInv     = {};     // aba -> linhas (A:J)
+    let dadosSobras  = {};     // aba do inventário -> linhas da aba "SOBRAS INV ..."
+    let painelAtual  = 'andamento';
     let invAberto    = null;   // aba do inventário no detalhe
 
     function setProgress(msg) {
@@ -386,7 +451,10 @@
             const inv = await listarInventarios(accessToken, FILE_ID);
             inventarios = inv.lista;
 
-            const ranges = ['SIGMAS!A:D', 'COAUD!A:D'].concat(inventarios.map(i => rangeAba(i.aba, 'A:J')));
+            const comSobras = inventarios.filter(i => i.temSobras);
+            const ranges = ['SIGMAS!A:D', 'COAUD!A:D']
+                .concat(inventarios.map(i => rangeAba(i.aba, 'A:J')))
+                .concat(comSobras.map(i => rangeAba(i.abaSobras, 'A:J')));
             const q = ranges.map(r => 'ranges=' + encodeURIComponent(r)).join('&');
             const d = await sheetsFetch(accessToken, `${SHEETS_API}${FILE_ID}/values:batchGet?${q}`);
             const vr = d.valueRanges || [];
@@ -398,6 +466,11 @@
             dadosInv = {};
             inventarios.forEach((i, k) => {
                 dadosInv[i.aba] = (((vr[k + 2] && vr[k + 2].values) || []).slice(1)).filter(row => normalizeNRP(row[0]));
+            });
+            dadosSobras = {};
+            comSobras.forEach((i, k) => {
+                const v = vr[2 + inventarios.length + k];
+                dadosSobras[i.aba] = (((v && v.values) || []).slice(1)).filter(row => normalizeNRP(row[0]));
             });
 
             await verificarConclusoes();
@@ -520,6 +593,7 @@
                         ${inv.criadoEm ? `Criado em ${esc(inv.criadoEm)}${inv.criadoPor ? ' por ' + esc(inv.criadoPor) : ''}<br>` : ''}
                         ${inv.concluidoEm ? `Concluído em ${esc(inv.concluidoEm)}<br>` : ''}
                         ${c.ultimo ? `Último bip: ${esc(c.ultimo)}` : 'Nenhum bip ainda'}
+                        ${(dadosSobras[inv.aba] || []).length ? `<br>🟣 ${sobrasDoInventario(inv).length} sobra(s)` : ''}
                     </div>
                 </div>`;
         }).join('');
@@ -527,8 +601,8 @@
     }
 
     function aplicarHash() {
-        const aba = decodeURIComponent((location.hash || '').slice(1));
-        if (aba && inventarios.some(i => i.aba === aba)) abrirDetalhe(aba);
+        const [aba, painel] = decodeURIComponent((location.hash || '').slice(1)).split('|');
+        if (aba && inventarios.some(i => i.aba === aba)) { abrirDetalhe(aba); mostrarPainel(painel === 'sobras' ? 'sobras' : 'andamento'); }
         else voltarLista(true);
     }
 
@@ -618,6 +692,7 @@
             </div>`;
 
         renderizarSalas();
+        prepararSobras(inv);
 
         // Por operador
         const ops = [...c.operadores.entries()].sort((a, b) => b[1] - a[1]);
@@ -669,6 +744,92 @@
             : '<div class="vazio">Nenhuma sala com esse filtro.</div>';
 
         grid.querySelectorAll('.card-sala').forEach(b => ativarCard(b, () => abrirFalt(b.dataset.sala)));
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  ABA SOBRAS
+    // ══════════════════════════════════════════════════════
+    function mostrarPainel(qual) {
+        painelAtual = qual;
+        document.querySelectorAll('.aba-det').forEach(b => b.classList.toggle('ativa', b.dataset.painel === qual));
+        document.getElementById('painelAndamento').style.display = qual === 'andamento' ? 'block' : 'none';
+        document.getElementById('painelSobras').style.display    = qual === 'sobras' ? 'block' : 'none';
+    }
+    document.querySelectorAll('.aba-det').forEach(b => b.addEventListener('click', () => {
+        mostrarPainel(b.dataset.painel);
+        if (invAberto) history.replaceState(null, '', '#' + encodeURIComponent(invAberto + (b.dataset.painel === 'sobras' ? '|sobras' : '')));
+    }));
+
+    let sobrasInv = [];
+
+    // Última ocorrência de cada NRP na aba de sobras
+    function sobrasDoInventario(inv) {
+        const mapa = new Map();
+        (dadosSobras[inv.aba] || []).forEach(r => {
+            mapa.set(normalizeNRP(r[0]), {
+                NRP: r[0] || '', Material: r[1] || '', Localização: (r[2] || '').toString().trim(),
+                Responsável: r[3] || '', localSigmas: r[5] || '', dataHora: r[6] || '', operador: r[7] || ''
+            });
+        });
+        return [...mapa.values()].sort((a, b) =>
+            a.Localização.localeCompare(b.Localização, 'pt-BR') || String(a.NRP).localeCompare(String(b.NRP), 'pt-BR', { numeric: true }));
+    }
+
+    function prepararSobras(inv) {
+        sobrasInv = sobrasDoInventario(inv);
+        document.getElementById('qtdSobras').textContent = sobrasInv.length;
+
+        const sel = document.getElementById('salaSobra');
+        const atual = sel.value;
+        const salas = [...new Set(sobrasInv.map(s => s.Localização).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+        sel.innerHTML = '<option value="">Todas as salas</option>' +
+            salas.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+        sel.value = salas.includes(atual) ? atual : '';
+        renderizarSobras();
+    }
+
+    function sobrasFiltradas() {
+        const busca = norm(document.getElementById('buscaSobra').value);
+        const sala  = document.getElementById('salaSobra').value;
+        return sobrasInv.filter(s =>
+            (!sala || s.Localização === sala) &&
+            (!busca || norm(`${s.NRP} ${s.Material} ${s.Responsável} ${s.Localização}`).includes(busca)));
+    }
+
+    function renderizarSobras() {
+        const lista = sobrasFiltradas();
+        document.getElementById('listaSobras').innerHTML = lista.length
+            ? lista.map(s => `
+                <tr>
+                    <td class="nrp">${esc(s.NRP)}</td>
+                    <td>${esc(s.Material)}</td>
+                    <td>${esc(s.Localização)}</td>
+                    <td>${esc(s.Responsável)}</td>
+                    <td>${esc(s.localSigmas)}</td>
+                    <td>${esc(s.dataHora)}</td>
+                    <td>${esc(s.operador)}</td>
+                </tr>`).join('')
+            : `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px">
+                ${sobrasInv.length ? 'Nenhuma sobra com esse filtro.' : 'Nenhuma sobra registrada neste inventário.'}</td></tr>`;
+    }
+    document.getElementById('buscaSobra').addEventListener('input', renderizarSobras);
+    document.getElementById('salaSobra').addEventListener('change', renderizarSobras);
+
+    function imprimirSobras() {
+        const inv = inventarios.find(i => i.aba === invAberto);
+        if (!inv) return;
+        const lista = sobrasFiltradas();
+        if (!lista.length) { alert('Não há sobras para imprimir com o filtro atual.'); return; }
+        const u = JSON.parse(localStorage.getItem('usuarioLogado')) || {};
+        localStorage.setItem('sobrasParaImprimir', JSON.stringify({
+            inventario: inv.nome,
+            sala: document.getElementById('salaSobra').value || '',
+            emitidoPor: u.nome || '',
+            emitidoEm: dataHoraBR(),
+            voltar: 'dashboard-inventario.html#' + encodeURIComponent(inv.aba + '|sobras'),
+            itens: lista.map(s => ({ NRP: s.NRP, Material: s.Material, Localização: s.Localização, Responsável: s.Responsável }))
+        }));
+        window.location.href = 'imprimir-sobras.html';
     }
 
     function abrirFalt(sala) {

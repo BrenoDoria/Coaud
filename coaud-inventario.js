@@ -6,6 +6,7 @@
 // ══════════════════════════════════════════════════════
 
 const INV_PREFIXO      = 'INV ';
+const SOBRAS_PREFIXO   = 'SOBRAS ';   // aba de sobras: "SOBRAS INV 2026"
 const ABA_CONTROLE_INV = 'INVENTARIOS';
 const SHEETS_API       = 'https://sheets.googleapis.com/v4/spreadsheets/';
 
@@ -14,6 +15,11 @@ const CABECALHO_INV = [
     'Sala anterior', 'Data/Hora', 'Operador', 'Inventário', 'Responsável anterior'
 ];
 const CABECALHO_CONTROLE = ['Nome', 'Aba', 'Criado em', 'Criado por', 'Concluído em'];
+
+// "INV 2026" → "SOBRAS INV 2026"
+function abaSobrasDe(abaInv) {
+    return SOBRAS_PREFIXO + abaInv;
+}
 
 // Nome de aba com espaço precisa de aspas simples na notação A1: 'INV 2026'!A:J
 function rangeAba(aba, colunas) {
@@ -60,8 +66,12 @@ async function listarInventarios(token, fileId) {
         .map(a => {
             const i = controle.findIndex(r => (r[1] || '').trim() === a.title);
             const c = i >= 0 ? controle[i] : null;
+            const abaSobras = abaSobrasDe(a.title);
             return {
                 aba: a.title,
+                abaSobras,
+                temSobras: sheetIds[abaSobras] !== undefined,
+                sheetIdSobras: sheetIds[abaSobras],
                 nome: (c && c[0]) || a.title.slice(INV_PREFIXO.length).trim(),
                 sheetId: a.sheetId,
                 criadoEm: c ? (c[2] || '') : '',
@@ -103,6 +113,10 @@ async function criarInventario(token, fileId, nome, operador) {
     }
 
     const sheetId = await criarAba(token, fileId, aba, CABECALHO_INV);
+    // Aba de sobras do inventário (itens de outros responsáveis)
+    if (sheetIds[abaSobrasDe(aba)] === undefined) {
+        await criarAba(token, fileId, abaSobrasDe(aba), CABECALHO_INV);
+    }
 
     if (sheetIds[ABA_CONTROLE_INV] === undefined) {
         await criarAba(token, fileId, ABA_CONTROLE_INV, CABECALHO_CONTROLE);
@@ -111,7 +125,19 @@ async function criarInventario(token, fileId, nome, operador) {
         `${SHEETS_API}${fileId}/values/${urlRange(ABA_CONTROLE_INV, 'A:E')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
         { method: 'POST', body: JSON.stringify({ values: [[nome, aba, dataHoraBR(), operador || '', '']] }) });
 
-    return { aba, nome, sheetId };
+    return { aba, nome, sheetId, abaSobras: abaSobrasDe(aba) };
+}
+
+// Cria a aba de sobras de um inventário antigo, se ainda não existir.
+// Devolve o sheetId da aba.
+async function garantirAbaSobras(token, fileId, inv) {
+    if (inv.temSobras && inv.sheetIdSobras !== undefined) return inv.sheetIdSobras;
+    const { sheetIds } = await listarInventarios(token, fileId);
+    let id = sheetIds[inv.abaSobras];
+    if (id === undefined) id = await criarAba(token, fileId, inv.abaSobras, CABECALHO_INV);
+    inv.temSobras = true;
+    inv.sheetIdSobras = id;
+    return id;
 }
 
 // Grava a data de conclusão na aba INVENTARIOS (cria a linha se não existir)

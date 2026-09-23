@@ -38,6 +38,10 @@
         #statusSalvamento.ok       { color: #4ade80; }
         #statusSalvamento.pendente { color: #fbbf24; }
         #statusSalvamento.erro     { color: #f87171; }
+        #patrimonioList tr.sobra td {
+            background: rgba(168,85,247,0.14);
+            color: #d8b4fe;
+        }
         #patrimonioList tr.blue td {
             background: rgba(96,165,250,0.14);
             color: #93c5fd;
@@ -417,6 +421,7 @@
                         🔴 Vermelho = Ainda não encontrado &nbsp;|&nbsp;
                         🟢 Verde = Bipado / Encontrado &nbsp;|&nbsp;
                         🟡 Amarelo = Novo (transferido/inserido) &nbsp;|&nbsp;
+                        🟣 Roxo = Sobra (item de outro responsável) &nbsp;|&nbsp;
                         🔵 Azul = Saiu desta sala (transferido por outra pessoa)
                     </div>
                 </div>
@@ -741,14 +746,15 @@
         return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
     }
 
-    function linhaParaRegistro(row) {
+    function linhaParaRegistro(row, aba) {
         return {
             NRP: (row[0] || '').toString(), Material: (row[1] || '').toString(),
             Localização: (row[2] || '').toString(), Responsável: (row[3] || '').toString(),
             situacao: (row[4] || '').toString(), salaAnterior: (row[5] || '').toString(),
             dataHora: (row[6] || '').toString(), operador: (row[7] || '').toString(),
             inventario: (row[8] || '').toString(),
-            respAnterior: (row[9] || '').toString()
+            respAnterior: (row[9] || '').toString(),
+            _aba: aba || (invAtual ? invAtual.aba : '')
         };
     }
 
@@ -772,11 +778,19 @@
         invAtual = inventarios.find(i => i.aba === sel.value) || null;
     }
 
+    function pendentesDoInvAtual() {
+        if (!invAtual) return [];
+        return filaEnvio.filter(f => f.aba === invAtual.aba || f.aba === invAtual.abaSobras).map(f => f.reg);
+    }
+
     async function carregarRegistrosInv() {
         if (!invAtual) { registrosInv = []; return; }
         const rows = await lerRegistrosInventario(accessToken, FILE_ID, invAtual.aba);
-        registrosInv = rows.filter(row => normalizeNRP(row[0])).map(linhaParaRegistro)
-            .concat(filaEnvio.filter(f => f.aba === invAtual.aba).map(f => f.reg));
+        const sobras = invAtual.temSobras
+            ? await lerRegistrosInventario(accessToken, FILE_ID, invAtual.abaSobras) : [];
+        registrosInv = rows.filter(row => normalizeNRP(row[0])).map(row => linhaParaRegistro(row, invAtual.aba))
+            .concat(sobras.filter(row => normalizeNRP(row[0])).map(row => linhaParaRegistro(row, invAtual.abaSobras)))
+            .concat(pendentesDoInvAtual());
     }
 
     document.getElementById('inventarioSelect').addEventListener('change', async function() {
@@ -803,7 +817,7 @@
     });
 
     // Registra um bip: entra na memória na hora e vai para a fila de envio
-    function registrarNoInventario(item, situacao, salaAnterior, respAnterior) {
+    function registrarNoInventario(item, situacao, salaAnterior, respAnterior, abaDestino) {
         if (!invAtual) { toast('Escolha ou crie um inventário antes de bipar.', 'erro'); return; }
         const linha = [
             (item.NRP || '').toString(), (item.Material || '').toString(),
@@ -811,9 +825,10 @@
             situacao, salaAnterior || '', dataHoraAgora(), operadorAtual(), nomeInventario(),
             respAnterior || ''
         ];
-        const reg = linhaParaRegistro(linha);
+        const aba = abaDestino || invAtual.aba;
+        const reg = linhaParaRegistro(linha, aba);
         registrosInv.push(reg);
-        filaEnvio.push({ aba: invAtual.aba, linha, reg });
+        filaEnvio.push({ aba, linha, reg });
         atualizarStatusSalvamento();
         atualizarBloqueioNovoInv();
     }
@@ -830,6 +845,12 @@
         const lote = [];
         for (const f of filaEnvio) { if (f.aba !== abaLote || lote.length >= 50) break; lote.push(f); }
         try {
+            // Primeira sobra de um inventário antigo: cria a aba "SOBRAS INV ..." antes de gravar
+            const invDaSobra = inventarios.find(i => i.abaSobras === abaLote);
+            if (invDaSobra && !invDaSobra.temSobras) {
+                sheetIds[abaLote] = await garantirAbaSobras(accessToken, FILE_ID, invDaSobra);
+                toast(`Aba ${abaLote} criada na planilha.`, 'info', true);
+            }
             const r = await fetch(
                 `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/${urlRange(abaLote, 'A:J')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
                 { method: 'POST',
@@ -900,7 +921,9 @@
         sincronizando = true;
         const enviosAntes = contadorEnvios;
         try {
+            const lerSobras = !!invAtual.temSobras;
             const ranges = ['COAUD!A:D', rangeAba(invAtual.aba, 'A:J')]
+                .concat(lerSobras ? [rangeAba(invAtual.abaSobras, 'A:J')] : [])
                 .map(r => 'ranges=' + encodeURIComponent(r)).join('&');
             const r = await fetch(
                 `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values:batchGet?${ranges}`,
@@ -917,9 +940,13 @@
             coaudData = (vr[0] && vr[0].values) || coaudData;
             const daPlanilha = (((vr[1] && vr[1].values) || []).slice(1))
                 .filter(row => normalizeNRP(row[0]))
-                .map(linhaParaRegistro);
+                .map(row => linhaParaRegistro(row, invAtual.aba));
+            const daSobras = lerSobras
+                ? (((vr[2] && vr[2].values) || []).slice(1)).filter(row => normalizeNRP(row[0]))
+                    .map(row => linhaParaRegistro(row, invAtual.abaSobras))
+                : [];
             // Mantém na memória os bips que ainda estão na fila de envio
-            registrosInv = daPlanilha.concat(filaEnvio.filter(f => f.aba === invAtual.aba).map(f => f.reg));
+            registrosInv = daPlanilha.concat(daSobras).concat(pendentesDoInvAtual());
 
             aplicarSincronizacao(manual);
             atualizarBloqueioNovoInv();
@@ -952,7 +979,7 @@
         // Itens bipados que foram desconsiderados por outra pessoa
         let desconsiderados = 0;
         currentSalaInventario = currentSalaInventario.filter(item => {
-            if (item.status !== 'green' && item.status !== 'yellow') return true;
+            if (item.status !== 'green' && item.status !== 'yellow' && item.status !== 'sobra') return true;
             const n = normalizeNRP(item.NRP);
             if (nrpsReg.has(n)) return true;
             desconsiderados++;
@@ -996,7 +1023,7 @@
         });
 
         // Ordem: verdes/amarelos no topo, vermelhos no meio, azuis no fim
-        const peso = { green: 0, yellow: 0, red: 1, blue: 2 };
+        const peso = { green: 0, yellow: 0, sobra: 0, red: 1, blue: 2 };
         currentSalaInventario.sort((a, b) => (peso[a.status] ?? 1) - (peso[b.status] ?? 1));
 
         updateInventarioTable();
@@ -1236,7 +1263,8 @@
         ultimosPorNrp.forEach(r => {
             currentSalaInventario.push({
                 NRP: r.NRP, Material: r.Material, Localização: sala, Responsável: r.Responsável,
-                status: (r.situacao || '').toUpperCase().startsWith('ENCONTRADO') ? 'green' : 'yellow',
+                status: (r.situacao || '').toUpperCase().startsWith('ENCONTRADO') ? 'green'
+                      : (r.situacao || '').toUpperCase().startsWith('SOBRA') ? 'sobra' : 'yellow',
                 obs: ` ✓ ${r.operador} ${r.dataHora}`,
                 jaRegistrado: true
             });
@@ -1465,6 +1493,13 @@
             return;
         }
 
+        // ── Cenário S: item de OUTRO responsável (não é dos 3) → SOBRA ──
+        //    registra no inventário sem transferir e sem alterar SIGMAS/COAUD
+        if (!rowCoaud && rowSigmas && !ehResponsavelCoaud(rowSigmas[3])) {
+            registrarSobra(rowSigmas, input);
+            return;
+        }
+
         // ── Cenário B: existe em outra sala da COAUD ──
         if (rowCoaud) {
             abrirModalTransf({
@@ -1485,6 +1520,31 @@
             idxSigmas, idxCoaud: -1,
             emSigmas: true, emCoaud: false
         });
+    }
+
+    // Item de outro responsável encontrado nesta sala: vira "Sobra"
+    function registrarSobra(row, input) {
+        const n = normalizeNRP(row[0]);
+        const campo = document.getElementById("patrimonioInput");
+        const jaSobra = registrosInv.find(r =>
+            normalizeNRP(r.NRP) === n && (r.situacao || '').toUpperCase().startsWith('SOBRA'));
+        if (jaSobra) {
+            toast(`O patrimônio "${input}" já foi registrado como sobra na sala ${jaSobra.Localização}` +
+                  ` em ${jaSobra.dataHora} por ${jaSobra.operador}.`, 'aviso');
+            campo.value = ""; campo.focus();
+            return;
+        }
+        const localSigmas = (row[2] || '').toString().trim();
+        const item = {
+            NRP: (row[0] || '').toString(), Material: (row[1] || '').toString(),
+            Localização: salaSelecionada, Responsável: (row[3] || '').toString()
+        };
+        currentSalaInventario.unshift({ ...item, status: 'sobra', obs: localSigmas ? ` (SIGMAS: ${localSigmas})` : '' });
+        registrarNoInventario(item, 'Sobra', localSigmas, '', invAtual.abaSobras);
+        updateInventarioTable();
+        toast(`${input} é de ${item.Responsável || 'outro responsável'}: registrado como SOBRA.`, 'info');
+        setProgress(`🟣 NRP "${input}" registrado como sobra (outro responsável).`);
+        campo.value = ""; campo.focus();
     }
 
     function marcarComoColetado(rowRef, status, situacao, salaAnterior, respAnterior) {
@@ -1534,7 +1594,7 @@
             });
             const tdX = document.createElement("td");
             tdX.className = 'acao';
-            if (item.status === 'green' || item.status === 'yellow') {
+            if (item.status === 'green' || item.status === 'yellow' || item.status === 'sobra') {
                 const b = document.createElement("button");
                 b.type = 'button';
                 b.className = 'btn-x';
@@ -1942,6 +2002,7 @@
             Object.assign(sheetIds, inv.sheetIds);
             inventarios = inv.lista;
             popularSelectInventarios(novo.aba);
+            toast(`Abas ${novo.aba} e ${novo.abaSobras} criadas na planilha.`, 'info', true);
             await carregarRegistrosInv();
             await carregarUltimoInvSeNecessario();
             atualizarBloqueioNovoInv();
@@ -2005,7 +2066,7 @@
             O patrimônio <strong>${escHTML(reg.NRP)}</strong> (${escHTML(reg.Material)}) foi registrado como
             <strong>${escHTML(reg.situacao)}</strong> em ${escHTML(reg.dataHora)} por ${escHTML(reg.operador)}.<br><br>
             Ao desconsiderar:<br>
-            • O registro será <strong>apagado</strong> do inventário ${escHTML(nomeInventario())}.<br>
+            • O registro será <strong>apagado</strong> da aba ${escHTML(reg._aba || (invAtual && invAtual.aba) || '')}.<br>
             • ${efeito}`;
         document.getElementById('modalDescons').classList.add('aberto');
         som('info');
@@ -2041,8 +2102,9 @@
                 atualizarStatusSalvamento();
             } else {
                 await esvaziarFila();
-                const linha = await localizarLinhaRegistro(accessToken, FILE_ID, invAtual.aba, reg);
-                if (linha > 1) await deletarLinha(accessToken, invAtual.aba, linha - 1);
+                const abaReg = reg._aba || invAtual.aba;
+                const linha = await localizarLinhaRegistro(accessToken, FILE_ID, abaReg, reg);
+                if (linha > 1) await deletarLinha(accessToken, abaReg, linha - 1);
             }
 
             // 2) Desfaz o efeito na SIGMAS / COAUD

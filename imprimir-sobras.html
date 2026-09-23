@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COAUD — Relação de Sobras do Inventário</title>
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 10pt;
+            margin: 0;
+            padding: 0;
+            background: #f0f0f0;
+            color: #111;
+        }
+
+        .pagina-wrapper {
+            max-width: 210mm;
+            margin: 20px auto;
+            background: #fff;
+            padding: 14mm 14mm 12mm;
+            box-shadow: 0 2px 16px rgba(0,0,0,0.15);
+        }
+
+        @page {
+            size: A4 portrait;
+            margin: 14mm 12mm 14mm;
+        }
+
+        @media print {
+            body { background: #fff; }
+            .pagina-wrapper {
+                margin: 0; padding: 0;
+                box-shadow: none; max-width: 100%;
+            }
+            .no-print { display: none !important; }
+            thead { display: table-header-group; }   /* repete o cabeçalho da tabela em cada página */
+            tr { page-break-inside: avoid; }
+        }
+
+        /* ── CABEÇALHO ── */
+        .header-content {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #1a5fa8;
+            margin-bottom: 10px;
+        }
+        .brasao { width: 58px; height: auto; flex-shrink: 0; }
+        .header-text p { margin: 1px 0; font-size: 9pt; }
+        .header-text .inst-nome { font-size: 11pt; font-weight: bold; color: #1a3a6e; }
+        .header-text .ficha-titulo { font-size: 9pt; font-weight: bold; color: #2d8c3e; margin-top: 3px; }
+
+        /* ── TÍTULOS DE BLOCO ── */
+        .bloco-titulo {
+            font-weight: bold;
+            font-size: 9pt;
+            text-align: center;
+            padding: 5px 0;
+            margin: 10px 0 6px;
+            letter-spacing: 0.6px;
+            color: #fff;
+            border-radius: 3px;
+        }
+        .azul   { background: #1a5fa8; }
+        .verde  { background: #2d8c3e; }
+        .cinza  { background: #555555; }
+
+        /* ── TABELA ── */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 9pt;
+            margin-bottom: 6px;
+        }
+        thead th {
+            background: #e8f0fb;
+            color: #1a3a6e;
+            font-weight: bold;
+            padding: 5px 8px;
+            border: 1px solid #b0c4de;
+            text-align: left;
+            font-size: 8.5pt;
+        }
+        tbody td {
+            padding: 4px 8px;
+            border: 1px solid #c8c8c8;
+            vertical-align: top;
+        }
+        tbody tr:nth-child(even) td { background: #f7f9ff; }
+        td.nrp { font-family: monospace; white-space: nowrap; width: 95px; }
+        td.num { width: 32px; text-align: right; color: #666; }
+
+        /* ── BLOCOS DE INFORMAÇÃO ── */
+        .info-bloco {
+            border: 1px solid #c8d8f0;
+            border-radius: 4px;
+            padding: 8px 12px;
+            margin-bottom: 8px;
+        }
+        .info-bloco.azul-claro { background: #f0f4fb; border-color: #b0c4de; }
+
+        .dados-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px 20px;
+        }
+        .dados-grid.tres { grid-template-columns: 1fr 1fr 1fr; }
+
+        .dado {
+            display: flex;
+            align-items: baseline;
+            gap: 5px;
+            padding: 3px 0;
+            border-bottom: 1px dotted #ccc;
+        }
+        .dado-label {
+            font-weight: bold;
+            color: #1a3a6e;
+            font-size: 8pt;
+            white-space: nowrap;
+            min-width: 70px;
+        }
+        .dado-valor { font-size: 9.5pt; color: #111; flex: 1; }
+
+        .termo-texto {
+            font-size: 8.5pt;
+            color: #333;
+            line-height: 1.55;
+            text-align: justify;
+            margin: 4px 0 8px;
+        }
+
+        /* ── ASSINATURA ── */
+        .assinatura-area {
+            border: 1px solid #b0c4de;
+            border-radius: 4px;
+            padding: 10px 14px;
+            margin-top: 6px;
+            background: #fafcff;
+            page-break-inside: avoid;
+        }
+        .assinatura-campos {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 6px 16px;
+            margin-bottom: 8px;
+        }
+        .campo-linha { display: flex; flex-direction: column; gap: 3px; }
+        .campo-linha label {
+            font-size: 7.5pt;
+            font-weight: bold;
+            color: #1a3a6e;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .campo-linha .linha { border-bottom: 1.5px solid #444; min-height: 18px; }
+        .assinatura-linha-box {
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 1px dashed #bbb;
+        }
+        .assinatura-linha-box label {
+            font-size: 7.5pt;
+            font-weight: bold;
+            color: #1a3a6e;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            display: block;
+            margin-bottom: 3px;
+        }
+        .assinatura-linha-box .linha-assinatura {
+            border-bottom: 1.5px solid #444;
+            min-height: 28px;
+            width: 80%;
+        }
+
+        /* ── BOTÕES ── */
+        .no-print {
+            max-width: 210mm;
+            margin: 0 auto;
+            display: flex;
+            gap: 10px;
+            padding: 16px 14mm;
+        }
+        .no-print button {
+            padding: 10px 22px;
+            border: none;
+            border-radius: 7px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .btn-print  { background: #2d8c3e; color: #fff; }
+        .btn-print:hover  { background: #247534; }
+        .btn-voltar { background: #f0f0f0; color: #444; border: 1px solid #ccc !important; }
+        .btn-voltar:hover { background: #e4e4e4; }
+
+        @media screen and (max-width: 600px) {
+            .pagina-wrapper { padding: 8mm 6mm; margin: 8px; }
+            .dados-grid, .dados-grid.tres { grid-template-columns: 1fr; }
+            .assinatura-campos { grid-template-columns: 1fr; }
+            .no-print { padding: 12px 6mm; }
+        }
+    </style>
+</head>
+<body onload="carregarSobras()">
+
+    <div class="no-print">
+        <button class="btn-print"  onclick="window.print()">🖨 Imprimir</button>
+        <button class="btn-voltar" onclick="voltar()">← Voltar</button>
+    </div>
+
+    <div class="pagina-wrapper">
+
+        <!-- ══ CABEÇALHO INSTITUCIONAL ══════════════════════ -->
+        <div class="header-content">
+            <img src="brasao_republica_brasil.jpg"
+                 class="brasao"
+                 alt="Brasão da República Federativa do Brasil">
+            <div class="header-text">
+                <p class="inst-nome">CÂMARA DOS DEPUTADOS</p>
+                <p>Coordenação de Engenharia de Telecomunicações e Audiovisual — COAUD</p>
+                <p>Seção de Apoio aos Auditórios e Comissões — SAUDI/SAPCO</p>
+                <p class="ficha-titulo">
+                    RELAÇÃO DE SOBRAS DO INVENTÁRIO — PATRIMÔNIOS DE OUTROS RESPONSÁVEIS
+                </p>
+            </div>
+        </div>
+
+        <!-- ══ DADOS DO INVENTÁRIO ═════════════════════════ -->
+        <div class="bloco-titulo azul">DADOS DO LEVANTAMENTO</div>
+        <div class="info-bloco azul-claro">
+            <div class="dados-grid tres">
+                <div class="dado">
+                    <span class="dado-label">Inventário:</span>
+                    <span class="dado-valor" id="inventario"></span>
+                </div>
+                <div class="dado">
+                    <span class="dado-label">Sala:</span>
+                    <span class="dado-valor" id="sala"></span>
+                </div>
+                <div class="dado">
+                    <span class="dado-label">Total de itens:</span>
+                    <span class="dado-valor" id="total"></span>
+                </div>
+            </div>
+            <div class="dados-grid" style="margin-top:4px">
+                <div class="dado">
+                    <span class="dado-label">Emitido por:</span>
+                    <span class="dado-valor" id="emitidoPor"></span>
+                </div>
+                <div class="dado">
+                    <span class="dado-label">Emitido em:</span>
+                    <span class="dado-valor" id="emitidoEm"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══ LISTA DE SOBRAS ═════════════════════════════ -->
+        <div class="bloco-titulo azul">PATRIMÔNIOS ENCONTRADOS DE OUTROS RESPONSÁVEIS</div>
+        <table id="listaSobras">
+            <thead>
+                <tr>
+                    <th style="width:32px">#</th>
+                    <th style="width:95px">NRP</th>
+                    <th>Material</th>
+                    <th>Localização</th>
+                    <th>Responsável</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+
+        <!-- ══ OBSERVAÇÃO ═══════════════════════════════════ -->
+        <div class="bloco-titulo cinza" style="margin-top:10px">OBSERVAÇÃO</div>
+        <p class="termo-texto">
+            Os patrimônios acima foram localizados durante o inventário da Coordenação de Engenharia de
+            Telecomunicações e Audiovisual — COAUD e estão sob a carga patrimonial de outros responsáveis.
+            A coluna "Localização" indica o local onde cada item foi encontrado no levantamento.
+        </p>
+
+        <!-- ══ CONFERÊNCIA ══════════════════════════════════ -->
+        <div class="bloco-titulo verde">CONFERÊNCIA</div>
+        <div class="assinatura-area">
+            <div class="assinatura-campos">
+                <div class="campo-linha">
+                    <label>Conferido por</label>
+                    <div class="linha"></div>
+                </div>
+                <div class="campo-linha">
+                    <label>Ponto funcional</label>
+                    <div class="linha"></div>
+                </div>
+            </div>
+            <div class="assinatura-linha-box">
+                <label>Assinatura</label>
+                <div class="linha-assinatura"></div>
+            </div>
+        </div>
+
+        <!-- Identificação no rodapé -->
+        <div style="margin-top:10px;text-align:right;font-size:7.5pt;color:#888;border-top:1px solid #eee;padding-top:4px">
+            COAUD / SAUDI/SAPCO — Sobras do inventário <strong id="invRodape"></strong>
+            &nbsp;|&nbsp; Emitida em: <strong id="dataRodape"></strong>
+        </div>
+
+    </div><!-- /pagina-wrapper -->
+
+    <div class="no-print" style="padding-bottom:24px">
+        <button class="btn-print"  onclick="window.print()">🖨 Imprimir</button>
+        <button class="btn-voltar" onclick="voltar()">← Voltar</button>
+    </div>
+
+<script>
+function esc(str) {
+    if (str === undefined || str === null || str === '') return '-';
+    return String(str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+let dadosImpressao = null;
+
+function voltar() {
+    const destino = (dadosImpressao && dadosImpressao.voltar) || 'dashboard-inventario.html';
+    window.location.href = destino;
+}
+
+function carregarSobras() {
+    dadosImpressao = JSON.parse(localStorage.getItem('sobrasParaImprimir'));
+    const d = dadosImpressao;
+    if (!d || !d.itens) {
+        alert('Nenhuma lista de sobras encontrada. Redirecionando...');
+        window.location.href = 'dashboard-inventario.html';
+        return;
+    }
+
+    const set = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val || '-';
+    };
+    set('inventario', d.inventario);
+    set('sala',       d.sala || 'Todas as salas');
+    set('total',      String(d.itens.length));
+    set('emitidoPor', d.emitidoPor);
+    set('emitidoEm',  d.emitidoEm);
+    set('invRodape',  d.inventario);
+    set('dataRodape', d.emitidoEm);
+
+    const tbody = document.querySelector('#listaSobras tbody');
+    if (!d.itens.length) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#666;padding:12px">Nenhuma sobra registrada.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = d.itens.map((i, k) => `
+        <tr>
+            <td class="num">${k + 1}</td>
+            <td class="nrp">${esc(i.NRP)}</td>
+            <td>${esc(i.Material)}</td>
+            <td>${esc(i.Localização)}</td>
+            <td>${esc(i.Responsável)}</td>
+        </tr>`).join('');
+}
+</script>
+</body>
+</html>
