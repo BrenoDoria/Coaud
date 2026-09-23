@@ -183,7 +183,7 @@
                 <button class="btn-menu" onclick="toggleSidebar()">☰</button>
                 <div>
                     <div class="topbar-title">Dashboard de Inventários</div>
-                    <div class="topbar-sub" id="topbarSub">Andamento dos inventários dos 3 responsáveis</div>
+                    <div class="topbar-sub" id="topbarSub">Andamento dos inventários da COAUD</div>
                 </div>
                 <div class="topbar-right">
                     <div id="spinner" class="spinner" style="margin:0"></div>
@@ -293,7 +293,8 @@
 
     let tokenClient  = null;
     let accessToken  = null;
-    let base3        = [];     // linhas da SIGMAS dos 3 responsáveis
+    let baseCoaud    = [];     // linhas da COAUD (itens dos 3 responsáveis, com a sala real)
+    let foraDaCoaud  = 0;      // itens dos 3 na SIGMAS que não estão na COAUD
     let inventarios  = [];     // da planilha (abas "INV ...")
     let dadosInv     = {};     // aba -> linhas (A:J)
     let invAberto    = null;   // aba do inventário no detalhe
@@ -384,16 +385,20 @@
             const inv = await listarInventarios(accessToken, FILE_ID);
             inventarios = inv.lista;
 
-            const ranges = ['SIGMAS!A:D'].concat(inventarios.map(i => rangeAba(i.aba, 'A:J')));
+            const ranges = ['SIGMAS!A:D', 'COAUD!A:D'].concat(inventarios.map(i => rangeAba(i.aba, 'A:J')));
             const q = ranges.map(r => 'ranges=' + encodeURIComponent(r)).join('&');
             const d = await sheetsFetch(accessToken, `${SHEETS_API}${FILE_ID}/values:batchGet?${q}`);
             const vr = d.valueRanges || [];
 
-            base3 = ((vr[0] && vr[0].values) || []).slice(1)
-                .filter(row => normalizeNRP(row[0]) && ehResponsavelCoaud(row[3]));
+            // Base = aba COAUD (mesmas salas do Escaneamento e do Comparador)
+            baseCoaud = ((vr[1] && vr[1].values) || []).slice(1).filter(row => normalizeNRP(row[0]));
+            const nrpsCoaud = new Set(baseCoaud.map(row => normalizeNRP(row[0])));
+            foraDaCoaud = ((vr[0] && vr[0].values) || []).slice(1)
+                .filter(row => normalizeNRP(row[0]) && ehResponsavelCoaud(row[3]) && !nrpsCoaud.has(normalizeNRP(row[0])))
+                .length;
             dadosInv = {};
             inventarios.forEach((i, k) => {
-                dadosInv[i.aba] = (((vr[k + 1] && vr[k + 1].values) || []).slice(1)).filter(row => normalizeNRP(row[0]));
+                dadosInv[i.aba] = (((vr[k + 2] && vr[k + 2].values) || []).slice(1)).filter(row => normalizeNRP(row[0]));
             });
 
             await verificarConclusoes();
@@ -405,7 +410,7 @@
             const p = n => String(n).padStart(2, '0'), agora = new Date();
             const hora = `${p(agora.getHours())}:${p(agora.getMinutes())}:${p(agora.getSeconds())}`;
             document.getElementById('detAtualizado').textContent = `Atualizado às ${hora}`;
-            setProgress(`✅ ${inventarios.length} inventário(s) | ${base3.length} itens dos 3 responsáveis na SIGMAS.`);
+            setProgress(`✅ ${inventarios.length} inventário(s) | ${baseCoaud.length} itens na COAUD.`);
         } catch (e) {
             if (e.message === 'SESSAO_EXPIRADA') {
                 localStorage.removeItem('access_token');
@@ -429,17 +434,18 @@
 
         const salas = new Map();
         let encontrados = 0;
-        base3.forEach(row => {
-            const sala = (row[2] || '').toString().trim() || '(sem sala)';
-            if (!salas.has(sala)) salas.set(sala, { sala, total: 0, encontrados: 0, faltantes: [] });
-            const s = salas.get(sala);
+        baseCoaud.forEach(row => {
+            const sala  = (row[2] || '').toString().trim() || '(sem sala)';
+            const chave = norm(sala);
+            if (!salas.has(chave)) salas.set(chave, { sala, total: 0, encontrados: 0, faltantes: [] });
+            const s = salas.get(chave);
             s.total++;
             if (nrps.has(normalizeNRP(row[0]))) { s.encontrados++; encontrados++; }
             else s.faltantes.push(row);
         });
         const listaSalas = [...salas.values()].map(s => ({ ...s, pct: s.total ? Math.floor(s.encontrados / s.total * 100) : 0 }));
 
-        const total = base3.length;
+        const total = baseCoaud.length;
         const pct = total ? Math.floor(encontrados / total * 100) : 0;
 
         const situacoes = { encontrado: 0, transferido: 0, cadastrado: 0, importado: 0 };
@@ -505,7 +511,7 @@
                     <div class="pct">${c.pct}%</div>
                     ${barra(c.pct)}
                     <div class="sub">
-                        <strong>${c.encontrados}</strong> de ${c.total} itens dos 3 responsáveis ·
+                        <strong>${c.encontrados}</strong> de ${c.total} itens da COAUD ·
                         ${c.salasCompletas} de ${c.salas.length} salas completas<br>
                         ${inv.criadoEm ? `Criado em ${esc(inv.criadoEm)}${inv.criadoPor ? ' por ' + esc(inv.criadoPor) : ''}<br>` : ''}
                         ${inv.concluidoEm ? `Concluído em ${esc(inv.concluidoEm)}<br>` : ''}
@@ -526,7 +532,7 @@
         invAberto = null;
         document.getElementById('visaoDetalhe').style.display = 'none';
         document.getElementById('visaoLista').style.display = 'block';
-        document.getElementById('topbarSub').textContent = 'Andamento dos inventários dos 3 responsáveis';
+        document.getElementById('topbarSub').textContent = 'Andamento dos inventários da COAUD';
         if (!semHash && location.hash) history.pushState('', document.title, location.pathname);
     }
 
@@ -554,16 +560,22 @@
         document.getElementById('topbarSub').textContent = `Inventário ${inv.nome} (aba ${inv.aba})`;
 
         document.getElementById('detConcluido').innerHTML = inv.concluidoEm
-            ? `<div class="aviso-concluido">🎉 Inventário concluído em ${esc(inv.concluidoEm)}: todos os itens dos 3 responsáveis foram encontrados.` +
-              (c.completo ? '' : ` <span style="color:#fbbf24;font-weight:600">(Hoje: ${c.faltam} item(ns) novo(s) na SIGMAS ainda não bipado(s).)</span>`) + `</div>`
+            ? `<div class="aviso-concluido">🎉 Inventário concluído em ${esc(inv.concluidoEm)}: todos os itens da COAUD foram encontrados.` +
+              (c.completo ? '' : ` <span style="color:#fbbf24;font-weight:600">(Hoje: ${c.faltam} item(ns) novo(s) na COAUD ainda não bipado(s).)</span>`) + `</div>`
             : '';
+        if (foraDaCoaud) {
+            document.getElementById('detConcluido').innerHTML +=
+                `<div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);color:#fbbf24;font-size:12px;font-weight:600;border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px">
+                    ⚠ ${foraDaCoaud} item(ns) dos 3 responsáveis estão na SIGMAS mas não estão na COAUD, por isso não entram neste dashboard.
+                    Confira no Comparador (SIGMAS) ou no Localizador.</div>`;
+        }
 
         const s = c.situacoes;
         document.getElementById('detKpis').innerHTML = `
             <div class="kpi">
                 <div class="kpi-icon">📦</div>
                 <div class="kpi-info">
-                    <div class="kpi-label">Itens dos 3 responsáveis</div>
+                    <div class="kpi-label">Itens da COAUD</div>
                     <div class="kpi-value">${c.total}</div>
                     <div class="kpi-sub">Alberto, Paulo e José Henrique</div>
                 </div>
