@@ -48,6 +48,40 @@
         .sync-linha button {
             margin: 0; padding: 3px 10px; font-size: 11px;
         }
+        /* ── Avisos na tela (toasts) ── */
+        #toast-area {
+            position: fixed; top: 16px; right: 16px;
+            z-index: 1000;
+            display: flex; flex-direction: column; gap: 8px;
+            max-width: min(380px, calc(100vw - 32px));
+            pointer-events: none;
+        }
+        .toast {
+            pointer-events: auto;
+            display: flex; gap: 10px; align-items: flex-start;
+            padding: 11px 14px;
+            border-radius: var(--radius-sm);
+            font-size: 13px; font-weight: 600; line-height: 1.4;
+            color: #fff;
+            box-shadow: 0 6px 20px rgba(0,0,0,.35);
+            border-left: 4px solid rgba(255,255,255,.6);
+            cursor: pointer;
+            animation: toastIn .18s ease-out;
+        }
+        .toast.sucesso { background: #0f7a3c; }
+        .toast.aviso   { background: #a16207; }
+        .toast.erro    { background: #b42318; }
+        .toast.info    { background: #1d4ed8; }
+        .toast.saindo  { opacity: 0; transform: translateX(20px); transition: all .2s; }
+        @keyframes toastIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: none; } }
+        @media (max-width: 600px) {
+            #toast-area { top: auto; bottom: 16px; right: 16px; left: 16px; max-width: none; }
+        }
+
+        #btnSom {
+            margin: 0; padding: 3px 10px; font-size: 11px;
+        }
+
         .nrp-row {
             display: flex; gap: 8px; align-items: flex-end;
         }
@@ -344,6 +378,7 @@
                     <div class="sync-linha">
                         <span id="statusSync">🔄 A tela se atualiza sozinha a cada 20 segundos.</span>
                         <button type="button" class="backButton" onclick="sincronizar(true)">🔄 Atualizar agora</button>
+                        <button type="button" class="backButton" id="btnSom" onclick="alternarSom()">🔊 Som ligado</button>
                     </div>
                     <div class="legend">
                         🔴 Vermelho = Ainda não encontrado &nbsp;|&nbsp;
@@ -380,6 +415,9 @@
             </footer>
         </div>
     </div>
+
+    <!-- Avisos na tela -->
+    <div id="toast-area" aria-live="polite"></div>
 
     <!-- ══════════════════════════════════════════════════
          MODAL DE TRANSFERÊNCIA
@@ -459,6 +497,87 @@
         const el = document.getElementById("progressText");
         if (el) el.textContent = msg;
     }
+
+    // ══════════════════════════════════════════════════════
+    //  AVISOS NA TELA + SOM (substituem os alert())
+    //  tipo: 'sucesso' | 'aviso' | 'erro' | 'info'
+    // ══════════════════════════════════════════════════════
+    function toast(msg, tipo = 'info', semSom = false) {
+        const area = document.getElementById('toast-area');
+        if (!area) return;
+        const icones = { sucesso: '✅', aviso: '⚠', erro: '⛔', info: 'ℹ' };
+        const el = document.createElement('div');
+        el.className = `toast ${tipo}`;
+        el.innerHTML = `<span>${icones[tipo] || ''}</span><span></span>`;
+        el.lastChild.textContent = msg.replace(/^[⚠✅⛔ℹ]\s*/, '');
+        el.title = 'Clique para fechar';
+        el.onclick = () => fecharToast(el);
+        area.appendChild(el);
+
+        // no máximo 4 avisos na tela
+        while (area.children.length > 4) area.removeChild(area.firstChild);
+
+        const tempo = tipo === 'erro' ? 7000 : tipo === 'aviso' ? 5000 : 3000;
+        setTimeout(() => fecharToast(el), tempo);
+
+        if (!semSom) som(tipo);
+        if (navigator.vibrate && (tipo === 'erro' || tipo === 'aviso')) navigator.vibrate(tipo === 'erro' ? [120, 60, 120] : 150);
+    }
+
+    function fecharToast(el) {
+        if (!el.parentNode) return;
+        el.classList.add('saindo');
+        setTimeout(() => el.remove(), 200);
+    }
+
+    let audioCtx = null;
+    let somLigado = localStorage.getItem('som-escanear') !== 'off';
+
+    function tocarNota(freq, inicio, duracao, volume = 0.18, forma = 'sine') {
+        const t0 = audioCtx.currentTime + inicio;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = forma;
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(volume, t0 + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duracao);
+        osc.connect(gain).connect(audioCtx.destination);
+        osc.start(t0);
+        osc.stop(t0 + duracao + 0.02);
+    }
+
+    function som(tipo) {
+        if (!somLigado) return;
+        try {
+            audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            if (tipo === 'sucesso') {            // bip curto e agudo
+                tocarNota(1320, 0, 0.09);
+            } else if (tipo === 'aviso') {       // dois bips médios
+                tocarNota(660, 0, 0.12, 0.22, 'square');
+                tocarNota(660, 0.18, 0.12, 0.22, 'square');
+            } else if (tipo === 'erro') {        // tom grave e longo
+                tocarNota(220, 0, 0.45, 0.25, 'sawtooth');
+            } else {                             // info: dois tons subindo
+                tocarNota(740, 0, 0.1);
+                tocarNota(988, 0.12, 0.12);
+            }
+        } catch (e) { /* navegador sem áudio: ignora */ }
+    }
+
+    function alternarSom() {
+        somLigado = !somLigado;
+        localStorage.setItem('som-escanear', somLigado ? 'on' : 'off');
+        atualizarBotaoSom();
+        if (somLigado) som('sucesso');
+    }
+
+    function atualizarBotaoSom() {
+        const b = document.getElementById('btnSom');
+        if (b) b.textContent = somLigado ? '🔊 Som ligado' : '🔇 Som desligado';
+    }
+    atualizarBotaoSom();
 
     // ══════════════════════════════════════════════════════
     //  CONFIGURAÇÃO
@@ -796,6 +915,7 @@
         accessToken = null;
         document.getElementById('spinner').style.display = 'none';
         mostrarReconectar(msg);
+        toast(msg || 'Sessão do Google expirada.', 'erro');
     }
     function solicitarToken() {
         if (tokenClient) tokenClient.requestAccessToken({ prompt: 'select_account' });
@@ -924,7 +1044,7 @@
     // ══════════════════════════════════════════════════════
     function mudarModo(modo) {
         if (salaSelecionada) {
-            alert('Há uma sala em andamento. Clique em "Nova Sala" antes de trocar o modo.');
+            toast('Há uma sala em andamento. Clique em "Nova Sala" antes de trocar o modo.', 'aviso');
             return;
         }
         modoColeta = modo;
@@ -992,7 +1112,7 @@
 
     document.getElementById("confirmarSala").addEventListener("click", function() {
         const sala = document.getElementById("salaSelect").value.trim();
-        if (!sala) { alert("Selecione uma sala."); return; }
+        if (!sala) { toast("Selecione uma sala.", 'aviso'); return; }
         iniciarSala(sala);
     });
 
@@ -1005,11 +1125,11 @@
         if (!file) return;
 
         if (salaSelecionada) {
-            alert('Há uma sala em andamento. Clique em "Nova Sala" antes de carregar uma planilha.');
+            toast('Há uma sala em andamento. Clique em "Nova Sala" antes de carregar uma planilha.', 'aviso');
             return;
         }
         if (coaudData.length <= 1) {
-            alert('Aguarde as salas carregarem antes de escolher a planilha.');
+            toast('Aguarde as salas carregarem antes de escolher a planilha.', 'aviso');
             return;
         }
 
@@ -1043,7 +1163,7 @@
                 });
 
                 if (!itens.length) {
-                    alert('A planilha não tem nenhum NRP na coluna A.');
+                    toast('A planilha não tem nenhum NRP na coluna A.', 'erro');
                     setProgress('Planilha sem NRPs.');
                     return;
                 }
@@ -1051,7 +1171,7 @@
                 // Sala = valor mais frequente na coluna C
                 const salas = Object.entries(contagemSalas).sort((a, b) => b[1] - a[1]);
                 if (!salas.length) {
-                    alert('Não foi possível identificar a sala: a coluna C (Localização) está vazia.');
+                    toast('Não foi possível identificar a sala: a coluna C (Localização) está vazia.', 'erro');
                     setProgress('Sala não identificada.');
                     return;
                 }
@@ -1092,7 +1212,7 @@
                 });
             } catch (err) {
                 setProgress('Erro ao ler a planilha: ' + err.message);
-                alert('Erro ao ler a planilha: ' + err.message);
+                toast('Erro ao ler a planilha: ' + err.message, 'erro');
             } finally {
                 document.getElementById("spinner").style.display = "none";
             }
@@ -1128,16 +1248,16 @@
     // ══════════════════════════════════════════════════════
     function addPatrimonio() {
         let input = document.getElementById("patrimonioInput").value.trim().replace(/\./g, "");
-        if (!input) { alert("Digite ou bipe o patrimônio."); return; }
-        if (!salaSelecionada) { alert("Selecione e confirme uma sala primeiro."); return; }
+        if (!input) { toast("Digite ou bipe o patrimônio.", 'aviso'); return; }
+        if (!salaSelecionada) { toast("Selecione e confirme uma sala primeiro.", 'aviso'); return; }
 
         const n = normalizeNRP(input);
 
         // ── Passo 0: já foi registrado nesta sala neste inventário? ──
         if (nrpsCarregados.has(n)) {
             const reg = registrosDoInventario(salaSelecionada).find(r => normalizeNRP(r.NRP) === n);
-            alert(`⚠ O patrimônio "${input}" já foi registrado nesta sala` +
-                  (reg ? ` em ${reg.dataHora} por ${reg.operador}.` : '.'));
+            toast(`O patrimônio "${input}" já foi registrado nesta sala` +
+                  (reg ? ` em ${reg.dataHora} por ${reg.operador}.` : '.'), 'aviso');
             setProgress(`⚠ NRP "${input}" já registrado neste inventário.`);
             document.getElementById("patrimonioInput").value = "";
             document.getElementById("patrimonioInput").focus();
@@ -1163,8 +1283,9 @@
                 }, 'Encontrado', '');
                 updateInventarioTable();
                 setProgress(`✅ NRP "${input}" localizado na sala.`);
+                toast(`${input} encontrado.`, 'sucesso');
             } else {
-                alert(`⚠ O patrimônio "${input}" já foi coletado nesta sala.`);
+                toast(`O patrimônio "${input}" já foi coletado nesta sala.`, 'aviso');
                 setProgress(`⚠ NRP "${input}" já foi coletado nesta sala.`);
             }
             document.getElementById("patrimonioInput").value = "";
@@ -1296,6 +1417,7 @@
         document.getElementById("modalRespSelecionado").style.display = "none";
         novoRespSelecionado = null;
         document.getElementById("modalTransf").classList.add("aberto");
+        som('info');
     }
 
     function fecharModalTransf() {
@@ -1348,7 +1470,7 @@
         const opcao = document.getElementById("modalRespOpcao").value;
 
         if (opcao === "alterar" && !novoRespSelecionado) {
-            alert("Selecione o novo responsável ou escolha 'Manter'.");
+            toast("Selecione o novo responsável ou escolha 'Manter'.", 'aviso');
             return;
         }
 
@@ -1390,6 +1512,7 @@
 
             marcarComoColetado(linha, 'yellow', 'Transferido', transfPendente.salaOriginal);
             setProgress(`✅ Transferido de ${transfPendente.salaOriginal} → ${salaSelecionada}.`);
+            toast(`${transfPendente.nrp} transferido de ${transfPendente.salaOriginal} para ${salaSelecionada}.`, 'sucesso');
             fecharModalTransf();
         } catch (error) {
             if (error.message === 'SESSAO_EXPIRADA') {
@@ -1397,7 +1520,7 @@
                 return;
             }
             setProgress("Erro: " + error.message);
-            alert("Erro ao transferir: " + error.message);
+            toast("Erro ao transferir: " + error.message, 'erro');
         } finally {
             document.getElementById("spinner").style.display = "none";
         }
@@ -1419,6 +1542,7 @@
             Preencha os dados abaixo para cadastrá-lo na sala <strong>${salaSelecionada}</strong>.
         `;
         document.getElementById("modalNovo").classList.add("aberto");
+        som('info');
     }
 
     function fecharModalNovo() {
@@ -1464,8 +1588,8 @@
         const material  = document.getElementById("modalNovoMaterial").value.trim();
         const respFinal = modalNovoRespSelecionado || "";
 
-        if (!material) { alert("Digite a descrição do material."); return; }
-        if (!respFinal) { alert("Selecione um responsável."); return; }
+        if (!material) { toast("Digite a descrição do material.", 'aviso'); return; }
+        if (!respFinal) { toast("Selecione um responsável.", 'aviso'); return; }
 
         if (!accessToken || tokenExpirado()) {
             mostrarReconectar('Sessão expirada. Reconecte e cadastre novamente.');
@@ -1491,6 +1615,7 @@
             }
 
             marcarComoColetado(linha, 'yellow', 'Cadastrado', '');
+            toast(`${nrp} cadastrado na sala ${salaSelecionada}.`, 'sucesso');
             fecharModalNovo();
         } catch (error) {
             if (error.message === 'SESSAO_EXPIRADA') {
@@ -1498,7 +1623,7 @@
                 return;
             }
             setProgress("Erro: " + error.message);
-            alert("Erro ao cadastrar: " + error.message);
+            toast("Erro ao cadastrar: " + error.message, 'erro');
         } finally {
             document.getElementById("spinner").style.display = "none";
         }
@@ -1594,7 +1719,7 @@
         await esvaziarFila();
         const dados = coletadosSemDuplicados().filter(item =>
             ehImportado(item) || ehResponsavelCoaud(item.Responsável));
-        if (!dados.length) { alert("Nenhum patrimônio para responsáveis específicos."); return; }
+        if (!dados.length) { toast("Nenhum patrimônio para responsáveis específicos.", 'aviso'); return; }
         exportarXLSX(dados, "Responsaveis_Especificos",
             `Responsaveis_COAUD${sufixoArquivo()}_${formatarData()}.xlsx`);
     }
@@ -1604,7 +1729,7 @@
         await esvaziarFila();
         const dados = coletadosSemDuplicados().filter(item =>
             !ehImportado(item) && !ehResponsavelCoaud(item.Responsável));
-        if (!dados.length) { alert("Nenhum patrimônio para outros responsáveis."); return; }
+        if (!dados.length) { toast("Nenhum patrimônio para outros responsáveis.", 'aviso'); return; }
         exportarXLSX(dados, "Outros_Responsaveis",
             `Outros_Responsaveis${sufixoArquivo()}_${formatarData()}.xlsx`);
     }
