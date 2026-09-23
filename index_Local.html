@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="style.css">
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="sidebar-init.js" defer></script>
+    <script src="coaud-regras.js"></script>
     <style>
         .aba-info-chip {
             display: inline-flex;
@@ -633,7 +634,7 @@
         } else {
             filtrados.forEach(nome => {
                 const li = document.createElement("li");
-                const isCoaud = RESPONSAVEIS_COAUD.includes(nome);
+                const isCoaud = ehResponsavelCoaud(nome);
                 li.innerHTML = `${nome} ${isCoaud ? '<span class="aba-info-chip chip-coaud" style="font-size:9px;margin-left:4px">COAUD</span>' : ''}`;
                 li.onmousedown = () => {
                     aoSelecionar(nome);
@@ -681,29 +682,23 @@
             const material  = (p.rowSigmas || p.rowCoaud)[1];
             const nrp       = p.nrp;
             const linhaNova = [nrp, material, novoLocal, novoResp, gerarLog("sala/responsável")];
-            const isNovoRespCoaud = RESPONSAVEIS_COAUD.includes(novoResp);
+            const isNovoRespCoaud = ehResponsavelCoaud(novoResp);
 
-            // ── SIGMAS: sempre atualiza ou cria (nunca apaga) ──
-            if (p.emSigmas) {
-                await atualizarLinha('SIGMAS', p.idxSigmas + 1, linhaNova);
-                sigmasData[p.idxSigmas] = linhaNova;
-            } else {
-                await appendLinha('SIGMAS', linhaNova);
-                sigmasData.push(linhaNova);
-            }
+            // ── SIGMAS: confere a linha ATUAL do NRP antes de gravar (nunca apaga) ──
+            const linhaS = await localizarLinhaAtual(accessToken, FILE_ID, 'SIGMAS', nrp);
+            if (linhaS > 0) await atualizarLinha('SIGMAS', linhaS, linhaNova);
+            else            await appendLinha('SIGMAS', linhaNova);
+            atualizarMemoria(sigmasData, nrp, linhaNova);
 
-            // ── COAUD: aplica regras ──
+            // ── COAUD: confere a linha ATUAL e aplica as regras ──
+            const linhaC = await localizarLinhaAtual(accessToken, FILE_ID, 'COAUD', nrp);
             if (isNovoRespCoaud) {
-                if (p.emCoaud) {
-                    await atualizarLinha('COAUD', p.idxCoaud + 1, linhaNova);
-                    coaudData[p.idxCoaud] = linhaNova;
-                } else {
-                    await appendLinha('COAUD', linhaNova);
-                    coaudData.push(linhaNova);
-                }
-            } else if (p.emCoaud) {
-                await deletarLinha('COAUD', p.idxCoaud);
-                coaudData.splice(p.idxCoaud, 1);
+                if (linhaC > 0) await atualizarLinha('COAUD', linhaC, linhaNova);
+                else            await appendLinha('COAUD', linhaNova);
+                atualizarMemoria(coaudData, nrp, linhaNova);
+            } else {
+                if (linhaC > 0) await deletarLinha('COAUD', linhaC - 1);
+                atualizarMemoria(coaudData, nrp, null);
             }
 
             document.getElementById("editor-section").style.display = "none";
@@ -716,7 +711,9 @@
             setProgress(`✅ Alterações salvas. ${isNovoRespCoaud ? 'Presente em SIGMAS + COAUD.' : 'Presente apenas em SIGMAS.'}`);
 
         } catch (error) {
-            setProgress("Erro: " + error.message);
+            setProgress(error.message === 'SESSAO_EXPIRADA'
+                ? "Sessão do Google expirada. Faça login novamente e salve de novo."
+                : "Erro: " + error.message);
             console.error(error);
         } finally {
             document.getElementById("spinner").style.display = "none";
@@ -730,6 +727,7 @@
               headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
               body: JSON.stringify({ values: [valores] }) }
         );
+        if (r.status === 401) throw new Error('SESSAO_EXPIRADA');
         if (!r.ok) { const e = await r.json(); throw new Error(`Erro em ${aba}: ${e.error?.message}`); }
     }
 
@@ -740,6 +738,7 @@
               headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
               body: JSON.stringify({ values: [valores] }) }
         );
+        if (r.status === 401) throw new Error('SESSAO_EXPIRADA');
         if (!r.ok) { const e = await r.json(); throw new Error(`Erro append ${aba}: ${e.error?.message}`); }
     }
 
@@ -755,6 +754,7 @@
                 }}
               }]}) }
         );
+        if (r.status === 401) throw new Error('SESSAO_EXPIRADA');
         if (!r.ok) { const e = await r.json(); throw new Error(`Erro delete ${aba}: ${e.error?.message}`); }
     }
 
@@ -775,22 +775,20 @@
 
         try {
             const linha = [nrp, material, localizacao, responsavel, gerarLog("cadastro")];
-            const n = normalizeNRP(nrp);
-
-            // SIGMAS: insere só se ainda não existir
-            const jaEmSigmas = sigmasData.some((r, i) => i > 0 && normalizeNRP(r[0]) === n);
-            if (!jaEmSigmas) {
+            // SIGMAS: confere na planilha se já existe; insere só se não existir
+            const linhaS = await localizarLinhaAtual(accessToken, FILE_ID, 'SIGMAS', nrp);
+            if (linhaS < 0) {
                 await appendLinha('SIGMAS', linha);
-                sigmasData.push(linha);
+                atualizarMemoria(sigmasData, nrp, linha);
             }
 
             // COAUD: só se o responsável for da COAUD e ainda não estiver lá
-            const jaEmCoaud = coaudData.some((r, i) => i > 0 && normalizeNRP(r[0]) === n);
-            const vaiParaCoaud = RESPONSAVEIS_COAUD.includes(responsavel);
+            const jaEmCoaud    = (await localizarLinhaAtual(accessToken, FILE_ID, 'COAUD', nrp)) > 0;
+            const vaiParaCoaud = ehResponsavelCoaud(responsavel);
 
             if (vaiParaCoaud && !jaEmCoaud) {
                 await appendLinha('COAUD', linha);
-                coaudData.push(linha);
+                atualizarMemoria(coaudData, nrp, linha);
             }
 
             document.getElementById("novo-patrimonio-container").style.display = "none";
@@ -803,7 +801,9 @@
             setProgress(`✅ Patrimônio ${nrp} inserido em SIGMAS${vaiParaCoaud ? ' + COAUD' : ''}.`);
 
         } catch (error) {
-            setProgress("Erro: " + error.message);
+            setProgress(error.message === 'SESSAO_EXPIRADA'
+                ? "Sessão do Google expirada. Faça login novamente e insira de novo."
+                : "Erro: " + error.message);
         } finally {
             document.getElementById("spinner").style.display = "none";
         }
