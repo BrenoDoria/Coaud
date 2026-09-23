@@ -234,6 +234,7 @@
                 <div class="card">
                     <div class="card-title">Levantamento</div>
 
+                    <!-- OCULTO POR ENQUANTO: escolha entre Inventário e Planilha Excel
                     <div class="segmented">
                         <button type="button" id="btnFonteInv" class="ativo" onclick="mudarFonte('inventario')">
                             📋 Inventário (bipagens)
@@ -242,8 +243,8 @@
                             📄 Planilha Excel
                         </button>
                     </div>
+                    -->
 
-                    <!-- Fonte: aba INVENTARIO -->
                     <div id="painelFonteInv">
                         <div class="linha-inv">
                             <div class="field-block">
@@ -255,11 +256,12 @@
                             <button type="button" class="backButton" onclick="carregarBases(true)">🔄 Atualizar dados</button>
                         </div>
                         <p class="ajuda" id="ajudaInv">
-                            Usa o que já foi bipado no Escaneamento. Nada para carregar.
+                            Mostra o que já foi bipado no Escaneamento neste inventário.
                         </p>
                     </div>
 
-                    <!-- Fonte: planilha Excel -->
+                    <!-- OCULTO POR ENQUANTO: carregar planilha Excel
+                    
                     <div id="painelFontePlan" style="display:none">
                         <div class="file-upload">
                             <label for="fileInputExportada" class="file-upload-label">
@@ -273,6 +275,7 @@
                             Na COAUD, a sala é reconhecida pela coluna C.
                         </p>
                     </div>
+                    -->
                 </div>
 
                 <!-- ═══ PAINEL DE PROGRESSO (COAUD + INVENTARIO) ═══ -->
@@ -286,17 +289,19 @@
                     <p class="ajuda">Clique numa sala para ver o que falta nela.</p>
                 </div>
 
-                <!-- ═══ SALA (só COAUD) ═══ -->
+                <!-- OCULTO POR ENQUANTO: card "Sala" (redundante com o Progresso por sala)
                 <div class="card" id="card-sala">
                     <div class="card-title">Sala</div>
                     <div class="field-block">
                         <label for="salaSelect">Comparar com a sala</label>
-                        <select id="salaSelect">
-                            <option value="">Carregando salas...</option>
-                        </select>
                     </div>
                     <p class="ajuda" id="ajudaSala">Escolha a sala ou "Todas as salas".</p>
                 </div>
+                -->
+                <!-- Guarda a sala escolhida no painel (fica escondido) -->
+                <select id="salaSelect" hidden aria-hidden="true">
+                    <option value="">Carregando salas...</option>
+                </select>
 
                 <!-- ═══ RESULTADO ═══ -->
                 <div class="card">
@@ -444,24 +449,29 @@
     }
 
     function mudarFonte(fonte) {
-        if (fonte === 'inventario' && !inventarioOk && basesCarregadas) {
+        if (fonte === 'inventario' && !inventarioOk && basesCarregadas && document.getElementById('btnFontePlan')) {
             alert('Nenhum inventário foi criado ainda. Crie um no Escaneamento (➕ Novo inventário) ou use a opção Planilha Excel.');
             return;
         }
         fonteAtual = fonte;
-        document.getElementById('btnFonteInv').classList.toggle('ativo', fonte === 'inventario');
-        document.getElementById('btnFontePlan').classList.toggle('ativo', fonte === 'planilha');
-        document.getElementById('painelFonteInv').style.display  = fonte === 'inventario' ? 'block' : 'none';
-        document.getElementById('painelFontePlan').style.display = fonte === 'planilha' ? 'block' : 'none';
+        // (a escolha de fonte está oculta por enquanto — só age se os elementos existirem)
+        document.getElementById('btnFonteInv')?.classList.toggle('ativo', fonte === 'inventario');
+        document.getElementById('btnFontePlan')?.classList.toggle('ativo', fonte === 'planilha');
+        const pInv  = document.getElementById('painelFonteInv');
+        const pPlan = document.getElementById('painelFontePlan');
+        if (pInv)  pInv.style.display  = fonte === 'inventario' ? 'block' : 'none';
+        if (pPlan) pPlan.style.display = fonte === 'planilha' ? 'block' : 'none';
         atualizarVisibilidade();
         renderizar();
     }
 
     function atualizarVisibilidade() {
         const coaud = baseAtual === 'COAUD';
-        document.getElementById('card-sala').style.display   = coaud ? 'block' : 'none';
+        const cardSala = document.getElementById('card-sala');
+        if (cardSala) cardSala.style.display = coaud ? 'block' : 'none';
         document.getElementById('card-painel').style.display = (coaud && fonteAtual === 'inventario') ? 'block' : 'none';
-        document.getElementById('ajudaSala').textContent = fonteAtual === 'planilha'
+        const ajudaSala = document.getElementById('ajudaSala');
+        if (ajudaSala) ajudaSala.textContent = fonteAtual === 'planilha'
             ? 'A sala é reconhecida automaticamente pela coluna C (Localização) da planilha carregada. Se precisar, você pode trocar aqui.'
             : 'Escolha a sala aqui ou clicando no painel acima.';
     }
@@ -539,12 +549,12 @@
             popularSalas();
             basesCarregadas = true;
 
+            const btnInv = document.getElementById('btnFonteInv');
             if (!inventarioOk) {
-                document.getElementById('btnFonteInv').disabled = true;
-                mudarFonte('planilha');
+                if (btnInv) btnInv.disabled = true;
                 setProgress(`✅ SIGMAS: ${bases.SIGMAS.length} | COAUD: ${bases.COAUD.length} (nenhum inventário criado ainda).`);
             } else {
-                document.getElementById('btnFonteInv').disabled = false;
+                if (btnInv) btnInv.disabled = false;
                 setProgress(`✅ SIGMAS: ${bases.SIGMAS.length} | COAUD: ${bases.COAUD.length} | ${abaInv}: ${registrosInv.length}.`);
             }
             renderizar();
@@ -594,7 +604,7 @@
         if (!inventarios.length) {
             sel.innerHTML = '<option value="">Nenhum inventário criado ainda</option>';
             document.getElementById('ajudaInv').textContent =
-                'Crie um inventário no Escaneamento (➕ Novo inventário) ou use a opção Planilha Excel.';
+                'Crie um inventário no Escaneamento (➕ Novo inventário).';
             return;
         }
         const ordem = inventarios.slice().reverse();
@@ -620,7 +630,7 @@
         document.getElementById('filtroSala').addEventListener('input', renderizarPainel);
         document.getElementById('soIncompletas').addEventListener('change', renderizarPainel);
 
-        document.getElementById('fileInputExportada').addEventListener('change', function () {
+        document.getElementById('fileInputExportada')?.addEventListener('change', function () {
             const nameEl = document.getElementById('fileName');
             const file = this.files[0];
             if (!file) {

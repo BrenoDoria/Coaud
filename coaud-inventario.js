@@ -154,3 +154,36 @@ async function localizarLinhaRegistro(token, fileId, aba, reg) {
     }
     return porNrpSala;
 }
+
+// ══════════════════════════════════════════════════════
+//  REGRA DE CONCLUSÃO DO INVENTÁRIO
+//  Um inventário está concluído quando TODOS estes itens foram bipados:
+//   • itens da SIGMAS cujo responsável é um dos 3 da COAUD
+//   • itens da aba COAUD (mesmo que a SIGMAS esteja divergente)
+//  (usa ehResponsavelCoaud do coaud-regras.js)
+// ══════════════════════════════════════════════════════
+function normNRPInv(nrp) {
+    return (nrp === undefined || nrp === null ? '' : nrp.toString())
+        .replace(/\./g, '').replace(/^0+/, '').trim();
+}
+
+// sigmasRows / coaudRows SEM o cabeçalho. Devolve Map(nrp → linha)
+function itensExigidosParaConcluir(sigmasRows, coaudRows) {
+    const exigidos = new Map();
+    (sigmasRows || []).forEach(r => {
+        const n = r && normNRPInv(r[0]);
+        if (n && ehResponsavelCoaud(r[3])) exigidos.set(n, r);
+    });
+    (coaudRows || []).forEach(r => {
+        const n = r && normNRPInv(r[0]);
+        if (n) exigidos.set(n, r);
+    });
+    return exigidos;
+}
+
+// Linhas exigidas que ainda não foram bipadas (nrpsInventario = Set de NRPs normalizados)
+function pendentesParaConcluir(exigidos, nrpsInventario) {
+    const pend = [];
+    exigidos.forEach((row, n) => { if (!nrpsInventario.has(n)) pend.push(row); });
+    return pend;
+}

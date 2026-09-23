@@ -334,9 +334,11 @@
                                 <option value="">Carregando...</option>
                             </select>
                         </div>
-                        <button type="button" id="btnNovoInv" onclick="abrirModalNovoInv()">➕ Novo inventário</button>
+                        <button type="button" id="btnNovoInv" onclick="abrirModalNovoInv()" disabled>➕ Novo inventário</button>
                     </div>
+                    <p id="avisoNovoInv" style="display:none;font-size:11px;color:#fbbf24;margin:-6px 0 14px"></p>
 
+                    <!-- OCULTO POR ENQUANTO: escolha "Começar do zero" / "Continuar de planilha"
                     <div class="modo-coleta" id="modoColeta">
                         <button type="button" id="btnModoZero" class="ativo" onclick="mudarModo('zero')">
                             🆕 Começar do zero
@@ -345,8 +347,8 @@
                             📂 Continuar de planilha
                         </button>
                     </div>
+                    -->
 
-                    <!-- Modo: começar do zero -->
                     <div id="painelZero">
                         <div class="field-block" style="margin-bottom:14px">
                             <label for="salaSelect">Selecione a sala</label>
@@ -359,7 +361,8 @@
                         </div>
                     </div>
 
-                    <!-- Modo: continuar de planilha -->
+                    <!-- OCULTO POR ENQUANTO: continuar a partir de planilha Excel
+                    
                     <div id="painelContinuar" style="display:none;margin-bottom:12px">
                         <div class="file-upload">
                             <label for="fileContinuar" class="file-upload-label">
@@ -373,6 +376,7 @@
                             e os itens da planilha são gravados na aba do inventário escolhido. Depois disso, a sala continua de onde parou.
                         </p>
                     </div>
+                    -->
 
                     <div class="actions-bar" style="margin-top:0">
                         <button id="resetarColeta" class="backButton">↩ Nova Sala</button>
@@ -655,6 +659,7 @@
     let inventarios = [];     // [{aba, nome, sheetId, ...}] vindos das abas "INV ..."
     let invAtual    = null;   // inventário escolhido
     let desconsPendente = null;
+    let nrpsUltimoInv   = null;   // NRPs do inventário mais recente (quando não é o selecionado)
 
     let salaSelecionada       = "";
     let registrosInv          = [];   // linhas da aba do inventário atual (memória)
@@ -786,6 +791,8 @@
         document.getElementById("spinner").style.display = "inline-block";
         try {
             await carregarRegistrosInv();
+            await carregarUltimoInvSeNecessario();
+            atualizarBloqueioNovoInv();
             setProgress(`📂 Inventário "${nomeInventario()}": ${registrosInv.length} registros.`);
         } catch (e) {
             if (e.message === 'SESSAO_EXPIRADA') sessaoExpirou('Sessão expirada. Reconecte para continuar.');
@@ -808,6 +815,7 @@
         registrosInv.push(reg);
         filaEnvio.push({ aba: invAtual.aba, linha, reg });
         atualizarStatusSalvamento();
+        atualizarBloqueioNovoInv();
     }
 
     async function enviarFila() {
@@ -914,6 +922,7 @@
             registrosInv = daPlanilha.concat(filaEnvio.filter(f => f.aba === invAtual.aba).map(f => f.reg));
 
             aplicarSincronizacao(manual);
+            atualizarBloqueioNovoInv();
             const d = new Date(), p = n => String(n).padStart(2, '0');
             document.getElementById('statusSync').textContent =
                 `🔄 Atualizado às ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())} (automático a cada 20 s).`;
@@ -1121,6 +1130,8 @@
             inventarios = inv.lista;
             popularSelectInventarios();
             await carregarRegistrosInv();
+            await carregarUltimoInvSeNecessario();
+            atualizarBloqueioNovoInv();
 
             // Popula salas (apenas da aba COAUD)
             if (coaudData.length > 1) {
@@ -1161,15 +1172,20 @@
             return;
         }
         modoColeta = modo;
-        document.getElementById('btnModoZero').classList.toggle('ativo', modo === 'zero');
-        document.getElementById('btnModoContinuar').classList.toggle('ativo', modo === 'continuar');
-        document.getElementById('painelZero').style.display      = modo === 'zero' ? 'block' : 'none';
-        document.getElementById('painelContinuar').style.display = modo === 'continuar' ? 'block' : 'none';
+        // (os botões de modo estão ocultos por enquanto — só age se existirem)
+        document.getElementById('btnModoZero')?.classList.toggle('ativo', modo === 'zero');
+        document.getElementById('btnModoContinuar')?.classList.toggle('ativo', modo === 'continuar');
+        const pz = document.getElementById('painelZero');
+        const pc = document.getElementById('painelContinuar');
+        if (pz) pz.style.display = modo === 'zero' ? 'block' : 'none';
+        if (pc) pc.style.display = modo === 'continuar' ? 'block' : 'none';
     }
 
     function travarModo(travar) {
-        document.getElementById('btnModoZero').disabled      = travar;
-        document.getElementById('btnModoContinuar').disabled = travar;
+        const bz = document.getElementById('btnModoZero');
+        const bc = document.getElementById('btnModoContinuar');
+        if (bz) bz.disabled = travar;
+        if (bc) bc.disabled = travar;
     }
 
     // ══════════════════════════════════════════════════════
@@ -1246,7 +1262,7 @@
     // ══════════════════════════════════════════════════════
     //  CONTINUAR A PARTIR DE PLANILHA
     // ══════════════════════════════════════════════════════
-    document.getElementById("fileContinuar").addEventListener("change", function() {
+    document.getElementById("fileContinuar")?.addEventListener("change", function() {
         const file = this.files[0];
         this.value = '';   // permite escolher o mesmo arquivo de novo
         if (!file) return;
@@ -1823,11 +1839,82 @@
     }
 
     // ══════════════════════════════════════════════════════
+    //  BLOQUEIO DO "NOVO INVENTÁRIO"
+    //  Só libera quando o inventário mais recente estiver concluído:
+    //  nenhum item pendente dos 3 responsáveis (SIGMAS) nem da COAUD.
+    // ══════════════════════════════════════════════════════
+    function ultimoInventario() {
+        return inventarios.length ? inventarios[inventarios.length - 1] : null;
+    }
+
+    function pendentesDoUltimo() {
+        const ult = ultimoInventario();
+        if (!ult) return 0;
+        let nrps;
+        if (invAtual && invAtual.aba === ult.aba) nrps = new Set(registrosInv.map(r => normalizeNRP(r.NRP)));
+        else if (nrpsUltimoInv) nrps = nrpsUltimoInv;
+        else return null;   // ainda carregando
+        const exigidos = itensExigidosParaConcluir(sigmasData.slice(1), coaudData.slice(1));
+        return pendentesParaConcluir(exigidos, nrps).length;
+    }
+
+    async function carregarUltimoInvSeNecessario() {
+        const ult = ultimoInventario();
+        nrpsUltimoInv = null;
+        if (!ult || ult.concluidoEm || (invAtual && invAtual.aba === ult.aba)) return;
+        const rows = await lerRegistrosInventario(accessToken, FILE_ID, ult.aba);
+        nrpsUltimoInv = new Set(rows.map(r => normalizeNRP(r[0])).filter(Boolean));
+    }
+
+    let marcandoConclusao = false;
+    function atualizarBloqueioNovoInv() {
+        const btn   = document.getElementById('btnNovoInv');
+        const aviso = document.getElementById('avisoNovoInv');
+        if (!btn) return;
+        const ult = ultimoInventario();
+
+        let liberado = false, msg = '';
+        if (!ult) {
+            liberado = true;
+        } else if (ult.concluidoEm) {
+            liberado = true;
+        } else {
+            const pend = pendentesDoUltimo();
+            if (pend === null) {
+                msg = `🔒 Verificando se o inventário ${ult.nome} foi concluído...`;
+            } else if (pend === 0 && sigmasData.length > 1) {
+                liberado = true;
+                // grava a conclusão na aba INVENTARIOS (uma vez)
+                if (!marcandoConclusao && accessToken && !tokenExpirado()) {
+                    marcandoConclusao = true;
+                    marcarInventarioConcluido(accessToken, FILE_ID, ult)
+                        .then(q => { ult.concluidoEm = q; popularSelectInventarios(); })
+                        .catch(e => console.warn('Não foi possível gravar a conclusão:', e))
+                        .finally(() => { marcandoConclusao = false; });
+                }
+            } else {
+                msg = `🔒 "Novo inventário" será liberado quando o inventário ${ult.nome} for concluído — ` +
+                      `faltam ${pend} item(ns) dos 3 responsáveis.`;
+            }
+        }
+
+        btn.disabled = !liberado || !!salaSelecionada;
+        btn.title = liberado ? '' : msg.replace('🔒 ', '');
+        aviso.textContent = msg;
+        aviso.style.display = msg ? 'block' : 'none';
+    }
+
+    // ══════════════════════════════════════════════════════
     //  NOVO INVENTÁRIO (cria a aba "INV <nome>" na planilha)
     // ══════════════════════════════════════════════════════
     function abrirModalNovoInv() {
         if (salaSelecionada) { toast('Clique em "Nova Sala" antes de criar um inventário.', 'aviso'); return; }
         if (!accessToken || tokenExpirado()) { mostrarReconectar('Reconecte para criar o inventário.'); return; }
+        const ult = ultimoInventario();
+        if (ult && !ult.concluidoEm && pendentesDoUltimo() !== 0) {
+            toast(`O inventário ${ult.nome} ainda não foi concluído. Novo inventário só depois que ele terminar.`, 'aviso');
+            return;
+        }
         const campo = document.getElementById('novoInvNome');
         campo.value = String(new Date().getFullYear());
         atualizarPreviewInv();
@@ -1856,6 +1943,8 @@
             inventarios = inv.lista;
             popularSelectInventarios(novo.aba);
             await carregarRegistrosInv();
+            await carregarUltimoInvSeNecessario();
+            atualizarBloqueioNovoInv();
             fecharModalNovoInv();
             toast(`Inventário "${novo.nome}" criado (aba ${novo.aba}).`, 'sucesso');
             setProgress(`✅ Inventário "${novo.nome}" pronto. Escolha a sala e confirme.`);
@@ -2034,13 +2123,15 @@
         nrpsCarregados = new Set();
         travarModo(false);
         document.getElementById("inventarioSelect").disabled = false;
-        document.getElementById("btnNovoInv").disabled = false;
+        atualizarBloqueioNovoInv();
         const nomeEl = document.getElementById("fileContinuarNome");
-        nomeEl.textContent = 'Nenhum arquivo escolhido';
-        nomeEl.classList.remove('loaded');
+        if (nomeEl) {
+            nomeEl.textContent = 'Nenhum arquivo escolhido';
+            nomeEl.classList.remove('loaded');
+        }
         document.getElementById("inventarioHeader").style.display = "none";
         updateInventarioTable();
-        setProgress("Sala desbloqueada. Escolha começar do zero ou continuar de uma planilha.");
+        setProgress("Sala desbloqueada. Escolha a próxima sala.");
     });
 
     // ══════════════════════════════════════════════════════
@@ -2113,10 +2204,12 @@
         travarModo(false);
         mudarModo('zero');
         document.getElementById("inventarioSelect").disabled = false;
-        document.getElementById("btnNovoInv").disabled = false;
+        atualizarBloqueioNovoInv();
         const nomeEl = document.getElementById("fileContinuarNome");
-        nomeEl.textContent = 'Nenhum arquivo escolhido';
-        nomeEl.classList.remove('loaded');
+        if (nomeEl) {
+            nomeEl.textContent = 'Nenhum arquivo escolhido';
+            nomeEl.classList.remove('loaded');
+        }
         document.getElementById("salaSelect").value = "";
         document.getElementById("salaSelect").disabled = false;
         document.getElementById("confirmarSala").disabled = false;

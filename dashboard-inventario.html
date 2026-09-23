@@ -294,7 +294,8 @@
     let tokenClient  = null;
     let accessToken  = null;
     let baseCoaud    = [];     // linhas da COAUD (itens dos 3 responsáveis, com a sala real)
-    let foraDaCoaud  = 0;      // itens dos 3 na SIGMAS que não estão na COAUD
+    let exigidos     = new Map(); // itens exigidos para concluir (SIGMAS dos 3 + COAUD)
+    let nrpsCoaud    = new Set();
     let inventarios  = [];     // da planilha (abas "INV ...")
     let dadosInv     = {};     // aba -> linhas (A:J)
     let invAberto    = null;   // aba do inventário no detalhe
@@ -392,10 +393,8 @@
 
             // Base = aba COAUD (mesmas salas do Escaneamento e do Comparador)
             baseCoaud = ((vr[1] && vr[1].values) || []).slice(1).filter(row => normalizeNRP(row[0]));
-            const nrpsCoaud = new Set(baseCoaud.map(row => normalizeNRP(row[0])));
-            foraDaCoaud = ((vr[0] && vr[0].values) || []).slice(1)
-                .filter(row => normalizeNRP(row[0]) && ehResponsavelCoaud(row[3]) && !nrpsCoaud.has(normalizeNRP(row[0])))
-                .length;
+            nrpsCoaud = new Set(baseCoaud.map(row => normalizeNRP(row[0])));
+            exigidos  = itensExigidosParaConcluir(((vr[0] && vr[0].values) || []).slice(1), baseCoaud);
             dadosInv = {};
             inventarios.forEach((i, k) => {
                 dadosInv[i.aba] = (((vr[k + 2] && vr[k + 2].values) || []).slice(1)).filter(row => normalizeNRP(row[0]));
@@ -465,9 +464,14 @@
             if (r[6]) ultimo = r[6];
         });
 
+        // Conclusão: nenhum item pendente dos 3 responsáveis (SIGMAS) nem da COAUD
+        const pendentes     = pendentesParaConcluir(exigidos, nrps);
+        const pendForaCoaud = pendentes.filter(r => !nrpsCoaud.has(normalizeNRP(r[0]))).length;
+
         return {
             total, encontrados, faltam: total - encontrados, pct,
-            completo: total > 0 && encontrados === total,
+            completo: exigidos.size > 0 && pendentes.length === 0,
+            pendentes: pendentes.length, pendForaCoaud,
             salas: listaSalas,
             salasCompletas: listaSalas.filter(s => s.encontrados === s.total).length,
             bips: linhas.length, situacoes, operadores, dias, ultimo
@@ -560,14 +564,14 @@
         document.getElementById('topbarSub').textContent = `Inventário ${inv.nome} (aba ${inv.aba})`;
 
         document.getElementById('detConcluido').innerHTML = inv.concluidoEm
-            ? `<div class="aviso-concluido">🎉 Inventário concluído em ${esc(inv.concluidoEm)}: todos os itens da COAUD foram encontrados.` +
+            ? `<div class="aviso-concluido">🎉 Inventário concluído em ${esc(inv.concluidoEm)}: nenhum item dos 3 responsáveis ficou pendente.` +
               (c.completo ? '' : ` <span style="color:#fbbf24;font-weight:600">(Hoje: ${c.faltam} item(ns) novo(s) na COAUD ainda não bipado(s).)</span>`) + `</div>`
             : '';
-        if (foraDaCoaud) {
+        if (!inv.concluidoEm && c.pendForaCoaud) {
             document.getElementById('detConcluido').innerHTML +=
                 `<div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);color:#fbbf24;font-size:12px;font-weight:600;border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px">
-                    ⚠ ${foraDaCoaud} item(ns) dos 3 responsáveis estão na SIGMAS mas não estão na COAUD, por isso não entram neste dashboard.
-                    Confira no Comparador (SIGMAS) ou no Localizador.</div>`;
+                    ⚠ Além das salas abaixo, ${c.pendForaCoaud} item(ns) dos 3 responsáveis estão na SIGMAS mas não em nenhuma sala da COAUD e ainda não foram bipados.
+                    O inventário só é concluído quando eles também forem encontrados. Veja a lista no Comparador (SIGMAS).</div>`;
         }
 
         const s = c.situacoes;
@@ -593,7 +597,7 @@
                 <div class="kpi-info">
                     <div class="kpi-label">Faltam</div>
                     <div class="kpi-value">${c.faltam}</div>
-                    <div class="kpi-sub">${c.faltam ? 'Ainda não bipados' : 'Nada pendente'}</div>
+                    <div class="kpi-sub">${c.faltam ? 'Ainda não bipados' : 'Nada pendente nas salas'}${c.pendForaCoaud ? ` · +${c.pendForaCoaud} fora da COAUD` : ''}</div>
                 </div>
             </div>
             <div class="kpi kpi-blue">
