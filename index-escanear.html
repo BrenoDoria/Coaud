@@ -37,6 +37,17 @@
         #statusSalvamento.ok       { color: #4ade80; }
         #statusSalvamento.pendente { color: #fbbf24; }
         #statusSalvamento.erro     { color: #f87171; }
+        #patrimonioList tr.blue td {
+            background: rgba(96,165,250,0.14);
+            color: #93c5fd;
+        }
+        .sync-linha {
+            display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+            font-size: 11px; color: var(--text-muted); margin-bottom: 4px;
+        }
+        .sync-linha button {
+            margin: 0; padding: 3px 10px; font-size: 11px;
+        }
         .nrp-row {
             display: flex; gap: 8px; align-items: flex-end;
         }
@@ -330,10 +341,15 @@
                     <h3>📦 Inventário da Sala: <span id="salaTitle"></span></h3>
                     <div id="salaInfoExtra"></div>
                     <div id="statusSalvamento"></div>
+                    <div class="sync-linha">
+                        <span id="statusSync">🔄 A tela se atualiza sozinha a cada 20 segundos.</span>
+                        <button type="button" class="backButton" onclick="sincronizar(true)">🔄 Atualizar agora</button>
+                    </div>
                     <div class="legend">
                         🔴 Vermelho = Ainda não encontrado &nbsp;|&nbsp;
                         🟢 Verde = Bipado / Encontrado &nbsp;|&nbsp;
-                        🟡 Amarelo = Novo (transferido/inserido)
+                        🟡 Amarelo = Novo (transferido/inserido) &nbsp;|&nbsp;
+                        🔵 Azul = Saiu desta sala (transferido por outra pessoa)
                     </div>
                 </div>
 
@@ -462,6 +478,8 @@
     let registrosInv          = [];   // linhas da aba INVENTARIO (memória)
     let filaEnvio             = [];   // bips ainda não gravados na planilha
     let enviando              = false;
+    let contadorEnvios        = 0;       // muda a cada lote gravado
+    let sincronizando         = false;
     let sigmasData            = [];
     let coaudData             = [];
     let sheetIds              = {};
@@ -593,6 +611,7 @@
             if (r.status === 401) throw new Error('SESSAO_EXPIRADA');
             if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error?.message || r.status); }
             filaEnvio.splice(0, lote.length);
+            contadorEnvios++;
             atualizarStatusSalvamento();
         } catch (error) {
             if (error.message === 'SESSAO_EXPIRADA') {
@@ -636,6 +655,121 @@
     // Avisa antes de fechar a página se houver bip não salvo
     window.addEventListener('beforeunload', function(e) {
         if (filaEnvio.length) { e.preventDefault(); e.returnValue = ''; }
+    });
+
+    // ══════════════════════════════════════════════════════
+    //  SINCRONIZAÇÃO ENTRE PESSOAS (Etapa 3)
+    //  A cada 20 s relê COAUD e INVENTARIO e atualiza a tela:
+    //   • item bipado por outra pessoa nesta sala → verde
+    //   • item que saiu desta sala na COAUD      → azul
+    //   • item azul que voltou para esta sala    → vermelho de novo
+    // ══════════════════════════════════════════════════════
+    async function sincronizar(manual) {
+        if (!salaSelecionada || sincronizando) return;
+        if (!manual && document.visibilityState !== 'visible') return;
+        if (!accessToken || tokenExpirado()) return;
+
+        sincronizando = true;
+        const enviosAntes = contadorEnvios;
+        try {
+            const ranges = ['COAUD!A:D', `${ABA_INV}!A:I`]
+                .map(r => 'ranges=' + encodeURIComponent(r)).join('&');
+            const r = await fetch(
+                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values:batchGet?${ranges}`,
+                { headers: { 'Authorization': `Bearer ${accessToken}` } }
+            );
+            if (r.status === 401) throw new Error('SESSAO_EXPIRADA');
+            if (!r.ok) throw new Error('Falha ao atualizar (' + r.status + ')');
+            const data = await r.json();
+
+            // Se um lote foi gravado durante a leitura, descarta e tenta no próximo ciclo
+            if (contadorEnvios !== enviosAntes || enviando) return;
+
+            const vr = data.valueRanges || [];
+            coaudData = (vr[0] && vr[0].values) || coaudData;
+            const daPlanilha = (((vr[1] && vr[1].values) || []).slice(1))
+                .filter(row => normalizeNRP(row[0]))
+                .map(linhaParaRegistro);
+            // Mantém na memória os bips que ainda estão na fila de envio
+            registrosInv = daPlanilha.concat(filaEnvio.map(linhaParaRegistro));
+
+            aplicarSincronizacao(manual);
+            const d = new Date(), p = n => String(n).padStart(2, '0');
+            document.getElementById('statusSync').textContent =
+                `🔄 Atualizado às ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())} (automático a cada 20 s).`;
+        } catch (error) {
+            if (error.message === 'SESSAO_EXPIRADA') {
+                sessaoExpirou('Sessão expirada. Reconecte para continuar recebendo as atualizações.');
+            } else {
+                document.getElementById('statusSync').textContent = '⚠ Não foi possível atualizar agora. Tentando de novo em 20 s.';
+                console.warn(error);
+            }
+        } finally {
+            sincronizando = false;
+        }
+    }
+
+    function aplicarSincronizacao(manual) {
+        const regsSala = registrosDoInventario(salaSelecionada);
+        const nrpsReg  = new Set(regsSala.map(r => normalizeNRP(r.NRP)));
+        const todosInv = registrosDoInventario('');
+        let porOutros = 0, sairam = 0, voltaram = 0;
+
+        const salaDaCoaud = n => {
+            const row = coaudData.find((r, i) => i > 0 && normalizeNRP(r[0]) === n);
+            return row ? (row[2] || '').toString().trim() : null;
+        };
+
+        currentSalaInventario.forEach(item => {
+            if (item.status !== 'red' && item.status !== 'blue') return;
+            const n = normalizeNRP(item.NRP);
+
+            // Registrado por outra pessoa nesta sala
+            if (nrpsReg.has(n)) {
+                const reg = regsSala.filter(r => normalizeNRP(r.NRP) === n).pop();
+                item.status = 'green';
+                item.obs = reg ? ` ✓ por ${reg.operador}` : '';
+                nrpsCarregados.add(n);
+                porOutros++;
+                return;
+            }
+
+            const salaAgora = salaDaCoaud(n);
+            const aindaAqui = salaAgora !== null && normInv(salaAgora) === normInv(salaSelecionada);
+
+            if (!aindaAqui && item.status === 'red') {
+                const t = todosInv.filter(r => normalizeNRP(r.NRP) === n).pop();
+                item.status = 'blue';
+                item.obs = salaAgora !== null ? ` → ${salaAgora}` : ' → saiu da COAUD';
+                if (t) item.obs += ` (${t.operador}, ${t.dataHora})`;
+                sairam++;
+            } else if (aindaAqui && item.status === 'blue') {
+                item.status = 'red';
+                item.obs = '';
+                voltaram++;
+            }
+        });
+
+        // Ordem: verdes/amarelos no topo, vermelhos no meio, azuis no fim
+        const peso = { green: 0, yellow: 0, red: 1, blue: 2 };
+        currentSalaInventario.sort((a, b) => (peso[a.status] ?? 1) - (peso[b.status] ?? 1));
+
+        updateInventarioTable();
+
+        if (porOutros || sairam || voltaram) {
+            const partes = [];
+            if (porOutros) partes.push(`${porOutros} registrado(s) por outra pessoa`);
+            if (sairam)    partes.push(`${sairam} transferido(s) para outra sala`);
+            if (voltaram)  partes.push(`${voltaram} voltou(aram) para esta sala`);
+            setProgress('🔄 ' + partes.join(', ') + '.');
+        } else if (manual) {
+            setProgress('🔄 Tela atualizada. Nenhuma novidade.');
+        }
+    }
+
+    setInterval(() => sincronizar(false), 20000);
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') sincronizar(false);
     });
 
     // ══════════════════════════════════════════════════════
@@ -694,6 +828,7 @@
                     // (assim o inventário em andamento não é perdido)
                     if (!sigmasData.length) carregarDados(accessToken);
                     enviarFila();
+                    sincronizar(true);
                 }
             });
 
@@ -851,6 +986,7 @@
         updateInventarioTable();
         document.getElementById("patrimonioInput").focus();
         atualizarStatusSalvamento();
+        setTimeout(() => sincronizar(true), 500);
         setProgress(`✅ Sala "${sala}" pronta (${nomeInventario()}). ${currentSalaInventario.length} itens aguardando bipagem.`);
     }
 
@@ -1009,8 +1145,9 @@
         }
 
         // ── Passo 1: já está no inventário desta sala? ──
+        // (itens azuis saíram desta sala: seguem para a transferência de volta)
         const idxInventario = currentSalaInventario.findIndex(item =>
-            normalizeNRP(item.NRP) === n
+            normalizeNRP(item.NRP) === n && item.status !== 'blue'
         );
 
         if (idxInventario !== -1) {
@@ -1084,6 +1221,7 @@
         const idx = currentSalaInventario.findIndex(item => normalizeNRP(item.NRP) === n);
         if (idx !== -1) {
             currentSalaInventario[idx].status      = status;
+            currentSalaInventario[idx].obs         = '';
             currentSalaInventario[idx].Responsável = rowRef[3] || '';
             currentSalaInventario[idx].Material    = rowRef[1] || '';
             const [movido] = currentSalaInventario.splice(idx, 1);
@@ -1114,7 +1252,7 @@
             tr.className = item.status;
             ['NRP','Material','Localização','Responsável'].forEach(key => {
                 const td = document.createElement("td");
-                td.textContent = item[key] || '';
+                td.textContent = (item[key] || '') + (key === 'Localização' && item.obs ? item.obs : '');
                 tr.appendChild(td);
             });
             list.appendChild(tr);
@@ -1130,10 +1268,12 @@
             return;
         }
         const faltam = currentSalaInventario.filter(i => i.status === 'red').length;
+        const azuis  = currentSalaInventario.filter(i => i.status === 'blue').length;
         const registrados = registrosDoInventario(salaSelecionada).length;
         extra.textContent =
             `📂 ${nomeInventario()}: ${registrados} itens já registrados nesta sala. ` +
-            `Faltam ${faltam} itens para coletar.`;
+            `Faltam ${faltam} itens para coletar.` +
+            (azuis ? ` ${azuis} saíram desta sala (em azul).` : '');
         extra.style.display = 'block';
     }
 
