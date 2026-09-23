@@ -34,10 +34,11 @@
         /* ── Lista de inventários ── */
         .grid-inv {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
             gap: 14px;
         }
         .card-inv {
+            box-sizing: border-box; min-width: 0;
             text-align: left; width: 100%; margin: 0;
             display: flex; flex-direction: column; gap: 10px;
             padding: 16px; cursor: pointer;
@@ -45,9 +46,9 @@
             border: 1px solid var(--card-border); border-radius: var(--radius);
             color: var(--text); font-family: inherit;
         }
-        .card-inv:hover { border-color: rgba(0,176,79,.5); }
+        .card-inv:hover, .card-inv:focus-visible { border-color: rgba(0,176,79,.5); outline: none; }
         .card-inv .topo { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-        .card-inv .nome { font-size: 16px; font-weight: 700; }
+        .card-inv .nome { font-size: 16px; font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
         .card-inv .pct  { font-size: 30px; font-weight: 800; line-height: 1; }
         .card-inv .sub  { font-size: 11px; color: var(--text-muted); line-height: 1.5; }
 
@@ -69,10 +70,11 @@
 
         .grid-salas {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
             gap: 10px;
         }
         .card-sala {
+            box-sizing: border-box; min-width: 0; overflow: hidden;
             text-align: left; width: 100%; margin: 0;
             display: flex; flex-direction: column; gap: 6px;
             padding: 12px; cursor: pointer;
@@ -80,10 +82,17 @@
             border: 1px solid var(--card-border); border-radius: var(--radius-sm);
             color: var(--text); font-family: inherit;
         }
-        .card-sala:hover { border-color: rgba(0,176,79,.5); }
+        .card-sala:hover, .card-sala:focus-visible { border-color: rgba(0,176,79,.5); outline: none; }
         .card-sala.completa { border-color: rgba(0,176,79,.35); }
-        .card-sala .nome { font-size: 12px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .card-sala .nums { font-size: 11px; color: var(--text-muted); display: flex; justify-content: space-between; }
+        .card-sala .nome {
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+            overflow: hidden; overflow-wrap: anywhere;
+            font-size: 12px; font-weight: 700; line-height: 1.35; min-height: 2.7em;
+        }
+        .card-sala .nums { font-size: 11px; color: var(--text-muted); display: flex; justify-content: space-between; gap: 8px; }
+        .card-sala .barra, .card-inv .barra { display: block; width: 100%; }
+        .kpi-sub .barra { display: block; width: 100%; min-width: 90px; margin-top: 4px; }
+        .linha-op .barra { display: block; }
         .card-sala .nums strong { color: var(--text); }
 
         .duas-colunas { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
@@ -306,6 +315,13 @@
     function norm(t) {
         return (t || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toUpperCase();
     }
+    // Cards clicáveis (mouse e teclado)
+    function ativarCard(el, acao) {
+        el.addEventListener('click', acao);
+        el.addEventListener('keydown', e => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); acao(); }
+        });
+    }
     function classeBarra(pct) { return pct >= 100 ? 'completa' : pct >= 50 ? 'media' : ''; }
     function barra(pct) {
         return `<span class="barra"><span class="${classeBarra(pct)}" style="width:${Math.min(pct, 100)}%"></span></span>`;
@@ -484,7 +500,7 @@
         grid.innerHTML = inventarios.slice().reverse().map(inv => {
             const c = calcular(inv);
             return `
-                <button type="button" class="card-inv" data-aba="${esc(inv.aba)}">
+                <div role="button" tabindex="0" class="card-inv" data-aba="${esc(inv.aba)}">
                     <div class="topo"><span class="nome">${esc(inv.nome)}</span>${badgeStatus(inv)}</div>
                     <div class="pct">${c.pct}%</div>
                     ${barra(c.pct)}
@@ -495,10 +511,9 @@
                         ${inv.concluidoEm ? `Concluído em ${esc(inv.concluidoEm)}<br>` : ''}
                         ${c.ultimo ? `Último bip: ${esc(c.ultimo)}` : 'Nenhum bip ainda'}
                     </div>
-                </button>`;
+                </div>`;
         }).join('');
-        grid.querySelectorAll('.card-inv').forEach(b =>
-            b.addEventListener('click', () => { location.hash = encodeURIComponent(b.dataset.aba); }));
+        grid.querySelectorAll('.card-inv').forEach(b => ativarCard(b, () => { location.hash = encodeURIComponent(b.dataset.aba); }));
     }
 
     function aplicarHash() {
@@ -629,16 +644,15 @@
         const grid = document.getElementById('gridSalas');
         grid.innerHTML = salas.length
             ? salas.map(s => `
-                <button type="button" class="card-sala ${s.encontrados === s.total ? 'completa' : ''}" data-sala="${esc(s.sala)}">
+                <div role="button" tabindex="0" class="card-sala ${s.encontrados === s.total ? 'completa' : ''}" data-sala="${esc(s.sala)}" title="${esc(s.sala)}">
                     <span class="nome" title="${esc(s.sala)}">${s.encontrados === s.total ? '✅ ' : ''}${esc(s.sala)}</span>
                     ${barra(s.pct)}
                     <span class="nums"><span><strong>${s.encontrados}</strong> de ${s.total}</span><span>${s.pct}%</span></span>
                     <span class="nums"><span>${s.total - s.encontrados ? 'Faltam ' + (s.total - s.encontrados) : 'Completa'}</span></span>
-                </button>`).join('')
+                </div>`).join('')
             : '<div class="vazio">Nenhuma sala com esse filtro.</div>';
 
-        grid.querySelectorAll('.card-sala').forEach(b =>
-            b.addEventListener('click', () => abrirFalt(b.dataset.sala)));
+        grid.querySelectorAll('.card-sala').forEach(b => ativarCard(b, () => abrirFalt(b.dataset.sala)));
     }
 
     function abrirFalt(sala) {
