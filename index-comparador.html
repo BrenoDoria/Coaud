@@ -13,23 +13,7 @@
     </script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
     <script src="sidebar-init.js" defer></script>
-    <style>
-        .file-upload {
-            display: flex; gap: 10px; align-items: center; flex-wrap: wrap;<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>COAUD — Comparador de Patrimônios</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='4' fill='%2300b04f'/><text y='22' x='5' font-size='17' fill='white' font-family='Arial' font-weight='bold'>C</text></svg>">
-    <link rel="stylesheet" href="style.css">
-    <script>
-        // Aplica tema salvo ANTES do render (evita flash)
-        document.documentElement.setAttribute('data-tema',
-            localStorage.getItem('tema-coaud') || 'verde-neon');
-    </script>
-    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-    <script src="sidebar-init.js" defer></script>
+    <script src="coaud-inventario.js"></script>
     <style>
         .file-upload {
             display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
@@ -250,7 +234,7 @@
 
                     <div class="segmented">
                         <button type="button" id="btnFonteInv" class="ativo" onclick="mudarFonte('inventario')">
-                            📋 Aba INVENTARIO
+                            📋 Inventário (bipagens)
                         </button>
                         <button type="button" id="btnFontePlan" onclick="mudarFonte('planilha')">
                             📄 Planilha Excel
@@ -369,13 +353,14 @@
     //  CONFIGURAÇÃO — mesma planilha do Localizador
     // ══════════════════════════════════════════════════════
     const FILE_ID = '1iNeSf0wakQ6j9Eg_qOCzVNKcIVVIsukeThL0Phpd5LE';
-    const ABAS    = ['SIGMAS', 'COAUD', 'INVENTARIO'];
+
     const TODAS   = '__TODAS__';
 
     let accessToken       = null;
     let bases             = { SIGMAS: [], COAUD: [] };  // [NRP, Material, Local, Responsável]
-    let registrosInv      = [];        // linhas da aba INVENTARIO
-    let inventarioOk      = false;     // a aba INVENTARIO foi lida?
+    let registrosInv      = [];        // linhas da aba do inventário escolhido ("INV ...")
+    let inventarios       = [];        // abas "INV ..." da planilha
+    let inventarioOk      = false;     // existe pelo menos um inventário?
     let nrpsPlanilha      = new Set(); // NRPs da planilha Excel carregada
     let planilhaCarregada = false;
     let basesCarregadas   = false;
@@ -414,18 +399,17 @@
     //  QUAL CONJUNTO DE NRPs ESTÁ SENDO USADO
     // ══════════════════════════════════════════════════════
     function inventarioEscolhido() {
-        return document.getElementById('inventarioSelect').value;
+        const aba = document.getElementById('inventarioSelect').value;
+        const inv = inventarios.find(i => i.aba === aba);
+        return inv ? inv.nome : '';
     }
 
     // Todos os NRPs registrados no inventário escolhido (em qualquer sala)
     function nrpsDoInventario() {
-        const alvo = normTexto(inventarioEscolhido());
         const set = new Set();
         registrosInv.forEach(r => {
-            if (normTexto(r[8]) === alvo) {
-                const n = normalizeNRP(r[0]);
-                if (n) set.add(n);
-            }
+            const n = normalizeNRP(r[0]);
+            if (n) set.add(n);
         });
         return set;
     }
@@ -459,7 +443,7 @@
 
     function mudarFonte(fonte) {
         if (fonte === 'inventario' && !inventarioOk && basesCarregadas) {
-            alert('A aba INVENTARIO não foi encontrada na planilha. Use a opção Planilha Excel.');
+            alert('Nenhum inventário foi criado ainda. Crie um no Escaneamento (➕ Novo inventário) ou use a opção Planilha Excel.');
             return;
         }
         fonteAtual = fonte;
@@ -524,37 +508,63 @@
         document.getElementById('spinner').style.display = 'inline-block';
         setProgress(manual ? 'Atualizando dados...' : 'Carregando bases...');
         try {
-            let vr;
+            // Inventários = abas "INV ..." da planilha
             try {
-                vr = await buscarRanges(['SIGMAS!A:D', 'COAUD!A:D', 'INVENTARIO!A:I']);
-                inventarioOk = true;
+                inventarios = (await listarInventarios(accessToken, FILE_ID)).lista;
             } catch (e) {
-                if (e.message === 'SESSAO_EXPIRADA') return;
-                // Aba INVENTARIO ausente: carrega só SIGMAS e COAUD
-                vr = await buscarRanges(['SIGMAS!A:D', 'COAUD!A:D']);
-                inventarioOk = false;
+                if (e.message === 'SESSAO_EXPIRADA') {
+                    localStorage.removeItem('access_token');
+                    alert('Sessão expirada. Faça login novamente.');
+                    window.location.href = 'index.html';
+                    return;
+                }
+                throw e;
             }
+            inventarioOk = inventarios.length > 0;
+            popularInventarios();
+
+            const abaInv = document.getElementById('inventarioSelect').value;
+            const ranges = ['SIGMAS!A:D', 'COAUD!A:D'];
+            if (abaInv) ranges.push(rangeAba(abaInv, 'A:J'));
+            const vr = await buscarRanges(ranges);
 
             bases.SIGMAS = ((vr[0] && vr[0].values) || []).slice(1).filter(row => normalizeNRP(row[0]));
             bases.COAUD  = ((vr[1] && vr[1].values) || []).slice(1).filter(row => normalizeNRP(row[0]));
-            registrosInv = inventarioOk
+            registrosInv = abaInv
                 ? ((vr[2] && vr[2].values) || []).slice(1).filter(row => normalizeNRP(row[0]))
                 : [];
 
             popularSalas();
-            popularInventarios();
             basesCarregadas = true;
 
             if (!inventarioOk) {
                 document.getElementById('btnFonteInv').disabled = true;
                 mudarFonte('planilha');
-                setProgress(`✅ SIGMAS: ${bases.SIGMAS.length} | COAUD: ${bases.COAUD.length} (aba INVENTARIO não encontrada).`);
+                setProgress(`✅ SIGMAS: ${bases.SIGMAS.length} | COAUD: ${bases.COAUD.length} (nenhum inventário criado ainda).`);
             } else {
-                setProgress(`✅ SIGMAS: ${bases.SIGMAS.length} | COAUD: ${bases.COAUD.length} | INVENTARIO: ${registrosInv.length}.`);
+                document.getElementById('btnFonteInv').disabled = false;
+                setProgress(`✅ SIGMAS: ${bases.SIGMAS.length} | COAUD: ${bases.COAUD.length} | ${abaInv}: ${registrosInv.length}.`);
             }
             renderizar();
         } catch (error) {
             if (error.message !== 'SESSAO_EXPIRADA') setProgress('Erro: ' + error.message);
+        } finally {
+            document.getElementById('spinner').style.display = 'none';
+        }
+    }
+
+    // Troca de inventário: lê só a aba escolhida
+    async function trocarInventario() {
+        const aba = document.getElementById('inventarioSelect').value;
+        if (!aba) { registrosInv = []; renderizar(); return; }
+        document.getElementById('spinner').style.display = 'inline-block';
+        try {
+            const vr = await buscarRanges([rangeAba(aba, 'A:J')]);
+            registrosInv = ((vr[0] && vr[0].values) || []).slice(1).filter(row => normalizeNRP(row[0]));
+            setProgress(`📂 ${aba}: ${registrosInv.length} registros.`);
+            renderizar();
+        } catch (e) {
+            if (e.message !== 'SESSAO_EXPIRADA') setProgress('Erro: ' + e.message);
         } finally {
             document.getElementById('spinner').style.display = 'none';
         }
@@ -575,23 +585,20 @@
         atualizarLabelSala();
     }
 
-    // Inventários existentes na aba INVENTARIO (coluna I); o mais recente vem primeiro
+    // Inventários (abas "INV ..."); o mais recente vem primeiro
     function popularInventarios() {
         const sel   = document.getElementById('inventarioSelect');
         const atual = sel.value;
-        const ordem = [];
-        for (let i = registrosInv.length - 1; i >= 0; i--) {
-            const nome = (registrosInv[i][8] || '').toString().trim();
-            if (nome && !ordem.some(o => normTexto(o) === normTexto(nome))) ordem.push(nome);
-        }
-        if (!ordem.length) {
-            sel.innerHTML = '<option value="">Nenhum inventário registrado ainda</option>';
+        if (!inventarios.length) {
+            sel.innerHTML = '<option value="">Nenhum inventário criado ainda</option>';
             document.getElementById('ajudaInv').textContent =
-                'A aba INVENTARIO ainda está vazia. Faça bipagens no Escaneamento ou use a opção Planilha Excel.';
+                'Crie um inventário no Escaneamento (➕ Novo inventário) ou use a opção Planilha Excel.';
             return;
         }
-        sel.innerHTML = ordem.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
-        sel.value = ordem.includes(atual) ? atual : ordem[0];
+        const ordem = inventarios.slice().reverse();
+        sel.innerHTML = ordem.map(i =>
+            `<option value="${esc(i.aba)}">${esc(i.nome)}${i.concluidoEm ? ' (concluído)' : ''}</option>`).join('');
+        sel.value = ordem.some(i => i.aba === atual) ? atual : ordem[0].aba;
         document.getElementById('ajudaInv').textContent =
             'Usa o que já foi bipado no Escaneamento. Clique em "Atualizar dados" para ver os bips mais recentes.';
     }
@@ -606,7 +613,7 @@
             renderizar();
         });
 
-        document.getElementById('inventarioSelect').addEventListener('change', renderizar);
+        document.getElementById('inventarioSelect').addEventListener('change', trocarInventario);
 
         document.getElementById('filtroSala').addEventListener('input', renderizarPainel);
         document.getElementById('soIncompletas').addEventListener('change', renderizarPainel);
@@ -798,7 +805,7 @@
             if (basesCarregadas) {
                 msg = fonteAtual === 'planilha'
                     ? 'Carregue a planilha do levantamento para ver o resultado.'
-                    : 'Nenhum inventário registrado ainda na aba INVENTARIO.';
+                    : 'Nenhum inventário criado ainda. Crie um no Escaneamento.';
             }
             list.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px">${msg}</td></tr>`;
             return;
@@ -849,7 +856,7 @@
         if (!temLevantamento()) {
             alert(fonteAtual === 'planilha'
                 ? 'Carregue a planilha do levantamento primeiro.'
-                : 'Nenhum inventário disponível na aba INVENTARIO.');
+                : 'Nenhum inventário criado ainda.');
             return;
         }
         if (!resultado.length) {
@@ -873,536 +880,6 @@
         const workbook  = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, `Nao_encontrados_${baseAtual}`.slice(0, 31));
         XLSX.writeFile(workbook, `Nao_encontrados_${baseAtual}${sufixoSala}${sufixoInv}_${formatarData()}.xlsx`);
-    }
-    </script>
-</body>
-</html>
-        }
-        .file-upload-label {
-            display: inline-flex; align-items: center; gap: 6px;
-            padding: 8px 16px; background: var(--verde); color: #fff;
-            border-radius: var(--radius-sm); font-size: 12px;
-            font-weight: 600; cursor: pointer;
-            transition: background .14s; font-family: inherit;
-        }
-        .file-upload-label:hover { background: var(--verde-dark); }
-        .file-upload input[type="file"] { display: none; }
-        .file-name { font-size: 12px; color: var(--text-muted); font-style: italic; }
-        .file-name.loaded { color: var(--verde); font-style: normal; font-weight: 600; }
-
-        .stat-result {
-            display: inline-block;
-            background: rgba(0,176,79,0.1);
-            border: 1px solid rgba(0,176,79,0.25);
-            border-radius: var(--radius-sm);
-            padding: 8px 14px; font-size: 13px;
-            color: var(--verde); font-weight: 600; margin-top: 10px;
-        }
-        .stat-result.warn {
-            background: rgba(245,158,11,0.1);
-            border-color: rgba(245,158,11,0.3);
-            color: #fbbf24;
-        }
-
-        .ajuda {
-            font-size: 11px;
-            color: var(--text-muted);
-            margin-top: 8px;
-        }
-
-        .resumo-linha {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-top: 10px;
-        }
-        .resumo-item {
-            font-size: 11px;
-            padding: 4px 10px;
-            border-radius: 20px;
-            background: rgba(255,255,255,0.05);
-            border: 1px solid var(--card-border);
-            color: var(--text-muted);
-        }
-        .resumo-item strong { color: var(--text); }
-
-        #card-sala select { width: 100%; }
-    </style>
-</head>
-<body>
-
-    <div class="app-layout">
-
-        <!-- ══ SIDEBAR ═══════════════════════════════════ -->
-        <aside class="sidebar" id="sidebar">
-            <div class="sidebar-brand">
-                <div class="brand-row">
-                    <div class="brand-icon">C</div>
-                    <div>
-                        <div class="brand-name">CÂMARA DOS DEPUTADOS</div>
-                        <div class="brand-sub">COAUD</div>
-                    </div>
-                </div>
-            </div>
-            <div class="sidebar-user">
-                <div class="user-avatar" id="user-avatar">?</div>
-                <div class="user-info">
-                    <div class="user-name" id="user-name">Carregando...</div>
-                    <div class="user-role" id="user-role"></div>
-                </div>
-            </div>
-            <nav class="sidebar-nav">
-                <div class="nav-section-title">Sistemas</div>
-                <a class="nav-item" id="nav-escanear" href="index-escanear.html">
-                    <span class="nav-icon">📷</span> Sistema de Escaneamento
-                </a>
-
-                <!-- Comparador com subgrupo -->
-                <a class="nav-item nav-parent active" id="nav-comparador" href="index-comparador.html">
-                    <span class="nav-icon">🔍</span> Comparador de Patrimônios
-                </a>
-                <div class="nav-subgroup">
-                    <a class="nav-subitem" id="tab-sigmas" onclick="mudarBase('SIGMAS');return false;" href="#">
-                        <span class="nav-sub-icon">↳</span> SIGMAS (todos)
-                    </a>
-                    <a class="nav-subitem" id="tab-coaud" onclick="mudarBase('COAUD');return false;" href="#">
-                        <span class="nav-sub-icon">↳</span> COAUD (responsáveis)
-                    </a>
-                </div>
-
-                <a class="nav-item" id="nav-localizador" href="index_Local.html">
-                    <span class="nav-icon">📍</span> Localizador e Transferência
-                </a>
-                <a class="nav-item" id="nav-almoxarifado" href="index-almoxarifado.html">
-                    <span class="nav-icon">📋</span> Controle de Almoxarifado
-                </a>
-                <a class="nav-item" href="index.html">
-                    <span class="nav-icon">🏠</span> Portal
-                </a>
-            </nav>
-            <div class="sidebar-footer">
-                <button class="btn-logout" onclick="fazerLogout()">
-                    <span>⎋</span> Sair do sistema
-                </button>
-            </div>
-        </aside>
-
-        <!-- ══ ÁREA PRINCIPAL ════════════════════════════ -->
-        <div class="main-area">
-
-            <div class="topbar">
-                <button class="btn-menu" onclick="toggleSidebar()">☰</button>
-                <div>
-                    <div class="topbar-title">Comparador de Patrimônios</div>
-                    <div class="topbar-sub">
-                        Comparando com: <span id="base-atual-label" style="color:var(--verde);font-weight:700">COAUD</span>
-                        <span id="sala-atual-label"></span>
-                    </div>
-                </div>
-                <div class="topbar-right">
-                    <div id="spinner" class="spinner" style="margin:0"></div>
-                    <p id="progressText" style="font-size:11px;color:var(--text-muted);margin:0">
-                        Carregando bases SIGMAS e COAUD...
-                    </p>
-                </div>
-            </div>
-
-            <div class="page-content">
-
-                <!-- ═══ SALA (só COAUD) ═══ -->
-                <div class="card" id="card-sala">
-                    <div class="card-title">Sala</div>
-                    <div class="field-block">
-                        <label for="salaSelect">Comparar com a sala</label>
-                        <select id="salaSelect">
-                            <option value="">Carregando salas...</option>
-                        </select>
-                    </div>
-                    <p class="ajuda">A sala é reconhecida automaticamente pela coluna C (Localização) da planilha carregada. Se precisar, você pode trocar aqui.</p>
-                </div>
-
-                <!-- ═══ UPLOAD ═══ -->
-                <div class="card">
-                    <div class="card-title">Planilha do levantamento</div>
-
-                    <div class="file-upload">
-                        <label for="fileInputExportada" class="file-upload-label">
-                            📄 Escolher planilha (.xlsx)
-                        </label>
-                        <input type="file" id="fileInputExportada" accept=".xlsx,.xls,.csv">
-                        <span class="file-name" id="fileName">Nenhum arquivo escolhido</span>
-                    </div>
-                    <p class="ajuda">
-                        O NRP deve estar na primeira coluna. Se a planilha tiver várias abas, todas são lidas.
-                    </p>
-
-                    <div id="statContainer"></div>
-
-                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
-                        <button onclick="exportarResultado()" class="btn-blue">
-                            ⬇ Exportar não encontrados (.xlsx)
-                        </button>
-                    </div>
-                </div>
-
-                <!-- ═══ TABELA ═══ -->
-                <div class="card" style="padding:0;overflow:hidden">
-                    <div style="padding:14px 16px 8px">
-                        <div class="card-title" id="titulo-tabela" style="margin:0;border:none;padding:0">
-                            Patrimônios não encontrados
-                        </div>
-                    </div>
-                    <div class="table-wrapper">
-                        <table id="patrimonioTable">
-                            <thead>
-                                <tr>
-                                    <th>NRP</th>
-                                    <th>Material</th>
-                                    <th>Localização</th>
-                                    <th>Responsável</th>
-                                </tr>
-                            </thead>
-                            <tbody id="patrimonioList">
-                                <tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px">
-                                    Carregue a planilha do levantamento para ver o resultado.
-                                </td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-            </div>
-
-            <footer class="site-footer">
-                © 2025 BrenoDoria — Câmara dos Deputados / COAUD
-            </footer>
-        </div>
-    </div>
-
-    <script>
-    // Sidebar (usuário, permissões, tema, logout, menu mobile) vem do sidebar-init.js
-
-    function setProgress(msg) {
-        const el = document.getElementById("progressText");
-        if (el) el.textContent = msg;
-    }
-
-    // ══════════════════════════════════════════════════════
-    //  CONFIGURAÇÃO — mesma planilha do Localizador
-    // ══════════════════════════════════════════════════════
-    const FILE_ID = '1iNeSf0wakQ6j9Eg_qOCzVNKcIVVIsukeThL0Phpd5LE';
-    const ABAS    = ['SIGMAS', 'COAUD'];
-    const TODAS   = '__TODAS__';
-
-    let accessToken       = null;
-    let bases             = { SIGMAS: [], COAUD: [] };  // [NRP, Material, Local, Responsável]
-    let nrpsEscaneados    = new Set();
-    let planilhaCarregada = false;
-    let basesCarregadas   = false;
-
-    let baseAtual = 'COAUD';
-    let salaAtual = TODAS;
-    let resultado = [];
-
-    function normalizeNRP(nrp) {
-        if (nrp === undefined || nrp === null) return "";
-        return nrp.toString().replace(/\./g, "").replace(/^0+/, "").trim();
-    }
-
-    function esc(t) {
-        return (t === undefined || t === null ? '' : t.toString())
-            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    }
-
-    function formatarData() {
-        const d = new Date();
-        return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
-    }
-
-    // ══════════════════════════════════════════════════════
-    //  TROCA DE BASE (sidebar)
-    // ══════════════════════════════════════════════════════
-    function mudarBase(base) {
-        baseAtual = base;
-        document.getElementById('tab-sigmas').classList.toggle('active', base === 'SIGMAS');
-        document.getElementById('tab-coaud').classList.toggle('active', base === 'COAUD');
-        document.getElementById('base-atual-label').textContent = base;
-
-        // Seleção de sala só existe na COAUD
-        document.getElementById('card-sala').style.display = base === 'COAUD' ? 'block' : 'none';
-        if (base === 'SIGMAS') salaAtual = TODAS;
-        else salaAtual = document.getElementById('salaSelect').value || TODAS;
-
-        atualizarLabelSala();
-        document.getElementById('sidebar').classList.remove('open');
-        renderizar();
-    }
-
-    function atualizarLabelSala() {
-        const el = document.getElementById('sala-atual-label');
-        el.textContent = (baseAtual === 'COAUD' && salaAtual !== TODAS) ? `— Sala: ${salaAtual}` : '';
-    }
-
-    // ══════════════════════════════════════════════════════
-    //  CARREGAMENTO DAS DUAS ABAS
-    // ══════════════════════════════════════════════════════
-    window.addEventListener('load', () => {
-        configurarControles();
-        mudarBase('COAUD');
-
-        accessToken = localStorage.getItem('access_token');
-        if (!accessToken) {
-            alert('Sessão expirada. Faça login novamente.');
-            window.location.href = 'index.html';
-            return;
-        }
-        carregarBases();
-    });
-
-    async function carregarBases() {
-        document.getElementById('spinner').style.display = 'inline-block';
-        setProgress('Carregando bases SIGMAS e COAUD...');
-        try {
-            const ranges = ABAS.map(a => `ranges=${encodeURIComponent(a + '!A:D')}`).join('&');
-            const r = await fetch(
-                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values:batchGet?${ranges}`,
-                { headers: { 'Authorization': `Bearer ${accessToken}` } }
-            );
-            if (!r.ok) {
-                if (r.status === 401) {
-                    localStorage.removeItem('access_token');
-                    alert('Sessão expirada. Faça login novamente.');
-                    window.location.href = 'index.html';
-                    return;
-                }
-                const e = await r.json().catch(() => ({}));
-                throw new Error(e.error?.message || r.statusText);
-            }
-            const data = await r.json();
-
-            (data.valueRanges || []).forEach((vr, i) => {
-                bases[ABAS[i]] = (vr.values || []).slice(1).filter(row => normalizeNRP(row[0]));
-            });
-
-            popularSalas();
-            basesCarregadas = true;
-            setProgress(`✅ Bases carregadas — SIGMAS: ${bases.SIGMAS.length} | COAUD: ${bases.COAUD.length}.`);
-            renderizar();
-        } catch (error) {
-            setProgress('Erro: ' + error.message);
-        } finally {
-            document.getElementById('spinner').style.display = 'none';
-        }
-    }
-
-    // Salas vêm da aba COAUD (igual ao Escaneamento)
-    function popularSalas() {
-        const salas = [...new Set(
-            bases.COAUD.map(row => (row[2] || '').toString().trim()).filter(Boolean)
-        )].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-
-        const sel = document.getElementById('salaSelect');
-        sel.innerHTML = `<option value="${TODAS}">Todas as salas</option>` +
-            salas.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
-        sel.value = TODAS;
-        salaAtual = TODAS;
-        atualizarLabelSala();
-    }
-
-    // ══════════════════════════════════════════════════════
-    //  CONTROLES
-    // ══════════════════════════════════════════════════════
-    function configurarControles() {
-        document.getElementById('salaSelect').addEventListener('change', function () {
-            salaAtual = this.value || TODAS;
-            atualizarLabelSala();
-            renderizar();
-        });
-
-        document.getElementById('fileInputExportada').addEventListener('change', function () {
-            const nameEl = document.getElementById('fileName');
-            const file = this.files[0];
-            if (!file) {
-                nameEl.textContent = 'Nenhum arquivo escolhido';
-                nameEl.classList.remove('loaded');
-                return;
-            }
-            nameEl.textContent = '📎 ' + file.name;
-            nameEl.classList.add('loaded');
-            processarPlanilha(file);
-            this.value = '';   // permite recarregar o mesmo arquivo
-        });
-    }
-
-    // ══════════════════════════════════════════════════════
-    //  LEITURA DA PLANILHA DO LEVANTAMENTO
-    // ══════════════════════════════════════════════════════
-    function processarPlanilha(file) {
-        document.getElementById('spinner').style.display = 'inline-block';
-        setProgress('Lendo planilha...');
-
-        const reader = new FileReader();
-        reader.onload = function (e) {
-            try {
-                const data     = new Uint8Array(e.target.result);
-                const workbook = XLSX.read(data, { type: 'array' });
-
-                nrpsEscaneados = new Set();
-                const contagemSalas = {};
-                workbook.SheetNames.forEach(sheetName => {
-                    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: '' });
-                    rows.slice(1).forEach(row => {
-                        const n = normalizeNRP(row[0]);
-                        if (n) nrpsEscaneados.add(n);
-                        const sala = (row[2] || '').toString().trim();
-                        if (n && sala) contagemSalas[sala] = (contagemSalas[sala] || 0) + 1;
-                    });
-                });
-
-                planilhaCarregada = true;
-                const msgSala = detectarSala(contagemSalas);
-                renderizar();
-                if (msgSala) setProgress(document.getElementById('progressText').textContent + msgSala);
-            } catch (error) {
-                setProgress('Erro ao ler a planilha: ' + error.message);
-            } finally {
-                document.getElementById('spinner').style.display = 'none';
-            }
-        };
-        reader.onerror = function () {
-            setProgress('Erro ao ler o arquivo.');
-            document.getElementById('spinner').style.display = 'none';
-        };
-        reader.readAsArrayBuffer(file);
-    }
-
-    // Sala = valor mais frequente da coluna C, casado com as salas da COAUD
-    // (ignora maiúsculas/minúsculas: "Almoxarifado" = "ALMOXARIFADO")
-    function detectarSala(contagemSalas) {
-        const sel = document.getElementById('salaSelect');
-        const ordenadas = Object.entries(contagemSalas).sort((a, b) => b[1] - a[1]);
-
-        if (!ordenadas.length) {
-            sel.value = TODAS;
-            salaAtual = baseAtual === 'COAUD' ? TODAS : salaAtual;
-            atualizarLabelSala();
-            return ' Coluna C vazia: comparando com todas as salas.';
-        }
-
-        const salaPlanilha = ordenadas[0][0];
-        const opcao = [...sel.options].find(o =>
-            o.value !== TODAS && o.value.trim().toUpperCase() === salaPlanilha.toUpperCase());
-
-        if (!opcao) {
-            sel.value = TODAS;
-            if (baseAtual === 'COAUD') salaAtual = TODAS;
-            atualizarLabelSala();
-            alert(`A sala "${salaPlanilha}" da planilha não existe na aba COAUD.\nComparando com todas as salas; se quiser, escolha a sala manualmente.`);
-            return ` Sala "${salaPlanilha}" não encontrada na COAUD.`;
-        }
-
-        sel.value = opcao.value;
-        if (baseAtual === 'COAUD') salaAtual = opcao.value;
-        atualizarLabelSala();
-        return ` Sala identificada: ${opcao.value}.`;
-    }
-
-    // ══════════════════════════════════════════════════════
-    //  COMPARAÇÃO — base (ou sala) − planilha
-    // ══════════════════════════════════════════════════════
-    function recorteAtual() {
-        const base = bases[baseAtual];
-        if (baseAtual === 'COAUD' && salaAtual !== TODAS) {
-            const alvo = salaAtual.toUpperCase();
-            return base.filter(row => (row[2] || '').toString().trim().toUpperCase() === alvo);
-        }
-        return base;
-    }
-
-    function descricaoRecorte() {
-        if (baseAtual === 'COAUD' && salaAtual !== TODAS) return `sala ${salaAtual}`;
-        return `aba ${baseAtual}`;
-    }
-
-    function renderizar() {
-        const list   = document.getElementById('patrimonioList');
-        const stat   = document.getElementById('statContainer');
-        const titulo = document.getElementById('titulo-tabela');
-
-        titulo.textContent = `Não encontrados — ${descricaoRecorte()}`;
-
-        if (!basesCarregadas || !planilhaCarregada) {
-            resultado = [];
-            stat.innerHTML = '';
-            list.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px">
-                ${basesCarregadas ? 'Carregue a planilha do levantamento para ver o resultado.' : 'Carregando bases...'}
-            </td></tr>`;
-            return;
-        }
-
-        const recorte = recorteAtual();
-        resultado = recorte.filter(row => !nrpsEscaneados.has(normalizeNRP(row[0])));
-        const encontrados = recorte.length - resultado.length;
-        const pct = recorte.length ? Math.round(encontrados / recorte.length * 100) : 0;
-
-        if (!recorte.length) {
-            list.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px">
-                Nenhum patrimônio cadastrado na ${esc(descricaoRecorte())}.</td></tr>`;
-        } else if (!resultado.length) {
-            list.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px">
-                🎉 Todos os patrimônios da ${esc(descricaoRecorte())} foram encontrados.</td></tr>`;
-        } else {
-            list.innerHTML = resultado.map(row => `
-                <tr>
-                    <td>${esc(row[0]) || '-'}</td>
-                    <td>${esc(row[1]) || '-'}</td>
-                    <td>${esc(row[2]) || '-'}</td>
-                    <td>${esc(row[3]) || '-'}</td>
-                </tr>`).join('');
-        }
-
-        stat.innerHTML = `
-            <div class="stat-result ${resultado.length ? 'warn' : ''}">
-                ${resultado.length
-                    ? `⚠ ${resultado.length} patrimônios da ${esc(descricaoRecorte())} não foram encontrados.`
-                    : `✅ Levantamento completo na ${esc(descricaoRecorte())}.`}
-            </div>
-            <div class="resumo-linha">
-                <span class="resumo-item">Cadastrados: <strong>${recorte.length}</strong></span>
-                <span class="resumo-item">Encontrados: <strong>${encontrados}</strong> (${pct}%)</span>
-                <span class="resumo-item">Não encontrados: <strong>${resultado.length}</strong></span>
-            </div>`;
-        setProgress(`${resultado.length} não encontrados de ${recorte.length} na ${descricaoRecorte()}.`);
-    }
-
-    // ══════════════════════════════════════════════════════
-    //  EXPORTAÇÃO
-    // ══════════════════════════════════════════════════════
-    function exportarResultado() {
-        if (!planilhaCarregada) {
-            alert('Carregue a planilha do levantamento primeiro.');
-            return;
-        }
-        if (!resultado.length) {
-            alert('Nenhum patrimônio não encontrado para exportar.');
-            return;
-        }
-
-        const dados = resultado.map(row => ({
-            NRP: row[0] || '',
-            Material: row[1] || '',
-            Localização: row[2] || '',
-            Responsável: row[3] || ''
-        }));
-
-        const sufixoSala = (baseAtual === 'COAUD' && salaAtual !== TODAS)
-            ? '_' + salaAtual.replace(/[^\w\-]+/g, '_').slice(0, 30)
-            : '';
-
-        const worksheet = XLSX.utils.json_to_sheet(dados);
-        const workbook  = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, `Nao_encontrados_${baseAtual}`.slice(0, 31));
-        XLSX.writeFile(workbook, `Nao_encontrados_${baseAtual}${sufixoSala}_${formatarData()}.xlsx`);
     }
     </script>
 </body>
