@@ -106,6 +106,7 @@
             border-radius: var(--radius-sm);
         }
         .sala-item {
+            box-sizing: border-box;
             display: grid;
             grid-template-columns: minmax(120px, 1.4fr) 2fr auto;
             gap: 12px;
@@ -123,7 +124,8 @@
             cursor: pointer;
         }
         .sala-item:last-child { border-bottom: none; }
-        .sala-item:hover { background: rgba(0,176,79,0.08); }
+        .sala-item:hover, .sala-item:focus-visible { background: rgba(0,176,79,0.08); outline: none; }
+        .sala-item .barra { display: block; width: 100%; }
         .sala-item.selecionada { background: rgba(0,176,79,0.16); }
         .sala-item.total { font-weight: 700; background: rgba(255,255,255,0.03); }
         .sala-nome { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -728,11 +730,11 @@
         const classeBarra = pct >= 100 ? 'completa' : pct >= 50 ? 'media' : '';
         const selecionada = (salaAtual === valor) ? ' selecionada' : '';
         return `
-            <button type="button" class="sala-item${selecionada}${extraClasse || ''}" data-sala="${esc(valor)}">
+            <div role="button" tabindex="0" class="sala-item${selecionada}${extraClasse || ''}" data-sala="${esc(valor)}">
                 <span class="sala-nome" title="${esc(sala)}">${pct >= 100 ? '✅ ' : ''}${esc(sala)}</span>
                 <span class="barra"><span class="${classeBarra}" style="width:${Math.min(pct, 100)}%"></span></span>
                 <span class="sala-num"><strong>${encontrados}</strong> de ${total} (${pct}%)</span>
-            </button>`;
+            </div>`;
     }
 
     function renderizarPainel() {
@@ -762,13 +764,17 @@
                 : `<div style="padding:14px;font-size:12px;color:var(--text-muted)">Nenhuma sala com esse filtro.</div>`);
 
         lista.querySelectorAll('.sala-item').forEach(btn => {
-            btn.addEventListener('click', () => {
+            const acao = () => {
                 const valor = btn.dataset.sala;
                 document.getElementById('salaSelect').value = valor;
                 salaAtual = valor || TODAS;
                 atualizarLabelSala();
                 renderizar();
                 document.getElementById('card-tabela').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            };
+            btn.addEventListener('click', acao);
+            btn.addEventListener('keydown', e => {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); acao(); }
             });
         });
     }
