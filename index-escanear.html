@@ -9,6 +9,7 @@
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
     <script src="sidebar-init.js" defer></script>
+    <script src="coaud-regras.js"></script>
     <style>
         .inventario-header {
             background: rgba(0,176,79,0.08);
@@ -228,7 +229,7 @@
                 <button class="btn-menu" onclick="toggleSidebar()">☰</button>
                 <div>
                     <div class="topbar-title">Escaneamento de Patrimônios</div>
-                    
+                    <div class="topbar-sub">Inventário por sala com transferência automática</div>
                 </div>
                 <div class="topbar-right">
                     <div id="spinner" class="spinner" style="margin:0"></div>
@@ -250,10 +251,10 @@
 
                     <div class="modo-coleta" id="modoColeta">
                         <button type="button" id="btnModoZero" class="ativo" onclick="mudarModo('zero')">
-                            🆕 NOVO INVENTÁRIO
+                            🆕 Começar do zero
                         </button>
                         <button type="button" id="btnModoContinuar" onclick="mudarModo('continuar')">
-                            📂 CONTINUAR INVENTÁRIO
+                            📂 Continuar de planilha
                         </button>
                     </div>
 
@@ -280,7 +281,8 @@
                             <span class="file-name" id="fileContinuarNome">Nenhum arquivo escolhido</span>
                         </div>
                         <p class="ajuda">
-                            Use a planilha exportada.
+                            Use a planilha exportada por este sistema. A sala é identificada pela coluna C (Localização).
+                            A tabela vai mostrar só o que ainda falta coletar, e a próxima exportação junta os itens da planilha com os novos.
                         </p>
                     </div>
 
@@ -299,7 +301,7 @@
 
                     <div class="actions-bar">
                         <button class="btn-export" onclick="exportPlanilhaEspecifica()">
-                            ⬇ Exportar — Responsáveis COAUD
+                            ⬇ Exportar — Responsáveis Específicos
                         </button>
                         <button class="btn-export" onclick="exportPlanilhaOutros()">
                             ⬇ Exportar — Outros Responsáveis
@@ -1001,7 +1003,7 @@
         } else {
             filtrados.forEach(nome => {
                 const li = document.createElement("li");
-                const isCoaud = RESPONSAVEIS_COAUD.includes(nome);
+                const isCoaud = ehResponsavelCoaud(nome);
                 li.innerHTML = `${nome} ${isCoaud ? '<span style="color:#4ade80;font-size:9px;margin-left:4px">◉ COAUD</span>' : ''}`;
                 li.onmousedown = () => {
                     novoRespSelecionado = nome;
@@ -1041,28 +1043,24 @@
             const nrp      = transfPendente.nrp;
             const material = transfPendente.material;
             const linha    = [nrp, material, salaSelecionada, respFinal, montarLog("sala")];
-            const isNovoRespCoaud = RESPONSAVEIS_COAUD.includes(respFinal);
+            const isNovoRespCoaud = ehResponsavelCoaud(respFinal);
 
-            // SIGMAS: sempre atualiza
-            if (transfPendente.emSigmas) {
-                await atualizarLinha(accessToken, 'SIGMAS', transfPendente.idxSigmas + 1, linha);
-                sigmasData[transfPendente.idxSigmas] = linha;
+            // SIGMAS: confere a linha ATUAL do NRP e atualiza (nunca apaga)
+            const linhaS = await localizarLinhaAtual(accessToken, FILE_ID, 'SIGMAS', nrp);
+            if (linhaS > 0) {
+                await atualizarLinha(accessToken, 'SIGMAS', linhaS, linha);
+                atualizarMemoria(sigmasData, nrp, linha);
             }
 
-            // COAUD: aplica regras
+            // COAUD: confere a linha ATUAL e aplica as regras
+            const linhaC = await localizarLinhaAtual(accessToken, FILE_ID, 'COAUD', nrp);
             if (isNovoRespCoaud) {
-                if (transfPendente.emCoaud) {
-                    await atualizarLinha(accessToken, 'COAUD', transfPendente.idxCoaud + 1, linha);
-                    coaudData[transfPendente.idxCoaud] = linha;
-                } else {
-                    await appendLinha(accessToken, 'COAUD', linha);
-                    coaudData.push(linha);
-                }
+                if (linhaC > 0) await atualizarLinha(accessToken, 'COAUD', linhaC, linha);
+                else            await appendLinha(accessToken, 'COAUD', linha);
+                atualizarMemoria(coaudData, nrp, linha);
             } else {
-                if (transfPendente.emCoaud) {
-                    await deletarLinha(accessToken, 'COAUD', transfPendente.idxCoaud);
-                    coaudData.splice(transfPendente.idxCoaud, 1);
-                }
+                if (linhaC > 0) await deletarLinha(accessToken, 'COAUD', linhaC - 1);
+                atualizarMemoria(coaudData, nrp, null);
             }
 
             marcarComoColetado(linha, 'yellow');
@@ -1080,9 +1078,9 @@
         }
     }
 
-    
+    // ══════════════════════════════════════════════════════
     //  MODAL DE NOVO PATRIMÔNIO
-    
+    // ══════════════════════════════════════════════════════
     function abrirModalNovo(nrp) {
         document.getElementById("modalNovoNRP").value = nrp;
         document.getElementById("modalNovoMaterial").value = "";
@@ -1121,7 +1119,7 @@
         } else {
             filtrados.forEach(nome => {
                 const li = document.createElement("li");
-                const isCoaud = RESPONSAVEIS_COAUD.includes(nome);
+                const isCoaud = ehResponsavelCoaud(nome);
                 li.innerHTML = `${nome} ${isCoaud ? '<span style="color:#4ade80;font-size:9px;margin-left:4px">◉ COAUD</span>' : ''}`;
                 li.onmousedown = () => {
                     modalNovoRespSelecionado = nome;
@@ -1154,7 +1152,7 @@
 
         try {
             const linha = [nrp, material, salaSelecionada, respFinal, montarLog("cadastro")];
-            const isCoaud = RESPONSAVEIS_COAUD.includes(respFinal);
+            const isCoaud = ehResponsavelCoaud(respFinal);
 
             await appendLinha(accessToken, 'SIGMAS', linha);
             sigmasData.push(linha);
@@ -1255,20 +1253,7 @@
         return [...mapa.values()];
     }
 
-    // Compara só o nome: ignora maiúsculas, acentos, espaços extras e a matrícula "(5302)"
-    function normalizarNome(nome) {
-        return (nome || '').toString()
-            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-            .replace(/\(\s*\d+\s*\)/g, '')
-            .replace(/\s+/g, ' ')
-            .trim().toUpperCase();
-    }
-    const NOMES_COAUD = RESPONSAVEIS_COAUD.map(normalizarNome);
-
-    function ehResponsavelCoaud(resp) {
-        const r = normalizarNome(resp);
-        return !!r && NOMES_COAUD.includes(r);
-    }
+    // normalizarNome() e ehResponsavelCoaud() vêm do coaud-regras.js
 
     function sufixoArquivo() {
         return salaSelecionada ? '_' + nomeArquivoSeguro(salaSelecionada) : '';
