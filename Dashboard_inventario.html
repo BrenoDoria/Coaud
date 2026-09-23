@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COAUD — Dashboard de Inventários</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='4' fill='%2300b04f'/><text y='22' x='5' font-size='17' fill='white' font-family='Arial' font-weight='bold'>C</text></svg>">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="sidebar-init.js" defer></script>
+    <script src="coaud-regras.js"></script>
+    <script src="coaud-inventario.js"></script>
+    <style>
+        #reconectar-banner {
+            display: none; align-items: center; gap: 12px; flex-wrap: wrap;
+            background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.35);
+            border-radius: 6px; padding: 12px 16px; margin-bottom: 14px;
+        }
+        #reconectar-msg { color: #fbbf24; font-size: 13px; font-weight: 600; }
+
+        .barra { height: 8px; border-radius: 4px; background: rgba(255,255,255,0.08); overflow: hidden; }
+        .barra > span { display: block; height: 100%; border-radius: 4px; background: #f87171; }
+        .barra > span.media    { background: #fbbf24; }
+        .barra > span.completa { background: #4ade80; }
+
+        .badge-status {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 3px 10px; border-radius: 20px;
+            font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px;
+        }
+        .badge-status.andamento { background: rgba(245,158,11,.15); color: #fbbf24; border: 1px solid rgba(245,158,11,.3); }
+        .badge-status.concluido { background: rgba(0,176,79,.15); color: #4ade80; border: 1px solid rgba(0,176,79,.3); }
+
+        /* ── Lista de inventários ── */
+        .grid-inv {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 14px;
+        }
+        .card-inv {
+            text-align: left; width: 100%; margin: 0;
+            display: flex; flex-direction: column; gap: 10px;
+            padding: 16px; cursor: pointer;
+            background: var(--card-bg, rgba(255,255,255,0.03));
+            border: 1px solid var(--card-border); border-radius: var(--radius);
+            color: var(--text); font-family: inherit;
+        }
+        .card-inv:hover { border-color: rgba(0,176,79,.5); }
+        .card-inv .topo { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+        .card-inv .nome { font-size: 16px; font-weight: 700; }
+        .card-inv .pct  { font-size: 30px; font-weight: 800; line-height: 1; }
+        .card-inv .sub  { font-size: 11px; color: var(--text-muted); line-height: 1.5; }
+
+        /* ── Detalhe ── */
+        .detalhe-topo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+        .detalhe-topo h2 { font-size: 18px; margin: 0; }
+        .detalhe-topo .espaco { flex: 1; }
+        .detalhe-topo button { margin: 0; }
+
+        .aviso-concluido {
+            background: rgba(0,176,79,.12); border: 1px solid rgba(0,176,79,.35);
+            color: #4ade80; font-weight: 700; font-size: 13px;
+            border-radius: var(--radius-sm); padding: 12px 16px; margin-bottom: 14px;
+        }
+
+        .painel-topo { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+        .painel-topo input[type="text"] { flex: 1; min-width: 180px; margin: 0; }
+        .painel-topo select { width: auto; margin: 0; }
+
+        .grid-salas {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+        }
+        .card-sala {
+            text-align: left; width: 100%; margin: 0;
+            display: flex; flex-direction: column; gap: 6px;
+            padding: 12px; cursor: pointer;
+            background: rgba(0,0,0,0.18);
+            border: 1px solid var(--card-border); border-radius: var(--radius-sm);
+            color: var(--text); font-family: inherit;
+        }
+        .card-sala:hover { border-color: rgba(0,176,79,.5); }
+        .card-sala.completa { border-color: rgba(0,176,79,.35); }
+        .card-sala .nome { font-size: 12px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .card-sala .nums { font-size: 11px; color: var(--text-muted); display: flex; justify-content: space-between; }
+        .card-sala .nums strong { color: var(--text); }
+
+        .duas-colunas { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        @media (max-width: 800px) { .duas-colunas { grid-template-columns: 1fr; } }
+
+        .linha-op { display: grid; grid-template-columns: minmax(110px, 1fr) 2fr auto; gap: 10px; align-items: center; font-size: 12px; margin-bottom: 8px; }
+        .linha-op .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .linha-op .barra > span { background: #60a5fa; }
+
+        .grafico-dias { display: flex; align-items: flex-end; gap: 6px; height: 150px; padding-top: 16px; overflow-x: auto; }
+        .grafico-dias .col { flex: 1 0 28px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 4px; }
+        .grafico-dias .col .v { font-size: 10px; color: var(--text-muted); }
+        .grafico-dias .col .b { width: 100%; max-width: 34px; background: #4ade80; border-radius: 3px 3px 0 0; min-height: 2px; }
+        .grafico-dias .col .d { font-size: 9px; color: var(--text-muted); white-space: nowrap; }
+
+        .vazio { padding: 16px; font-size: 12px; color: var(--text-muted); }
+
+        /* Modal faltantes */
+        .modal-falt { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 500; align-items: center; justify-content: center; }
+        .modal-falt.aberto { display: flex; }
+        .modal-falt .conteudo {
+            background: #1a2a1a; border: 1px solid rgba(0,176,79,.3); border-radius: var(--radius);
+            padding: 20px; width: 94%; max-width: 720px; max-height: 85vh; display: flex; flex-direction: column;
+        }
+        .modal-falt h2 { font-size: 14px; color: var(--verde); margin: 0 0 12px; }
+        .modal-falt .table-wrapper { overflow: auto; flex: 1; }
+    </style>
+</head>
+<body>
+
+    <div class="app-layout">
+
+        <!-- ══ SIDEBAR ═══════════════════════════════════ -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-brand">
+                <div class="brand-row">
+                    <div class="brand-icon">C</div>
+                    <div>
+                        <div class="brand-name">CÂMARA DOS DEPUTADOS</div>
+                        <div class="brand-sub">COAUD</div>
+                    </div>
+                </div>
+            </div>
+            <div class="sidebar-user">
+                <div class="user-avatar" id="user-avatar">?</div>
+                <div class="user-info">
+                    <div class="user-name" id="user-name">Carregando...</div>
+                    <div class="user-role" id="user-role"></div>
+                </div>
+            </div>
+            <nav class="sidebar-nav">
+                <div class="nav-section-title">Sistemas</div>
+                <a class="nav-item nav-parent active" id="nav-escanear" href="index-escanear.html">
+                    <span class="nav-icon">📷</span> Sistema de Escaneamento
+                </a>
+                <div class="nav-subgroup">
+                    <a class="nav-subitem" href="index-escanear.html">
+                        <span class="nav-sub-icon">↳</span> Escanear
+                    </a>
+                    <a class="nav-subitem active" href="dashboard-inventario.html">
+                        <span class="nav-sub-icon">↳</span> Dashboard
+                    </a>
+                </div>
+                <a class="nav-item" id="nav-comparador" href="index-comparador.html">
+                    <span class="nav-icon">🔍</span> Comparador de Patrimônios
+                </a>
+                <a class="nav-item" id="nav-localizador" href="index_Local.html">
+                    <span class="nav-icon">📍</span> Localizador e Transferência
+                </a>
+                <a class="nav-item" id="nav-almoxarifado" href="index-almoxarifado.html">
+                    <span class="nav-icon">📋</span> Controle de Almoxarifado
+                </a>
+                <a class="nav-item" href="index.html">
+                    <span class="nav-icon">🏠</span> Portal
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <button class="btn-logout" onclick="fazerLogout()">
+                    <span>⎋</span> Sair do sistema
+                </button>
+            </div>
+        </aside>
+
+        <!-- ══ ÁREA PRINCIPAL ════════════════════════════ -->
+        <div class="main-area">
+
+            <div class="topbar">
+                <button class="btn-menu" onclick="toggleSidebar()">☰</button>
+                <div>
+                    <div class="topbar-title">Dashboard de Inventários</div>
+                    <div class="topbar-sub" id="topbarSub">Andamento dos inventários dos 3 responsáveis</div>
+                </div>
+                <div class="topbar-right">
+                    <div id="spinner" class="spinner" style="margin:0"></div>
+                    <p id="progressText" style="font-size:11px;color:var(--text-muted);margin:0">Carregando...</p>
+                </div>
+            </div>
+
+            <div class="page-content">
+
+                <div id="reconectar-banner">
+                    <span id="reconectar-msg"></span>
+                    <button onclick="solicitarToken()">🔐 Reconectar com Google</button>
+                </div>
+
+                <!-- ═══ VISÃO 1: LISTA DE INVENTÁRIOS ═══ -->
+                <div id="visaoLista">
+                    <div class="detalhe-topo">
+                        <h2>Inventários</h2>
+                        <span class="espaco"></span>
+                        <button type="button" class="backButton" onclick="carregarTudo()">🔄 Atualizar</button>
+                    </div>
+                    <div class="grid-inv" id="gridInv">
+                        <div class="vazio">Carregando inventários...</div>
+                    </div>
+                </div>
+
+                <!-- ═══ VISÃO 2: DETALHE DE UM INVENTÁRIO ═══ -->
+                <div id="visaoDetalhe" style="display:none">
+                    <div class="detalhe-topo">
+                        <button type="button" class="backButton" onclick="voltarLista()">← Todos os inventários</button>
+                        <h2 id="detNome"></h2>
+                        <span id="detStatus"></span>
+                        <span class="espaco"></span>
+                        <span id="detAtualizado" style="font-size:11px;color:var(--text-muted)"></span>
+                        <button type="button" class="backButton" onclick="carregarTudo()">🔄 Atualizar</button>
+                    </div>
+
+                    <div id="detConcluido"></div>
+
+                    <div class="dashboard" id="detKpis"></div>
+
+                    <div class="card">
+                        <div class="card-title">Progresso por sala</div>
+                        <div class="painel-topo">
+                            <input type="text" id="filtroSala" placeholder="🔎 Buscar sala..." autocomplete="off">
+                            <select id="ordemSala">
+                                <option value="progresso">Menor progresso primeiro</option>
+                                <option value="nome">Nome da sala</option>
+                                <option value="faltam">Mais itens faltando</option>
+                            </select>
+                            <label style="font-size:12px;color:var(--text-muted);display:flex;gap:6px;align-items:center;cursor:pointer">
+                                <input type="checkbox" id="soIncompletas"> Só incompletas
+                            </label>
+                        </div>
+                        <div class="grid-salas" id="gridSalas"></div>
+                        <p style="font-size:11px;color:var(--text-muted);margin-top:10px">Clique numa sala para ver os itens que faltam.</p>
+                    </div>
+
+                    <div class="duas-colunas">
+                        <div class="card">
+                            <div class="card-title">Bips por operador</div>
+                            <div id="porOperador"></div>
+                        </div>
+                        <div class="card">
+                            <div class="card-title">Bips por dia</div>
+                            <div class="grafico-dias" id="porDia"></div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <footer class="site-footer">
+                © 2025 BrenoDoria — Câmara dos Deputados / COAUD
+            </footer>
+        </div>
+    </div>
+
+    <!-- Modal: itens que faltam numa sala -->
+    <div class="modal-falt" id="modalFalt" onclick="if(event.target===this) fecharFalt()">
+        <div class="conteudo">
+            <h2 id="faltTitulo"></h2>
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>NRP</th><th>Material</th><th>Responsável</th></tr></thead>
+                    <tbody id="faltLista"></tbody>
+                </table>
+            </div>
+            <div style="display:flex;justify-content:flex-end;margin-top:12px">
+                <button class="cancelButton" onclick="fecharFalt()">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // Sidebar (usuário, permissões, tema, logout, menu mobile) vem do sidebar-init.js
+
+    const CLIENT_ID = '286050228811-cv6vsd075480anb1i6auuc421enuaf8q.apps.googleusercontent.com';
+    const FILE_ID   = '1iNeSf0wakQ6j9Eg_qOCzVNKcIVVIsukeThL0Phpd5LE';
+
+    // Mesmos 3 responsáveis do sistema (a comparação é por nome — coaud-regras.js)
+    const RESPONSAVEIS_COAUD = [
+        "ALBERTO CESAR SOUZA ALMEIDA (5302)",
+        "PAULO FERNANDO VOLPE (5933)",
+        "JOSE HENRIQUE FERREIRA DA SILVA (7913)"
+    ];
+
+    let tokenClient  = null;
+    let accessToken  = null;
+    let base3        = [];     // linhas da SIGMAS dos 3 responsáveis
+    let inventarios  = [];     // da planilha (abas "INV ...")
+    let dadosInv     = {};     // aba -> linhas (A:J)
+    let invAberto    = null;   // aba do inventário no detalhe
+
+    function setProgress(msg) {
+        const el = document.getElementById('progressText');
+        if (el) el.textContent = msg;
+    }
+    function spinner(on) { document.getElementById('spinner').style.display = on ? 'inline-block' : 'none'; }
+
+    function normalizeNRP(nrp) {
+        if (nrp === undefined || nrp === null) return '';
+        return nrp.toString().replace(/\./g, '').replace(/^0+/, '').trim();
+    }
+    function esc(t) {
+        return (t === undefined || t === null ? '' : t.toString())
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    function norm(t) {
+        return (t || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toUpperCase();
+    }
+    function classeBarra(pct) { return pct >= 100 ? 'completa' : pct >= 50 ? 'media' : ''; }
+    function barra(pct) {
+        return `<span class="barra"><span class="${classeBarra(pct)}" style="width:${Math.min(pct, 100)}%"></span></span>`;
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  SESSÃO GOOGLE (mesmo padrão do Escaneamento)
+    // ══════════════════════════════════════════════════════
+    function tokenExpirado() {
+        const exp = parseInt(localStorage.getItem('token_expira_em') || '0', 10);
+        return !exp || exp < (Date.now() + 60000);
+    }
+    function mostrarReconectar(msg) {
+        document.getElementById('reconectar-msg').textContent = msg || 'Sessão do Google expirada.';
+        document.getElementById('reconectar-banner').style.display = 'flex';
+    }
+    function esconderReconectar() { document.getElementById('reconectar-banner').style.display = 'none'; }
+    function solicitarToken() { if (tokenClient) tokenClient.requestAccessToken({ prompt: 'select_account' }); }
+
+    window.addEventListener('load', () => {
+        const iniciar = () => {
+            if (typeof google === 'undefined' || !google.accounts) { setTimeout(iniciar, 300); return; }
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: 'https://www.googleapis.com/auth/spreadsheets',
+                callback: (resp) => {
+                    if (resp.error) { setProgress('Erro: ' + resp.error); return; }
+                    accessToken = resp.access_token;
+                    localStorage.setItem('access_token', accessToken);
+                    localStorage.setItem('token_expira_em', Date.now() + ((resp.expires_in || 3600) * 1000));
+                    esconderReconectar();
+                    carregarTudo();
+                }
+            });
+            const salvo = localStorage.getItem('access_token');
+            if (salvo) { accessToken = salvo; carregarTudo(); }
+            else mostrarReconectar('Conecte-se ao Google para ver o dashboard.');
+        };
+        iniciar();
+
+        document.getElementById('filtroSala').addEventListener('input', renderizarSalas);
+        document.getElementById('ordemSala').addEventListener('change', renderizarSalas);
+        document.getElementById('soIncompletas').addEventListener('change', renderizarSalas);
+        window.addEventListener('hashchange', aplicarHash);
+    });
+
+    // Atualiza sozinho a cada 60 s quando o detalhe está aberto e a aba visível
+    setInterval(() => {
+        if (invAberto && document.visibilityState === 'visible' && accessToken) carregarTudo(true);
+    }, 60000);
+
+    // ══════════════════════════════════════════════════════
+    //  CARGA
+    // ══════════════════════════════════════════════════════
+    async function carregarTudo(silencioso) {
+        if (!accessToken) return;
+        if (!silencioso) spinner(true);
+        setProgress('Carregando inventários...');
+        try {
+            const inv = await listarInventarios(accessToken, FILE_ID);
+            inventarios = inv.lista;
+
+            const ranges = ['SIGMAS!A:D'].concat(inventarios.map(i => rangeAba(i.aba, 'A:J')));
+            const q = ranges.map(r => 'ranges=' + encodeURIComponent(r)).join('&');
+            const d = await sheetsFetch(accessToken, `${SHEETS_API}${FILE_ID}/values:batchGet?${q}`);
+            const vr = d.valueRanges || [];
+
+            base3 = ((vr[0] && vr[0].values) || []).slice(1)
+                .filter(row => normalizeNRP(row[0]) && ehResponsavelCoaud(row[3]));
+            dadosInv = {};
+            inventarios.forEach((i, k) => {
+                dadosInv[i.aba] = (((vr[k + 1] && vr[k + 1].values) || []).slice(1)).filter(row => normalizeNRP(row[0]));
+            });
+
+            await verificarConclusoes();
+
+            renderizarLista();
+            if (invAberto) renderizarDetalhe();
+            else aplicarHash();
+
+            const p = n => String(n).padStart(2, '0'), agora = new Date();
+            const hora = `${p(agora.getHours())}:${p(agora.getMinutes())}:${p(agora.getSeconds())}`;
+            document.getElementById('detAtualizado').textContent = `Atualizado às ${hora}`;
+            setProgress(`✅ ${inventarios.length} inventário(s) | ${base3.length} itens dos 3 responsáveis na SIGMAS.`);
+        } catch (e) {
+            if (e.message === 'SESSAO_EXPIRADA') {
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('token_expira_em');
+                accessToken = null;
+                mostrarReconectar('Sessão do Google expirada. Reconecte para ver o dashboard.');
+            } else {
+                setProgress('Erro: ' + e.message);
+            }
+        } finally {
+            spinner(false);
+        }
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  CÁLCULOS
+    // ══════════════════════════════════════════════════════
+    function calcular(inv) {
+        const linhas = dadosInv[inv.aba] || [];
+        const nrps = new Set(linhas.map(r => normalizeNRP(r[0])));
+
+        const salas = new Map();
+        let encontrados = 0;
+        base3.forEach(row => {
+            const sala = (row[2] || '').toString().trim() || '(sem sala)';
+            if (!salas.has(sala)) salas.set(sala, { sala, total: 0, encontrados: 0, faltantes: [] });
+            const s = salas.get(sala);
+            s.total++;
+            if (nrps.has(normalizeNRP(row[0]))) { s.encontrados++; encontrados++; }
+            else s.faltantes.push(row);
+        });
+        const listaSalas = [...salas.values()].map(s => ({ ...s, pct: s.total ? Math.floor(s.encontrados / s.total * 100) : 0 }));
+
+        const total = base3.length;
+        const pct = total ? Math.floor(encontrados / total * 100) : 0;
+
+        const situacoes = { encontrado: 0, transferido: 0, cadastrado: 0, importado: 0 };
+        const operadores = new Map();
+        const dias = new Map();
+        let ultimo = '';
+        linhas.forEach(r => {
+            const sit = norm(r[4]);
+            if (sit.startsWith('ENCONTRADO')) situacoes.encontrado++;
+            else if (sit.startsWith('TRANSFERIDO')) situacoes.transferido++;
+            else if (sit.startsWith('CADASTRADO')) situacoes.cadastrado++;
+            else if (sit.startsWith('IMPORTADO')) situacoes.importado++;
+            const op = (r[7] || '—').toString().trim() || '—';
+            operadores.set(op, (operadores.get(op) || 0) + 1);
+            const dia = (r[6] || '').toString().split(' ')[0];
+            if (dia) dias.set(dia, (dias.get(dia) || 0) + 1);
+            if (r[6]) ultimo = r[6];
+        });
+
+        return {
+            total, encontrados, faltam: total - encontrados, pct,
+            completo: total > 0 && encontrados === total,
+            salas: listaSalas,
+            salasCompletas: listaSalas.filter(s => s.encontrados === s.total).length,
+            bips: linhas.length, situacoes, operadores, dias, ultimo
+        };
+    }
+
+    // Grava "Concluído em" na primeira vez que o inventário chega a 100%
+    async function verificarConclusoes() {
+        for (const inv of inventarios) {
+            if (inv.concluidoEm) continue;
+            const c = calcular(inv);
+            if (c.completo) {
+                try {
+                    inv.concluidoEm = await marcarInventarioConcluido(accessToken, FILE_ID, inv, c.ultimo || '');
+                } catch (e) { console.warn('Não foi possível gravar a conclusão:', e); }
+            }
+        }
+    }
+
+    function badgeStatus(inv) {
+        return inv.concluidoEm
+            ? `<span class="badge-status concluido">✅ Concluído</span>`
+            : `<span class="badge-status andamento">⏳ Em andamento</span>`;
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  VISÃO 1 — LISTA
+    // ══════════════════════════════════════════════════════
+    function renderizarLista() {
+        const grid = document.getElementById('gridInv');
+        if (!inventarios.length) {
+            grid.innerHTML = `<div class="vazio">Nenhum inventário criado ainda. Crie um no
+                <a href="index-escanear.html" style="color:var(--verde)">Escaneamento</a> com o botão ➕ Novo inventário.</div>`;
+            return;
+        }
+        grid.innerHTML = inventarios.slice().reverse().map(inv => {
+            const c = calcular(inv);
+            return `
+                <button type="button" class="card-inv" data-aba="${esc(inv.aba)}">
+                    <div class="topo"><span class="nome">${esc(inv.nome)}</span>${badgeStatus(inv)}</div>
+                    <div class="pct">${c.pct}%</div>
+                    ${barra(c.pct)}
+                    <div class="sub">
+                        <strong>${c.encontrados}</strong> de ${c.total} itens dos 3 responsáveis ·
+                        ${c.salasCompletas} de ${c.salas.length} salas completas<br>
+                        ${inv.criadoEm ? `Criado em ${esc(inv.criadoEm)}${inv.criadoPor ? ' por ' + esc(inv.criadoPor) : ''}<br>` : ''}
+                        ${inv.concluidoEm ? `Concluído em ${esc(inv.concluidoEm)}<br>` : ''}
+                        ${c.ultimo ? `Último bip: ${esc(c.ultimo)}` : 'Nenhum bip ainda'}
+                    </div>
+                </button>`;
+        }).join('');
+        grid.querySelectorAll('.card-inv').forEach(b =>
+            b.addEventListener('click', () => { location.hash = encodeURIComponent(b.dataset.aba); }));
+    }
+
+    function aplicarHash() {
+        const aba = decodeURIComponent((location.hash || '').slice(1));
+        if (aba && inventarios.some(i => i.aba === aba)) abrirDetalhe(aba);
+        else voltarLista(true);
+    }
+
+    function voltarLista(semHash) {
+        invAberto = null;
+        document.getElementById('visaoDetalhe').style.display = 'none';
+        document.getElementById('visaoLista').style.display = 'block';
+        document.getElementById('topbarSub').textContent = 'Andamento dos inventários dos 3 responsáveis';
+        if (!semHash && location.hash) history.pushState('', document.title, location.pathname);
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  VISÃO 2 — DETALHE
+    // ══════════════════════════════════════════════════════
+    function abrirDetalhe(aba) {
+        invAberto = aba;
+        document.getElementById('visaoLista').style.display = 'none';
+        document.getElementById('visaoDetalhe').style.display = 'block';
+        renderizarDetalhe();
+        window.scrollTo(0, 0);
+    }
+
+    let calcAtual = null;
+
+    function renderizarDetalhe() {
+        const inv = inventarios.find(i => i.aba === invAberto);
+        if (!inv) { voltarLista(); return; }
+        const c = calcular(inv);
+        calcAtual = c;
+
+        document.getElementById('detNome').textContent = inv.nome;
+        document.getElementById('detStatus').innerHTML = badgeStatus(inv);
+        document.getElementById('topbarSub').textContent = `Inventário ${inv.nome} (aba ${inv.aba})`;
+
+        document.getElementById('detConcluido').innerHTML = inv.concluidoEm
+            ? `<div class="aviso-concluido">🎉 Inventário concluído em ${esc(inv.concluidoEm)}: todos os itens dos 3 responsáveis foram encontrados.` +
+              (c.completo ? '' : ` <span style="color:#fbbf24;font-weight:600">(Hoje: ${c.faltam} item(ns) novo(s) na SIGMAS ainda não bipado(s).)</span>`) + `</div>`
+            : '';
+
+        const s = c.situacoes;
+        document.getElementById('detKpis').innerHTML = `
+            <div class="kpi">
+                <div class="kpi-icon">📦</div>
+                <div class="kpi-info">
+                    <div class="kpi-label">Itens dos 3 responsáveis</div>
+                    <div class="kpi-value">${c.total}</div>
+                    <div class="kpi-sub">Alberto, Paulo e José Henrique</div>
+                </div>
+            </div>
+            <div class="kpi">
+                <div class="kpi-icon">✅</div>
+                <div class="kpi-info">
+                    <div class="kpi-label">Encontrados</div>
+                    <div class="kpi-value">${c.encontrados} <span style="font-size:14px">(${c.pct}%)</span></div>
+                    <div class="kpi-sub">${barra(c.pct)}</div>
+                </div>
+            </div>
+            <div class="kpi ${c.faltam ? 'kpi-warn' : ''}">
+                <div class="kpi-icon">🔎</div>
+                <div class="kpi-info">
+                    <div class="kpi-label">Faltam</div>
+                    <div class="kpi-value">${c.faltam}</div>
+                    <div class="kpi-sub">${c.faltam ? 'Ainda não bipados' : 'Nada pendente'}</div>
+                </div>
+            </div>
+            <div class="kpi kpi-blue">
+                <div class="kpi-icon">🏢</div>
+                <div class="kpi-info">
+                    <div class="kpi-label">Salas completas</div>
+                    <div class="kpi-value">${c.salasCompletas} / ${c.salas.length}</div>
+                    <div class="kpi-sub">${c.salas.length - c.salasCompletas} com itens faltando</div>
+                </div>
+            </div>
+            <div class="kpi">
+                <div class="kpi-icon">📷</div>
+                <div class="kpi-info">
+                    <div class="kpi-label">Bips registrados</div>
+                    <div class="kpi-value">${c.bips}</div>
+                    <div class="kpi-sub">${s.encontrado} encontrados · ${s.transferido} transferidos · ${s.cadastrado} cadastrados${s.importado ? ' · ' + s.importado + ' importados' : ''}</div>
+                </div>
+            </div>`;
+
+        renderizarSalas();
+
+        // Por operador
+        const ops = [...c.operadores.entries()].sort((a, b) => b[1] - a[1]);
+        const maxOp = ops.length ? ops[0][1] : 1;
+        document.getElementById('porOperador').innerHTML = ops.length
+            ? ops.map(([nome, q]) => `
+                <div class="linha-op">
+                    <span class="n" title="${esc(nome)}">${esc(nome)}</span>
+                    <span class="barra"><span style="width:${Math.round(q / maxOp * 100)}%"></span></span>
+                    <strong>${q}</strong>
+                </div>`).join('')
+            : '<div class="vazio">Nenhum bip ainda.</div>';
+
+        // Por dia (ordem cronológica, últimos 20 dias com bips)
+        const paraData = d => { const [dd, mm, aa] = d.split('/').map(Number); return new Date(aa, mm - 1, dd).getTime(); };
+        const dias = [...c.dias.entries()].sort((a, b) => paraData(a[0]) - paraData(b[0])).slice(-20);
+        const maxDia = dias.reduce((m, x) => Math.max(m, x[1]), 1);
+        document.getElementById('porDia').innerHTML = dias.length
+            ? dias.map(([dia, q]) => `
+                <div class="col" title="${esc(dia)}: ${q} bips">
+                    <span class="v">${q}</span>
+                    <span class="b" style="height:${Math.max(2, Math.round(q / maxDia * 100))}%"></span>
+                    <span class="d">${esc(dia.slice(0, 5))}</span>
+                </div>`).join('')
+            : '<div class="vazio">Nenhum bip ainda.</div>';
+    }
+
+    function renderizarSalas() {
+        if (!calcAtual) return;
+        const busca = norm(document.getElementById('filtroSala').value);
+        const ordem = document.getElementById('ordemSala').value;
+        const soInc = document.getElementById('soIncompletas').checked;
+
+        let salas = calcAtual.salas.filter(s =>
+            (!busca || norm(s.sala).includes(busca)) && (!soInc || s.encontrados < s.total));
+        if (ordem === 'nome') salas.sort((a, b) => a.sala.localeCompare(b.sala, 'pt-BR'));
+        else if (ordem === 'faltam') salas.sort((a, b) => (b.total - b.encontrados) - (a.total - a.encontrados));
+        else salas.sort((a, b) => a.pct - b.pct || a.sala.localeCompare(b.sala, 'pt-BR'));
+
+        const grid = document.getElementById('gridSalas');
+        grid.innerHTML = salas.length
+            ? salas.map(s => `
+                <button type="button" class="card-sala ${s.encontrados === s.total ? 'completa' : ''}" data-sala="${esc(s.sala)}">
+                    <span class="nome" title="${esc(s.sala)}">${s.encontrados === s.total ? '✅ ' : ''}${esc(s.sala)}</span>
+                    ${barra(s.pct)}
+                    <span class="nums"><span><strong>${s.encontrados}</strong> de ${s.total}</span><span>${s.pct}%</span></span>
+                    <span class="nums"><span>${s.total - s.encontrados ? 'Faltam ' + (s.total - s.encontrados) : 'Completa'}</span></span>
+                </button>`).join('')
+            : '<div class="vazio">Nenhuma sala com esse filtro.</div>';
+
+        grid.querySelectorAll('.card-sala').forEach(b =>
+            b.addEventListener('click', () => abrirFalt(b.dataset.sala)));
+    }
+
+    function abrirFalt(sala) {
+        const s = calcAtual && calcAtual.salas.find(x => x.sala === sala);
+        if (!s) return;
+        document.getElementById('faltTitulo').textContent =
+            s.faltantes.length ? `Faltam ${s.faltantes.length} item(ns) — ${sala}` : `${sala} — completa ✅`;
+        document.getElementById('faltLista').innerHTML = s.faltantes.length
+            ? s.faltantes.map(r => `<tr><td>${esc(r[0])}</td><td>${esc(r[1])}</td><td>${esc(r[3])}</td></tr>`).join('')
+            : '<tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:18px">Todos os itens desta sala foram encontrados.</td></tr>';
+        document.getElementById('modalFalt').classList.add('aberto');
+    }
+    function fecharFalt() { document.getElementById('modalFalt').classList.remove('aberto'); }
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') fecharFalt(); });
+    </script>
+</body>
+</html>
