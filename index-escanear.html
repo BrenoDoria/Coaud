@@ -10,6 +10,7 @@
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
     <script src="sidebar-init.js" defer></script>
     <script src="coaud-regras.js"></script>
+    <script src="coaud-inventario.js"></script>
     <style>
         .inventario-header {
             background: rgba(0,176,79,0.08);
@@ -82,6 +83,21 @@
             margin: 0; padding: 3px 10px; font-size: 11px;
         }
 
+        /* ── Coluna do ✕ (desconsiderar) ── */
+        #patrimonioTable td.acao, #patrimonioTable th.acao { width: 34px; text-align: center; padding-left: 4px; padding-right: 4px; }
+        .btn-x {
+            margin: 0; padding: 0 6px; min-width: 0; height: 22px;
+            font-size: 11px; line-height: 22px;
+            background: transparent; color: var(--text-muted);
+            border: 1px solid transparent; border-radius: 4px;
+            opacity: .45; cursor: pointer;
+        }
+        tr:hover .btn-x { opacity: 1; border-color: rgba(231,76,60,.35); color: #f87171; }
+        .btn-x:focus-visible { opacity: 1; outline: 2px solid #f87171; }
+        .linha-inv { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+        .linha-inv .field-block { flex: 1; min-width: 200px; margin: 0; }
+        .linha-inv button { margin: 0; }
+        .mostrar-reg { font-size: 11px; color: var(--text-muted); display: flex; gap: 6px; align-items: center; cursor: pointer; margin-bottom: 4px; }
         .nrp-row {
             display: flex; gap: 8px; align-items: flex-end;
         }
@@ -250,9 +266,17 @@
 
             <nav class="sidebar-nav">
                 <div class="nav-section-title">Sistemas</div>
-                <a class="nav-item active" id="nav-escanear" href="index-escanear.html">
+                <a class="nav-item nav-parent active" id="nav-escanear" href="index-escanear.html">
                     <span class="nav-icon">📷</span> Sistema de Escaneamento
                 </a>
+                <div class="nav-subgroup">
+                    <a class="nav-subitem active" href="index-escanear.html">
+                        <span class="nav-sub-icon">↳</span> Escanear
+                    </a>
+                    <a class="nav-subitem" href="dashboard-inventario.html">
+                        <span class="nav-sub-icon">↳</span> Dashboard
+                    </a>
+                </div>
                 <a class="nav-item" id="nav-comparador" href="index-comparador.html">
                     <span class="nav-icon">🔍</span> Comparador de Patrimônios
                 </a>
@@ -303,11 +327,14 @@
                 <div class="card">
                     <div class="card-title">Seleção de Sala</div>
 
-                    <div class="field-block" style="margin-bottom:14px">
-                        <label for="inventarioNome">Inventário</label>
-                        <input type="text" id="inventarioNome" list="lista-inventarios"
-                            autocomplete="off" placeholder="Ex.: Inventário 2026">
-                        <datalist id="lista-inventarios"></datalist>
+                    <div class="linha-inv" style="margin-bottom:14px">
+                        <div class="field-block">
+                            <label for="inventarioSelect">Inventário</label>
+                            <select id="inventarioSelect">
+                                <option value="">Carregando...</option>
+                            </select>
+                        </div>
+                        <button type="button" id="btnNovoInv" onclick="abrirModalNovoInv()">➕ Novo inventário</button>
                     </div>
 
                     <div class="modo-coleta" id="modoColeta">
@@ -343,7 +370,7 @@
                         </div>
                         <p class="ajuda">
                             Use para trazer uma planilha exportada antes (Excel). A sala é identificada pela coluna C (Localização)
-                            e os itens da planilha são gravados na aba INVENTARIO. Depois disso, a sala continua de onde parou.
+                            e os itens da planilha são gravados na aba do inventário escolhido. Depois disso, a sala continua de onde parou.
                         </p>
                     </div>
 
@@ -375,6 +402,8 @@
                     <h3>📦 Inventário da Sala: <span id="salaTitle"></span></h3>
                     <div id="salaInfoExtra"></div>
                     <div id="statusSalvamento"></div>
+                    <label class="mostrar-reg"><input type="checkbox" id="mostrarRegistrados" onchange="updateInventarioTable()">
+                        <span id="mostrarRegistradosTxt">Mostrar também os já registrados</span></label>
                     <div class="sync-linha">
                         <span id="statusSync">🔄 A tela se atualiza sozinha a cada 20 segundos.</span>
                         <button type="button" class="backButton" onclick="sincronizar(true)">🔄 Atualizar agora</button>
@@ -397,6 +426,7 @@
                                     <th>Material</th>
                                     <th>Localização</th>
                                     <th>Responsável</th>
+                                    <th class="acao" title="Desconsiderar item bipado"></th>
                                 </tr>
                             </thead>
                             <tbody id="patrimonioList"></tbody>
@@ -413,6 +443,37 @@
             <footer class="site-footer">
                 © 2025 BrenoDoria — Câmara dos Deputados / COAUD
             </footer>
+        </div>
+    </div>
+
+    <!-- ══ MODAL NOVO INVENTÁRIO ══ -->
+    <div id="modalNovoInv" class="modal-transf">
+        <div class="modal-transf-content">
+            <h2>➕ Novo Inventário</h2>
+            <div class="modal-transf-info">
+                Será criada na planilha uma aba nova <strong id="novoInvPreview">INV ...</strong>
+                com as colunas do inventário. Todos os operadores passam a ver este inventário na lista.
+            </div>
+            <div class="field-block" style="margin-bottom:10px">
+                <label for="novoInvNome">Nome do inventário</label>
+                <input type="text" id="novoInvNome" placeholder="Ex.: 2026" autocomplete="off">
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;padding-top:12px;border-top:1px solid rgba(0,176,79,0.15)">
+                <button class="cancelButton" onclick="fecharModalNovoInv()">Cancelar</button>
+                <button id="btnCriarInv" onclick="confirmarNovoInv()">✔ Criar inventário</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ MODAL DESCONSIDERAR ══ -->
+    <div id="modalDescons" class="modal-transf">
+        <div class="modal-transf-content">
+            <h2>✕ Desconsiderar item</h2>
+            <div class="modal-transf-info" id="modalDesconsInfo"></div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;padding-top:12px;border-top:1px solid rgba(0,176,79,0.15)">
+                <button class="cancelButton" onclick="fecharModalDescons()">Cancelar</button>
+                <button id="btnConfirmaDescons" onclick="confirmarDescons()" style="background:#b42318">✕ Desconsiderar</button>
+            </div>
         </div>
     </div>
 
@@ -591,10 +652,12 @@
         "JOSE HENRIQUE FERREIRA DA SILVA (7913)"
     ];
 
-    const ABA_INV = 'INVENTARIO';
+    let inventarios = [];     // [{aba, nome, sheetId, ...}] vindos das abas "INV ..."
+    let invAtual    = null;   // inventário escolhido
+    let desconsPendente = null;
 
     let salaSelecionada       = "";
-    let registrosInv          = [];   // linhas da aba INVENTARIO (memória)
+    let registrosInv          = [];   // linhas da aba do inventário atual (memória)
     let filaEnvio             = [];   // bips ainda não gravados na planilha
     let enviando              = false;
     let contadorEnvios        = 0;       // muda a cada lote gravado
@@ -655,8 +718,12 @@
     }
 
     function nomeInventario() {
-        const v = document.getElementById('inventarioNome').value.trim();
-        return v || `Inventário ${new Date().getFullYear()}`;
+        return invAtual ? invAtual.nome : '';
+    }
+
+    function escHTML(t) {
+        return (t === undefined || t === null ? '' : t.toString())
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
     function operadorAtual() {
@@ -675,39 +742,71 @@
             Localização: (row[2] || '').toString(), Responsável: (row[3] || '').toString(),
             situacao: (row[4] || '').toString(), salaAnterior: (row[5] || '').toString(),
             dataHora: (row[6] || '').toString(), operador: (row[7] || '').toString(),
-            inventario: (row[8] || '').toString()
+            inventario: (row[8] || '').toString(),
+            respAnterior: (row[9] || '').toString()
         };
     }
 
     // Registros do inventário atual (opcionalmente só de uma sala)
     function registrosDoInventario(sala) {
-        const inv = normInv(nomeInventario());
-        return registrosInv.filter(r =>
-            normInv(r.inventario) === inv &&
-            (!sala || normInv(r.Localização) === normInv(sala)));
+        return registrosInv.filter(r => !sala || normInv(r.Localização) === normInv(sala));
     }
 
-    function preencherListaInventarios() {
-        const nomes = [...new Set(registrosInv.map(r => r.inventario.trim()).filter(Boolean))];
-        document.getElementById('lista-inventarios').innerHTML =
-            nomes.map(n => `<option value="${n.replace(/"/g, '&quot;')}"></option>`).join('');
-        const campo = document.getElementById('inventarioNome');
-        if (!campo.value.trim()) {
-            campo.value = registrosInv.length
-                ? registrosInv[registrosInv.length - 1].inventario || `Inventário ${new Date().getFullYear()}`
-                : `Inventário ${new Date().getFullYear()}`;
+    function popularSelectInventarios(abaPreferida) {
+        const sel = document.getElementById('inventarioSelect');
+        if (!inventarios.length) {
+            sel.innerHTML = '<option value="">Nenhum inventário — clique em ➕ Novo inventário</option>';
+            invAtual = null;
+            return;
         }
+        const ordem = inventarios.slice().reverse();   // mais recente primeiro
+        sel.innerHTML = ordem.map(i =>
+            `<option value="${escHTML(i.aba)}">${escHTML(i.nome)}${i.concluidoEm ? ' (concluído)' : ''}</option>`).join('');
+        const alvo = abaPreferida || (invAtual && invAtual.aba) || ordem[0].aba;
+        sel.value = inventarios.some(i => i.aba === alvo) ? alvo : ordem[0].aba;
+        invAtual = inventarios.find(i => i.aba === sel.value) || null;
     }
+
+    async function carregarRegistrosInv() {
+        if (!invAtual) { registrosInv = []; return; }
+        const rows = await lerRegistrosInventario(accessToken, FILE_ID, invAtual.aba);
+        registrosInv = rows.filter(row => normalizeNRP(row[0])).map(linhaParaRegistro)
+            .concat(filaEnvio.filter(f => f.aba === invAtual.aba).map(f => f.reg));
+    }
+
+    document.getElementById('inventarioSelect').addEventListener('change', async function() {
+        if (salaSelecionada || filaEnvio.length) {
+            this.value = invAtual ? invAtual.aba : '';
+            toast(salaSelecionada
+                ? 'Clique em "Nova Sala" antes de trocar de inventário.'
+                : 'Aguarde os bips pendentes serem salvos antes de trocar de inventário.', 'aviso');
+            return;
+        }
+        invAtual = inventarios.find(i => i.aba === this.value) || null;
+        document.getElementById("spinner").style.display = "inline-block";
+        try {
+            await carregarRegistrosInv();
+            setProgress(`📂 Inventário "${nomeInventario()}": ${registrosInv.length} registros.`);
+        } catch (e) {
+            if (e.message === 'SESSAO_EXPIRADA') sessaoExpirou('Sessão expirada. Reconecte para continuar.');
+            else toast('Erro ao ler o inventário: ' + e.message, 'erro');
+        } finally {
+            document.getElementById("spinner").style.display = "none";
+        }
+    });
 
     // Registra um bip: entra na memória na hora e vai para a fila de envio
-    function registrarNoInventario(item, situacao, salaAnterior) {
+    function registrarNoInventario(item, situacao, salaAnterior, respAnterior) {
+        if (!invAtual) { toast('Escolha ou crie um inventário antes de bipar.', 'erro'); return; }
         const linha = [
             (item.NRP || '').toString(), (item.Material || '').toString(),
             (item.Localização || salaSelecionada || '').toString(), (item.Responsável || '').toString(),
-            situacao, salaAnterior || '', dataHoraAgora(), operadorAtual(), nomeInventario()
+            situacao, salaAnterior || '', dataHoraAgora(), operadorAtual(), nomeInventario(),
+            respAnterior || ''
         ];
-        registrosInv.push(linhaParaRegistro(linha));
-        filaEnvio.push(linha);
+        const reg = linhaParaRegistro(linha);
+        registrosInv.push(reg);
+        filaEnvio.push({ aba: invAtual.aba, linha, reg });
         atualizarStatusSalvamento();
     }
 
@@ -719,13 +818,15 @@
             return;
         }
         enviando = true;
-        const lote = filaEnvio.slice(0, 50);
+        const abaLote = filaEnvio[0].aba;
+        const lote = [];
+        for (const f of filaEnvio) { if (f.aba !== abaLote || lote.length >= 50) break; lote.push(f); }
         try {
             const r = await fetch(
-                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/${ABA_INV}!A:I:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/${urlRange(abaLote, 'A:J')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
                 { method: 'POST',
                   headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ values: lote }) }
+                  body: JSON.stringify({ values: lote.map(f => f.linha) }) }
             );
             if (r.status === 401) throw new Error('SESSAO_EXPIRADA');
             if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error?.message || r.status); }
@@ -763,7 +864,7 @@
             el.textContent = `⏳ ${filaEnvio.length} bip(s) aguardando envio...`;
             el.classList.add('pendente');
         } else {
-            el.textContent = '☁ Tudo salvo na aba INVENTARIO.';
+            el.textContent = `☁ Tudo salvo na aba ${invAtual ? invAtual.aba : 'do inventário'}.`;
             el.classList.add('ok');
         }
     }
@@ -784,14 +885,14 @@
     //   • item azul que voltou para esta sala    → vermelho de novo
     // ══════════════════════════════════════════════════════
     async function sincronizar(manual) {
-        if (!salaSelecionada || sincronizando) return;
+        if (!salaSelecionada || sincronizando || !invAtual) return;
         if (!manual && document.visibilityState !== 'visible') return;
         if (!accessToken || tokenExpirado()) return;
 
         sincronizando = true;
         const enviosAntes = contadorEnvios;
         try {
-            const ranges = ['COAUD!A:D', `${ABA_INV}!A:I`]
+            const ranges = ['COAUD!A:D', rangeAba(invAtual.aba, 'A:J')]
                 .map(r => 'ranges=' + encodeURIComponent(r)).join('&');
             const r = await fetch(
                 `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values:batchGet?${ranges}`,
@@ -810,7 +911,7 @@
                 .filter(row => normalizeNRP(row[0]))
                 .map(linhaParaRegistro);
             // Mantém na memória os bips que ainda estão na fila de envio
-            registrosInv = daPlanilha.concat(filaEnvio.map(linhaParaRegistro));
+            registrosInv = daPlanilha.concat(filaEnvio.filter(f => f.aba === invAtual.aba).map(f => f.reg));
 
             aplicarSincronizacao(manual);
             const d = new Date(), p = n => String(n).padStart(2, '0');
@@ -828,16 +929,32 @@
         }
     }
 
+    function salaDaCoaud(n) {
+        const row = coaudData.find((r, i) => i > 0 && normalizeNRP(r[0]) === n);
+        return row ? (row[2] || '').toString().trim() : null;
+    }
+
     function aplicarSincronizacao(manual) {
         const regsSala = registrosDoInventario(salaSelecionada);
         const nrpsReg  = new Set(regsSala.map(r => normalizeNRP(r.NRP)));
         const todosInv = registrosDoInventario('');
         let porOutros = 0, sairam = 0, voltaram = 0;
 
-        const salaDaCoaud = n => {
-            const row = coaudData.find((r, i) => i > 0 && normalizeNRP(r[0]) === n);
-            return row ? (row[2] || '').toString().trim() : null;
-        };
+        // Itens bipados que foram desconsiderados por outra pessoa
+        let desconsiderados = 0;
+        currentSalaInventario = currentSalaInventario.filter(item => {
+            if (item.status !== 'green' && item.status !== 'yellow') return true;
+            const n = normalizeNRP(item.NRP);
+            if (nrpsReg.has(n)) return true;
+            desconsiderados++;
+            nrpsCarregados.delete(n);
+            const salaAgora = salaDaCoaud(n);
+            if (salaAgora !== null && normInv(salaAgora) === normInv(salaSelecionada)) {
+                item.status = 'red'; item.obs = ''; item.jaRegistrado = false;
+                return true;
+            }
+            return false;
+        });
 
         currentSalaInventario.forEach(item => {
             if (item.status !== 'red' && item.status !== 'blue') return;
@@ -875,8 +992,9 @@
 
         updateInventarioTable();
 
-        if (porOutros || sairam || voltaram) {
+        if (porOutros || sairam || voltaram || desconsiderados) {
             const partes = [];
+            if (desconsiderados) partes.push(`${desconsiderados} desconsiderado(s) por outra pessoa`);
             if (porOutros) partes.push(`${porOutros} registrado(s) por outra pessoa`);
             if (sairam)    partes.push(`${sairam} transferido(s) para outra sala`);
             if (voltaram)  partes.push(`${voltaram} voltou(aram) para esta sala`);
@@ -997,19 +1115,12 @@
             if (!r2.ok) { const e = await r2.json(); throw new Error(e.error?.message); }
             coaudData = (await r2.json()).values || [];
 
-            // INVENTARIO
-            const r3 = await fetch(
-                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/${ABA_INV}!A:I`,
-                { headers: { 'Authorization': `Bearer ${accessToken}` } }
-            );
-            if (r3.status === 401) throw new Error('SESSAO_EXPIRADA');
-            if (!r3.ok) {
-                throw new Error('Não foi possível ler a aba INVENTARIO. Confira se ela existe na planilha com esse nome exato.');
-            }
-            registrosInv = ((await r3.json()).values || []).slice(1)
-                .filter(row => normalizeNRP(row[0]))
-                .map(linhaParaRegistro);
-            preencherListaInventarios();
+            // INVENTÁRIOS (abas "INV ...")
+            const inv = await listarInventarios(accessToken, FILE_ID);
+            Object.assign(sheetIds, inv.sheetIds);
+            inventarios = inv.lista;
+            popularSelectInventarios();
+            await carregarRegistrosInv();
 
             // Popula salas (apenas da aba COAUD)
             if (coaudData.length > 1) {
@@ -1026,7 +1137,9 @@
                     sel.appendChild(opt);
                 });
             }
-            setProgress(`✅ SIGMAS: ${sigmasData.length-1} | COAUD: ${coaudData.length-1} | INVENTARIO: ${registrosInv.length}`);
+            setProgress(invAtual
+                ? `✅ SIGMAS: ${sigmasData.length-1} | COAUD: ${coaudData.length-1} | ${invAtual.aba}: ${registrosInv.length}`
+                : `✅ SIGMAS: ${sigmasData.length-1} | COAUD: ${coaudData.length-1} | Nenhum inventário criado ainda.`);
             document.getElementById("spinner").style.display = "none";
             document.getElementById("salaSelect").focus();
         } catch (error) {
@@ -1080,7 +1193,8 @@
         sel.value = sala;
         sel.disabled = true;
         document.getElementById("confirmarSala").disabled = true;
-        document.getElementById("inventarioNome").disabled = true;
+        document.getElementById("inventarioSelect").disabled = true;
+        document.getElementById("btnNovoInv").disabled = true;
         travarModo(true);
 
         // Itens desta sala já registrados neste inventário (por qualquer pessoa)
@@ -1100,6 +1214,18 @@
                 status: 'red'
             }));
 
+        // Já registrados (ficam ocultos; aparecem com "Mostrar também os já registrados")
+        const ultimosPorNrp = new Map();
+        registrosDoInventario(sala).forEach(r => ultimosPorNrp.set(normalizeNRP(r.NRP), r));
+        ultimosPorNrp.forEach(r => {
+            currentSalaInventario.push({
+                NRP: r.NRP, Material: r.Material, Localização: sala, Responsável: r.Responsável,
+                status: (r.situacao || '').toUpperCase().startsWith('ENCONTRADO') ? 'green' : 'yellow',
+                obs: ` ✓ ${r.operador} ${r.dataHora}`,
+                jaRegistrado: true
+            });
+        });
+
         document.getElementById("inventarioHeader").style.display = "block";
         document.getElementById("salaTitle").textContent = sala;
 
@@ -1107,12 +1233,13 @@
         document.getElementById("patrimonioInput").focus();
         atualizarStatusSalvamento();
         setTimeout(() => sincronizar(true), 500);
-        setProgress(`✅ Sala "${sala}" pronta (${nomeInventario()}). ${currentSalaInventario.length} itens aguardando bipagem.`);
+        setProgress(`✅ Sala "${sala}" pronta (${nomeInventario()}). ${currentSalaInventario.filter(i => i.status === 'red').length} itens aguardando bipagem.`);
     }
 
     document.getElementById("confirmarSala").addEventListener("click", function() {
         const sala = document.getElementById("salaSelect").value.trim();
         if (!sala) { toast("Selecione uma sala.", 'aviso'); return; }
+        if (!invAtual) { toast("Escolha ou crie um inventário antes de começar.", 'aviso'); return; }
         iniciarSala(sala);
     });
 
@@ -1130,6 +1257,10 @@
         }
         if (coaudData.length <= 1) {
             toast('Aguarde as salas carregarem antes de escolher a planilha.', 'aviso');
+            return;
+        }
+        if (!invAtual) {
+            toast('Escolha ou crie um inventário antes de importar a planilha.', 'aviso');
             return;
         }
 
@@ -1183,7 +1314,7 @@
                            `(${salas.slice(1).map(s => s[0]).join(', ')}). ` +
                            `Eles também serão gravados no inventário.`;
                 }
-                msg += `\n\nOs itens serão gravados na aba INVENTARIO (${nomeInventario()}) e a coleta desta sala continua de onde parou. Confirmar?`;
+                msg += `\n\nOs itens serão gravados na aba ${invAtual.aba} e a coleta desta sala continua de onde parou. Confirmar?`;
                 if (!confirm(msg)) {
                     setProgress('Continuação cancelada.');
                     nomeEl.textContent = 'Nenhum arquivo escolhido';
@@ -1203,7 +1334,7 @@
                     }
                 });
 
-                setProgress(`Gravando ${novos} itens importados na aba INVENTARIO...`);
+                setProgress(`Gravando ${novos} itens importados na aba ${invAtual.aba}...`);
                 esvaziarFila().then(() => {
                     iniciarSala(sala);
                     if (novos < itens.length) {
@@ -1237,7 +1368,10 @@
         setTimeout(() => {
             const modalTransfAberto = document.getElementById("modalTransf").classList.contains("aberto");
             const modalNovoAberto   = document.getElementById("modalNovo").classList.contains("aberto");
-            if (salaSelecionada && !modalTransfAberto && !modalNovoAberto) {
+            const outrosModais = document.getElementById("modalDescons").classList.contains("aberto") ||
+                                 document.getElementById("modalNovoInv").classList.contains("aberto");
+            const emCheckbox = document.activeElement && document.activeElement.id === 'mostrarRegistrados';
+            if (salaSelecionada && !modalTransfAberto && !modalNovoAberto && !outrosModais && !emCheckbox) {
                 document.getElementById("patrimonioInput").focus();
             }
         }, 120);
@@ -1337,12 +1471,13 @@
         });
     }
 
-    function marcarComoColetado(rowRef, status, situacao, salaAnterior) {
+    function marcarComoColetado(rowRef, status, situacao, salaAnterior, respAnterior) {
         const n = normalizeNRP(rowRef[0]);
         const idx = currentSalaInventario.findIndex(item => normalizeNRP(item.NRP) === n);
         if (idx !== -1) {
             currentSalaInventario[idx].status      = status;
             currentSalaInventario[idx].obs         = '';
+            currentSalaInventario[idx].jaRegistrado = false;
             currentSalaInventario[idx].Responsável = rowRef[3] || '';
             currentSalaInventario[idx].Material    = rowRef[1] || '';
             const [movido] = currentSalaInventario.splice(idx, 1);
@@ -1361,14 +1496,19 @@
             Material: rowRef[1]?.toString() || 'N/A',
             Localização: salaSelecionada,
             Responsável: rowRef[3]?.toString() || ''
-        }, situacao, salaAnterior);
+        }, situacao, salaAnterior, respAnterior);
         updateInventarioTable();
     }
 
     function updateInventarioTable() {
         const list = document.getElementById("patrimonioList");
         list.innerHTML = "";
+        const mostrarReg = document.getElementById('mostrarRegistrados').checked;
+        const qtdOcultos = currentSalaInventario.filter(i => i.jaRegistrado).length;
+        document.getElementById('mostrarRegistradosTxt').textContent =
+            `Mostrar também os já registrados (${qtdOcultos})`;
         currentSalaInventario.forEach(item => {
+            if (item.jaRegistrado && !mostrarReg) return;
             const tr = document.createElement("tr");
             tr.className = item.status;
             ['NRP','Material','Localização','Responsável'].forEach(key => {
@@ -1376,6 +1516,18 @@
                 td.textContent = (item[key] || '') + (key === 'Localização' && item.obs ? item.obs : '');
                 tr.appendChild(td);
             });
+            const tdX = document.createElement("td");
+            tdX.className = 'acao';
+            if (item.status === 'green' || item.status === 'yellow') {
+                const b = document.createElement("button");
+                b.type = 'button';
+                b.className = 'btn-x';
+                b.textContent = '✕';
+                b.title = 'Desconsiderar este item';
+                b.onclick = () => abrirModalDescons(item.NRP);
+                tdX.appendChild(b);
+            }
+            tr.appendChild(tdX);
             list.appendChild(tr);
         });
         atualizarInfoContinuacao();
@@ -1510,7 +1662,7 @@
                 atualizarMemoria(coaudData, nrp, null);
             }
 
-            marcarComoColetado(linha, 'yellow', 'Transferido', transfPendente.salaOriginal);
+            marcarComoColetado(linha, 'yellow', 'Transferido', transfPendente.salaOriginal, transfPendente.responsavelAtual);
             setProgress(`✅ Transferido de ${transfPendente.salaOriginal} → ${salaSelecionada}.`);
             toast(`${transfPendente.nrp} transferido de ${transfPendente.salaOriginal} para ${salaSelecionada}.`, 'sucesso');
             fecharModalTransf();
@@ -1671,6 +1823,206 @@
     }
 
     // ══════════════════════════════════════════════════════
+    //  NOVO INVENTÁRIO (cria a aba "INV <nome>" na planilha)
+    // ══════════════════════════════════════════════════════
+    function abrirModalNovoInv() {
+        if (salaSelecionada) { toast('Clique em "Nova Sala" antes de criar um inventário.', 'aviso'); return; }
+        if (!accessToken || tokenExpirado()) { mostrarReconectar('Reconecte para criar o inventário.'); return; }
+        const campo = document.getElementById('novoInvNome');
+        campo.value = String(new Date().getFullYear());
+        atualizarPreviewInv();
+        document.getElementById('modalNovoInv').classList.add('aberto');
+        setTimeout(() => { campo.focus(); campo.select(); }, 50);
+    }
+    function fecharModalNovoInv() {
+        document.getElementById('modalNovoInv').classList.remove('aberto');
+    }
+    function atualizarPreviewInv() {
+        const v = document.getElementById('novoInvNome').value.trim();
+        document.getElementById('novoInvPreview').textContent = INV_PREFIXO + (v || '...');
+    }
+    document.getElementById('novoInvNome').addEventListener('input', atualizarPreviewInv);
+    document.getElementById('novoInvNome').addEventListener('keydown', e => { if (e.key === 'Enter') confirmarNovoInv(); });
+
+    async function confirmarNovoInv() {
+        const nome = document.getElementById('novoInvNome').value.trim();
+        const btn = document.getElementById('btnCriarInv');
+        btn.disabled = true;
+        document.getElementById("spinner").style.display = "inline-block";
+        try {
+            const novo = await criarInventario(accessToken, FILE_ID, nome, operadorAtual());
+            const inv = await listarInventarios(accessToken, FILE_ID);
+            Object.assign(sheetIds, inv.sheetIds);
+            inventarios = inv.lista;
+            popularSelectInventarios(novo.aba);
+            await carregarRegistrosInv();
+            fecharModalNovoInv();
+            toast(`Inventário "${novo.nome}" criado (aba ${novo.aba}).`, 'sucesso');
+            setProgress(`✅ Inventário "${novo.nome}" pronto. Escolha a sala e confirme.`);
+        } catch (e) {
+            if (e.message === 'SESSAO_EXPIRADA') sessaoExpirou('Sessão expirada. Reconecte e crie o inventário de novo.');
+            else toast(e.message, 'erro');
+        } finally {
+            btn.disabled = false;
+            document.getElementById("spinner").style.display = "none";
+        }
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  DESCONSIDERAR ITEM BIPADO
+    //  • apaga o registro da aba do inventário
+    //  • transferência: SIGMAS/COAUD voltam à sala e ao
+    //    responsável de antes do bip
+    //  • cadastro: remove o cadastro da SIGMAS/COAUD
+    //  • só quem bipou ou um supervisor
+    // ══════════════════════════════════════════════════════
+    function registroAtualDoItem(nrp) {
+        const n = normalizeNRP(nrp);
+        return registrosDoInventario(salaSelecionada).filter(r => normalizeNRP(r.NRP) === n).pop() || null;
+    }
+
+    function podeDesconsiderar(reg) {
+        const u = JSON.parse(localStorage.getItem('usuarioLogado')) || {};
+        if ((u.permissao || '').toString().toLowerCase() === 'supervisor') return true;
+        return normInv(reg.operador) === normInv(operadorAtual());
+    }
+
+    function abrirModalDescons(nrp) {
+        const reg = registroAtualDoItem(nrp);
+        if (!reg) {
+            toast('Registro deste item não encontrado no inventário. Clique em "Atualizar agora" e tente de novo.', 'erro');
+            return;
+        }
+        if (!podeDesconsiderar(reg)) {
+            toast(`Só ${reg.operador} (quem bipou) ou um supervisor pode desconsiderar este item.`, 'aviso');
+            return;
+        }
+        desconsPendente = reg;
+        const sit = (reg.situacao || '').toUpperCase();
+        let efeito;
+        if (sit.startsWith('TRANSFERIDO')) {
+            efeito = reg.salaAnterior
+                ? `Na SIGMAS e na COAUD ele <strong>volta para a sala ${escHTML(reg.salaAnterior)}</strong>` +
+                  (reg.respAnterior
+                    ? `, com o responsável <strong>${escHTML(reg.respAnterior)}</strong>.`
+                    : `. O responsável anterior não foi registrado neste bip, então o responsável atual é mantido.`)
+                : 'A sala anterior não foi registrada: SIGMAS e COAUD não serão alteradas.';
+        } else if (sit.startsWith('CADASTRADO')) {
+            efeito = 'O cadastro feito neste bip será <strong>removido da SIGMAS e da COAUD</strong>.';
+        } else {
+            efeito = 'SIGMAS e COAUD não mudam (este bip não alterou o cadastro).';
+        }
+        document.getElementById('modalDesconsInfo').innerHTML = `
+            O patrimônio <strong>${escHTML(reg.NRP)}</strong> (${escHTML(reg.Material)}) foi registrado como
+            <strong>${escHTML(reg.situacao)}</strong> em ${escHTML(reg.dataHora)} por ${escHTML(reg.operador)}.<br><br>
+            Ao desconsiderar:<br>
+            • O registro será <strong>apagado</strong> do inventário ${escHTML(nomeInventario())}.<br>
+            • ${efeito}`;
+        document.getElementById('modalDescons').classList.add('aberto');
+        som('info');
+    }
+
+    function fecharModalDescons() {
+        document.getElementById('modalDescons').classList.remove('aberto');
+        desconsPendente = null;
+        document.getElementById("patrimonioInput").focus();
+    }
+
+    async function confirmarDescons() {
+        const reg = desconsPendente;
+        if (!reg) return;
+        if (!accessToken || tokenExpirado()) {
+            mostrarReconectar('Sessão expirada. Reconecte e desconsidere o item novamente.');
+            return;
+        }
+        const btn = document.getElementById('btnConfirmaDescons');
+        btn.disabled = true;
+        document.getElementById("spinner").style.display = "inline-block";
+        setProgress('Desconsiderando item...');
+
+        try {
+            const nrp = reg.NRP;
+            const n   = normalizeNRP(nrp);
+            const sit = (reg.situacao || '').toUpperCase();
+
+            // 1) Apaga o registro do inventário
+            const iFila = filaEnvio.findIndex(f => f.reg === reg);
+            if (iFila >= 0 && !enviando) {
+                filaEnvio.splice(iFila, 1);          // ainda não tinha sido gravado
+                atualizarStatusSalvamento();
+            } else {
+                await esvaziarFila();
+                const linha = await localizarLinhaRegistro(accessToken, FILE_ID, invAtual.aba, reg);
+                if (linha > 1) await deletarLinha(accessToken, invAtual.aba, linha - 1);
+            }
+
+            // 2) Desfaz o efeito na SIGMAS / COAUD
+            const naMemoria = (dados) => dados.find((r, i) => i > 0 && normalizeNRP(r[0]) === n);
+            if (sit.startsWith('TRANSFERIDO') && reg.salaAnterior) {
+                const atual     = naMemoria(sigmasData) || naMemoria(coaudData) || [nrp, reg.Material, '', reg.Responsável];
+                const respVolta = reg.respAnterior || atual[3] || '';
+                const linhaVolta = [atual[0], atual[1] || reg.Material, reg.salaAnterior, respVolta,
+                                    montarLog('desconsiderado: volta à sala anterior')];
+
+                const linhaS = await localizarLinhaAtual(accessToken, FILE_ID, 'SIGMAS', nrp);
+                if (linhaS > 0) {
+                    await atualizarLinha(accessToken, 'SIGMAS', linhaS, linhaVolta);
+                    atualizarMemoria(sigmasData, nrp, linhaVolta);
+                }
+                const linhaC = await localizarLinhaAtual(accessToken, FILE_ID, 'COAUD', nrp);
+                if (ehResponsavelCoaud(respVolta)) {
+                    if (linhaC > 0) await atualizarLinha(accessToken, 'COAUD', linhaC, linhaVolta);
+                    else            await appendLinha(accessToken, 'COAUD', linhaVolta);
+                    atualizarMemoria(coaudData, nrp, linhaVolta);
+                } else {
+                    if (linhaC > 0) await deletarLinha(accessToken, 'COAUD', linhaC - 1);
+                    atualizarMemoria(coaudData, nrp, null);
+                }
+            } else if (sit.startsWith('CADASTRADO')) {
+                const linhaC = await localizarLinhaAtual(accessToken, FILE_ID, 'COAUD', nrp);
+                if (linhaC > 0) await deletarLinha(accessToken, 'COAUD', linhaC - 1);
+                atualizarMemoria(coaudData, nrp, null);
+                const linhaS = await localizarLinhaAtual(accessToken, FILE_ID, 'SIGMAS', nrp);
+                if (linhaS > 0) await deletarLinha(accessToken, 'SIGMAS', linhaS - 1);
+                atualizarMemoria(sigmasData, nrp, null);
+            }
+
+            // 3) Atualiza memória e tela
+            registrosInv = registrosInv.filter(r => r !== reg);
+            if (!registrosDoInventario(salaSelecionada).some(r => normalizeNRP(r.NRP) === n)) nrpsCarregados.delete(n);
+
+            const idx = currentSalaInventario.findIndex(i => normalizeNRP(i.NRP) === n);
+            if (idx >= 0) {
+                const salaAgora = salaDaCoaud(n);
+                if (salaAgora !== null && normInv(salaAgora) === normInv(salaSelecionada)) {
+                    Object.assign(currentSalaInventario[idx], { status: 'red', obs: '', jaRegistrado: false });
+                } else {
+                    currentSalaInventario.splice(idx, 1);
+                }
+            }
+            updateInventarioTable();
+
+            desconsPendente = null;
+            document.getElementById('modalDescons').classList.remove('aberto');
+            toast(`${nrp} desconsiderado.` +
+                  (sit.startsWith('TRANSFERIDO') && reg.salaAnterior ? ` Voltou para ${reg.salaAnterior}.` : '') +
+                  (sit.startsWith('CADASTRADO') ? ' Cadastro removido.' : ''), 'sucesso');
+            setProgress(`✅ ${nrp} desconsiderado.`);
+            document.getElementById("patrimonioInput").focus();
+        } catch (error) {
+            if (error.message === 'SESSAO_EXPIRADA') {
+                sessaoExpirou('Sessão expirada. Reconecte e desconsidere o item novamente.');
+            } else {
+                toast('Erro ao desconsiderar: ' + error.message, 'erro');
+                setProgress('Erro: ' + error.message);
+            }
+        } finally {
+            btn.disabled = false;
+            document.getElementById("spinner").style.display = "none";
+        }
+    }
+
+    // ══════════════════════════════════════════════════════
     //  NOVA SALA
     // ══════════════════════════════════════════════════════
     document.getElementById("resetarColeta").addEventListener("click", function() {
@@ -1681,7 +2033,8 @@
         currentSalaInventario = [];
         nrpsCarregados = new Set();
         travarModo(false);
-        document.getElementById("inventarioNome").disabled = false;
+        document.getElementById("inventarioSelect").disabled = false;
+        document.getElementById("btnNovoInv").disabled = false;
         const nomeEl = document.getElementById("fileContinuarNome");
         nomeEl.textContent = 'Nenhum arquivo escolhido';
         nomeEl.classList.remove('loaded');
@@ -1753,13 +2106,14 @@
     //  RESET TOTAL
     // ══════════════════════════════════════════════════════
     document.getElementById("refreshButton").addEventListener("click", function() {
-        if (!confirm("RESET TOTAL? Limpa a tela e libera a sala.\n\nOs bips já salvos na aba INVENTARIO NÃO são apagados.")) return;
+        if (!confirm("RESET TOTAL? Limpa a tela e libera a sala.\n\nOs bips já salvos na aba do inventário NÃO são apagados.")) return;
         salaSelecionada = "";
         currentSalaInventario = [];
         nrpsCarregados = new Set();
         travarModo(false);
         mudarModo('zero');
-        document.getElementById("inventarioNome").disabled = false;
+        document.getElementById("inventarioSelect").disabled = false;
+        document.getElementById("btnNovoInv").disabled = false;
         const nomeEl = document.getElementById("fileContinuarNome");
         nomeEl.textContent = 'Nenhum arquivo escolhido';
         nomeEl.classList.remove('loaded');
