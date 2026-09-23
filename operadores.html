@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COAUD — Operadores do Almoxarifado</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='4' fill='%2300b04f'/><text y='22' x='5' font-size='17' fill='white' font-family='Arial' font-weight='bold'>C</text></svg>">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="sidebar-init.js" defer></script>
+    <script src="coaud-operadores.js"></script>
+    <style>
+        #reconectar-banner {
+            display: none; align-items: center; gap: 12px; flex-wrap: wrap;
+            background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.35);
+            border-radius: 6px; padding: 12px 16px; margin-bottom: 14px;
+        }
+        #reconectar-msg { color: #fbbf24; font-size: 13px; font-weight: 600; }
+        .form-grid { display: grid; grid-template-columns: 2fr 1fr auto; gap: 12px; align-items: end; }
+        .form-grid button { margin: 0; }
+        @media (max-width: 700px) { .form-grid { grid-template-columns: 1fr; } }
+        .ajuda { font-size: 11px; color: var(--text-muted); margin-top: 8px; line-height: 1.5; }
+        .msg-form { font-size: 12px; font-weight: 600; min-height: 18px; margin-top: 8px; }
+        .msg-form.ok   { color: #4ade80; }
+        .msg-form.erro { color: #f87171; }
+        .topo-lista { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+        .topo-lista input { flex: 1; min-width: 180px; margin: 0; }
+        .topo-lista select { width: auto; margin: 0; }
+        .topo-lista button { margin: 0; }
+        .sit { font-size: 11px; font-weight: 700; }
+        .sit.ativo   { color: #4ade80; }
+        .sit.inativo { color: var(--text-muted); }
+        .btn-mini { margin: 0; padding: 3px 10px; font-size: 11px; }
+        tr.inativo td { opacity: .55; }
+    </style>
+</head>
+<body>
+
+    <div class="app-layout">
+
+        <!-- ══ SIDEBAR ═══════════════════════════════════ -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-brand">
+                <div class="brand-row">
+                    <div class="brand-icon">C</div>
+                    <div>
+                        <div class="brand-name">CÂMARA DOS DEPUTADOS</div>
+                        <div class="brand-sub">COAUD</div>
+                    </div>
+                </div>
+            </div>
+            <div class="sidebar-user">
+                <div class="user-avatar" id="user-avatar">?</div>
+                <div class="user-info">
+                    <div class="user-name" id="user-name">Carregando...</div>
+                    <div class="user-role" id="user-role"></div>
+                </div>
+            </div>
+            <nav class="sidebar-nav">
+                <div class="nav-section-title">Sistemas</div>
+                <a class="nav-item" id="nav-escanear" href="index-escanear.html">
+                    <span class="nav-icon">📷</span> Sistema de Escaneamento
+                </a>
+                <a class="nav-item" id="nav-comparador" href="index-comparador.html">
+                    <span class="nav-icon">🔍</span> Comparador de Patrimônios
+                </a>
+                <a class="nav-item" id="nav-localizador" href="index_Local.html">
+                    <span class="nav-icon">📍</span> Localizador e Transferência
+                </a>
+
+                <a class="nav-item nav-parent active" id="nav-almoxarifado" href="index-almoxarifado.html">
+                    <span class="nav-icon">📋</span> Controle de Almoxarifado
+                </a>
+                <div class="nav-subgroup" id="nav-almoxarifado-sub">
+                    <a class="nav-subitem" data-page="index-almoxarifado.html" href="index-almoxarifado.html">
+                        <span class="nav-sub-icon">↳</span> Nova Retirada
+                    </a>
+                    <a class="nav-subitem" data-page="fichas.html" href="fichas.html">
+                        <span class="nav-sub-icon">↳</span> Fichas Pendentes
+                    </a>
+                    <a class="nav-subitem" data-page="fichas-arquivadas.html" href="fichas-arquivadas.html">
+                        <span class="nav-sub-icon">↳</span> Fichas Arquivadas
+                    </a>
+                    <a class="nav-subitem" data-page="relatorios.html" href="relatorios.html">
+                        <span class="nav-sub-icon">↳</span> Relatórios
+                    </a>
+                    <!-- "↳ Operadores" é criado pelo sidebar-init.js (supervisor e dev) -->
+                </div>
+
+                <a class="nav-item" href="index.html">
+                    <span class="nav-icon">🏠</span> Página Inicial
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <button class="btn-logout" onclick="fazerLogout()">
+                    <span>⎋</span> Sair do sistema
+                </button>
+            </div>
+        </aside>
+
+        <!-- ══ ÁREA PRINCIPAL ════════════════════════════ -->
+        <div class="main-area">
+
+            <div class="topbar">
+                <button class="btn-menu" onclick="toggleSidebar()">☰</button>
+                <div>
+                    <div class="topbar-title">Operadores</div>
+                    <div class="topbar-sub">Lista de operadores para retirada e devolução de equipamentos</div>
+                </div>
+                <div class="topbar-right">
+                    <div id="spinner" class="spinner" style="margin:0"></div>
+                    <p id="progressText" style="font-size:11px;color:var(--text-muted);margin:0"></p>
+                </div>
+            </div>
+
+            <div class="page-content">
+
+                <div id="reconectar-banner">
+                    <span id="reconectar-msg"></span>
+                    <button onclick="solicitarToken()">🔐 Reconectar com Google</button>
+                </div>
+
+                <!-- ═══ NOVO OPERADOR ═══ -->
+                <div class="card">
+                    <div class="card-title">Novo operador</div>
+                    <div class="form-grid">
+                        <div class="field-block">
+                            <label for="opNome">Nome completo</label>
+                            <input type="text" id="opNome" placeholder="Ex.: Maria da Silva Souza" autocomplete="off">
+                        </div>
+                        <div class="field-block">
+                            <label for="opPonto">Ponto</label>
+                            <input type="text" id="opPonto" placeholder="Ex.: 922.083" autocomplete="off" inputmode="numeric">
+                        </div>
+                        <button type="button" id="btnAdicionar" onclick="adicionarOperador()">✔ Adicionar</button>
+                    </div>
+                    <p class="msg-form" id="msgForm"></p>
+                    <p class="ajuda">
+                        O operador passa a aparecer na lista de <strong>Nova Retirada</strong> e na <strong>Devolução</strong>,
+                        e o ponto sai nas fichas impressas. Isto não cria login no sistema.
+                    </p>
+                </div>
+
+                <!-- ═══ LISTA ═══ -->
+                <div class="card" style="padding:0;overflow:hidden">
+                    <div style="padding:14px 16px 8px">
+                        <div class="card-title" style="margin:0 0 10px;border:none;padding:0">Operadores cadastrados</div>
+                        <div class="topo-lista">
+                            <input type="text" id="buscaOp" placeholder="🔎 Buscar por nome ou ponto..." autocomplete="off">
+                            <select id="filtroSit">
+                                <option value="ativos">Ativos</option>
+                                <option value="inativos">Desativados</option>
+                                <option value="todos">Todos</option>
+                            </select>
+                            <button type="button" class="backButton" onclick="carregarLista()">🔄 Atualizar</button>
+                        </div>
+                    </div>
+                    <div class="table-wrapper">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Nome</th>
+                                    <th style="width:120px">Ponto</th>
+                                    <th style="width:110px">Situação</th>
+                                    <th style="width:120px">Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody id="listaOp">
+                                <tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:20px">Carregando...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+
+            <footer class="site-footer">
+                © 2025 BrenoDoria — Câmara dos Deputados / COAUD
+            </footer>
+        </div>
+    </div>
+
+    <script>
+    // Marca o subitem ativo conforme a página atual
+    (function() {
+        const pagina = window.location.pathname.split('/').pop();
+        document.querySelectorAll('.nav-subitem[data-page]').forEach(el => {
+            if (el.getAttribute('data-page') === pagina) el.classList.add('active');
+        });
+    })();
+
+    const CLIENT_ID = '286050228811-cv6vsd075480anb1i6auuc421enuaf8q.apps.googleusercontent.com';
+    const FILE_ID   = '1q9RCwJ4P--QIH4kkMszffrN8ZwzkSsNoZtPH-Usk4Zw';   // planilha do almoxarifado
+
+    let tokenClient = null;
+    let accessToken = null;
+    let operadores  = [];   // { nome, ponto, ativo, linha }
+
+    function setProgress(msg) { const el = document.getElementById('progressText'); if (el) el.textContent = msg; }
+    function spinner(on) { document.getElementById('spinner').style.display = on ? 'inline-block' : 'none'; }
+    function esc(t) {
+        return (t === undefined || t === null ? '' : t.toString())
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    function mensagem(texto, tipo) {
+        const el = document.getElementById('msgForm');
+        el.textContent = texto;
+        el.className = 'msg-form ' + (tipo || '');
+    }
+
+    function tokenExpirado() {
+        const exp = parseInt(localStorage.getItem('token_expira_em') || '0', 10);
+        return !exp || exp < (Date.now() + 60000);
+    }
+    function mostrarReconectar(msg) {
+        document.getElementById('reconectar-msg').textContent = msg || 'Sessão do Google expirada.';
+        document.getElementById('reconectar-banner').style.display = 'flex';
+    }
+    function esconderReconectar() { document.getElementById('reconectar-banner').style.display = 'none'; }
+    function solicitarToken() { if (tokenClient) tokenClient.requestAccessToken({ prompt: 'select_account' }); }
+    function sessaoExpirou() {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('token_expira_em');
+        accessToken = null;
+        spinner(false);
+        mostrarReconectar('Sessão do Google expirada. Reconecte para continuar.');
+    }
+
+    window.addEventListener('load', () => {
+        document.getElementById('buscaOp').addEventListener('input', renderizar);
+        document.getElementById('filtroSit').addEventListener('change', renderizar);
+        document.getElementById('opPonto').addEventListener('blur', e => { e.target.value = formatarPonto(e.target.value); });
+        document.getElementById('opPonto').addEventListener('keydown', e => { if (e.key === 'Enter') adicionarOperador(); });
+
+        const iniciar = () => {
+            if (typeof google === 'undefined' || !google.accounts) { setTimeout(iniciar, 300); return; }
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: 'https://www.googleapis.com/auth/spreadsheets',
+                callback: (resp) => {
+                    if (resp.error) { setProgress('Erro: ' + resp.error); return; }
+                    accessToken = resp.access_token;
+                    localStorage.setItem('access_token', accessToken);
+                    localStorage.setItem('token_expira_em', Date.now() + ((resp.expires_in || 3600) * 1000));
+                    esconderReconectar();
+                    carregarLista();
+                }
+            });
+            const salvo = localStorage.getItem('access_token');
+            if (salvo && !tokenExpirado()) { accessToken = salvo; carregarLista(); }
+            else mostrarReconectar('Conecte-se ao Google para gerenciar os operadores.');
+        };
+        iniciar();
+    });
+
+    async function carregarLista() {
+        if (!accessToken || tokenExpirado()) { mostrarReconectar('Conecte-se ao Google para gerenciar os operadores.'); return; }
+        spinner(true);
+        setProgress('Lendo operadores...');
+        try {
+            let lista = await lerOperadoresPlanilha(accessToken, FILE_ID);
+            if (lista === null) {
+                // Primeira vez: cria a aba já com a lista que estava no código
+                setProgress('Criando a aba OPERADORES com a lista atual...');
+                await criarAbaOperadores(accessToken, FILE_ID);
+                lista = await lerOperadoresPlanilha(accessToken, FILE_ID);
+                mensagem('✅ Aba OPERADORES criada na planilha do almoxarifado com a lista atual.', 'ok');
+            }
+            operadores = lista || [];
+            salvarCacheOperadores(operadores.map(({ nome, ponto, ativo }) => ({ nome, ponto, ativo })));
+            renderizar();
+            setProgress(`✅ ${operadores.filter(o => o.ativo).length} ativos | ${operadores.filter(o => !o.ativo).length} desativados.`);
+        } catch (e) {
+            if (e.message === 'SESSAO_EXPIRADA') sessaoExpirou();
+            else { setProgress('Erro: ' + e.message); mensagem('Erro: ' + e.message, 'erro'); }
+        } finally {
+            spinner(false);
+        }
+    }
+
+    function renderizar() {
+        const busca = normNomeOp(document.getElementById('buscaOp').value);
+        const sit   = document.getElementById('filtroSit').value;
+        const lista = operadores
+            .filter(o => sit === 'todos' || (sit === 'ativos' ? o.ativo : !o.ativo))
+            .filter(o => !busca || normNomeOp(`${o.nome} ${o.ponto}`).includes(busca))
+            .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+
+        document.getElementById('listaOp').innerHTML = lista.length
+            ? lista.map(o => `
+                <tr class="${o.ativo ? '' : 'inativo'}">
+                    <td>${esc(o.nome)}</td>
+                    <td style="font-family:monospace">${esc(o.ponto) || '—'}</td>
+                    <td><span class="sit ${o.ativo ? 'ativo' : 'inativo'}">${o.ativo ? '● Ativo' : '○ Desativado'}</span></td>
+                    <td>
+                        <button type="button" class="btn-mini ${o.ativo ? 'cancelButton' : ''}"
+                            onclick="alternarAtivo(${o.linha})">${o.ativo ? 'Desativar' : 'Reativar'}</button>
+                    </td>
+                </tr>`).join('')
+            : `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:20px">Nenhum operador com esse filtro.</td></tr>`;
+    }
+
+    async function adicionarOperador() {
+        const nome  = document.getElementById('opNome').value.replace(/\s+/g, ' ').trim();
+        const ponto = formatarPonto(document.getElementById('opPonto').value);
+
+        if (nome.length < 5) { mensagem('Informe o nome completo.', 'erro'); return; }
+        if (!ponto)          { mensagem('Informe o ponto.', 'erro'); return; }
+        if (!accessToken || tokenExpirado()) { mostrarReconectar('Reconecte para adicionar.'); return; }
+
+        const mesmoNome = operadores.find(o => normNomeOp(o.nome) === normNomeOp(nome));
+        if (mesmoNome) {
+            mensagem(mesmoNome.ativo
+                ? `"${mesmoNome.nome}" já está na lista.`
+                : `"${mesmoNome.nome}" já existe, mas está desativado. Use "Reativar" na lista abaixo.`, 'erro');
+            return;
+        }
+        const mesmoPonto = operadores.find(o => o.ponto && o.ponto.replace(/\D/g, '') === ponto.replace(/\D/g, ''));
+        if (mesmoPonto && !confirm(`O ponto ${ponto} já está com "${mesmoPonto.nome}". Adicionar mesmo assim?`)) return;
+
+        const btn = document.getElementById('btnAdicionar');
+        btn.disabled = true;
+        spinner(true);
+        try {
+            await adicionarOperadorPlanilha(accessToken, FILE_ID, nome, ponto);
+            mensagem(`✅ ${nome} adicionado.`, 'ok');
+            document.getElementById('opNome').value = '';
+            document.getElementById('opPonto').value = '';
+            await carregarLista();
+        } catch (e) {
+            if (e.message === 'SESSAO_EXPIRADA') sessaoExpirou();
+            else mensagem('Erro ao adicionar: ' + e.message, 'erro');
+        } finally {
+            btn.disabled = false;
+            spinner(false);
+        }
+    }
+
+    async function alternarAtivo(linha) {
+        const o = operadores.find(x => x.linha === linha);
+        if (!o) return;
+        const acao = o.ativo ? 'desativar' : 'reativar';
+        if (!confirm(`Deseja ${acao} "${o.nome}"?` +
+            (o.ativo ? '\n\nEle sai da lista de retirada, mas continua nas fichas antigas.' : ''))) return;
+        if (!accessToken || tokenExpirado()) { mostrarReconectar('Reconecte para continuar.'); return; }
+
+        spinner(true);
+        try {
+            // Confere se a linha ainda é desse operador antes de gravar
+            const atual = await lerOperadoresPlanilha(accessToken, FILE_ID);
+            const confere = (atual || []).find(x => x.linha === linha && normNomeOp(x.nome) === normNomeOp(o.nome));
+            if (!confere) {
+                mensagem('A lista mudou na planilha. Atualizei a tela — tente de novo.', 'erro');
+                await carregarLista();
+                return;
+            }
+            await atualizarOperadorPlanilha(accessToken, FILE_ID, linha, o.nome, o.ponto, !o.ativo);
+            mensagem(`✅ ${o.nome} ${o.ativo ? 'desativado' : 'reativado'}.`, 'ok');
+            await carregarLista();
+        } catch (e) {
+            if (e.message === 'SESSAO_EXPIRADA') sessaoExpirou();
+            else mensagem('Erro: ' + e.message, 'erro');
+        } finally {
+            spinner(false);
+        }
+    }
+    </script>
+</body>
+</html>

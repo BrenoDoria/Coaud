@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COAUD — Usuários do Sistema</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='4' fill='%2300b04f'/><text y='22' x='5' font-size='17' fill='white' font-family='Arial' font-weight='bold'>C</text></svg>">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="sidebar-init.js" defer></script>
+    <style>
+        #reconectar-banner {
+            display: none; align-items: center; gap: 12px; flex-wrap: wrap;
+            background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.35);
+            border-radius: 6px; padding: 12px 16px; margin-bottom: 14px;
+        }
+        #reconectar-msg { color: #fbbf24; font-size: 13px; font-weight: 600; }
+
+        .form-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 12px; margin-bottom: 12px; }
+        .form-grid.dois { grid-template-columns: 1fr 1fr; }
+        @media (max-width: 700px) { .form-grid, .form-grid.dois { grid-template-columns: 1fr; } }
+        .senha-linha { display: flex; gap: 8px; }
+        .senha-linha input { flex: 1; margin: 0; }
+        .senha-linha button { margin: 0; white-space: nowrap; }
+        .ajuda { font-size: 11px; color: var(--text-muted); margin-top: 6px; line-height: 1.5; }
+        .msg-form { font-size: 12px; font-weight: 600; min-height: 18px; margin-top: 8px; }
+        .msg-form.ok   { color: #4ade80; }
+        .msg-form.erro { color: #f87171; }
+
+        .badge-perm {
+            display: inline-block; padding: 2px 9px; border-radius: 20px;
+            font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px;
+        }
+        .perm-dev          { background: rgba(168,85,247,.18); color: #d8b4fe; }
+        .perm-supervisor   { background: rgba(96,165,250,.18); color: #93c5fd; }
+        .perm-almoxarifado { background: rgba(245,158,11,.18); color: #fbbf24; }
+        .perm-operador     { background: rgba(0,176,79,.18);  color: #4ade80; }
+        .perm-outra        { background: rgba(255,255,255,.08); color: var(--text-muted); }
+
+        .topo-lista { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+        .topo-lista input { flex: 1; min-width: 180px; margin: 0; }
+        .topo-lista button { margin: 0; }
+        #desc-permissao { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+    </style>
+</head>
+<body>
+
+    <div class="app-layout">
+
+        <!-- ══ SIDEBAR ═══════════════════════════════════ -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-brand">
+                <div class="brand-row">
+                    <div class="brand-icon">C</div>
+                    <div>
+                        <div class="brand-name">CÂMARA DOS DEPUTADOS</div>
+                        <div class="brand-sub">COAUD</div>
+                    </div>
+                </div>
+            </div>
+            <div class="sidebar-user">
+                <div class="user-avatar" id="user-avatar">?</div>
+                <div class="user-info">
+                    <div class="user-name" id="user-name">Carregando...</div>
+                    <div class="user-role" id="user-role"></div>
+                </div>
+            </div>
+            <nav class="sidebar-nav">
+                <div class="nav-section-title">Sistemas</div>
+                <a class="nav-item" id="nav-escanear" href="index-escanear.html">
+                    <span class="nav-icon">📷</span> Sistema de Escaneamento
+                </a>
+                <a class="nav-item" id="nav-comparador" href="index-comparador.html">
+                    <span class="nav-icon">🔍</span> Comparador de Patrimônios
+                </a>
+                <a class="nav-item" id="nav-localizador" href="index_Local.html">
+                    <span class="nav-icon">📍</span> Localizador e Transferência
+                </a>
+                <a class="nav-item" id="nav-almoxarifado" href="index-almoxarifado.html">
+                    <span class="nav-icon">📋</span> Controle de Almoxarifado
+                </a>
+                <!-- "👤 Usuários do sistema" é criado pelo sidebar-init.js (só dev) -->
+                <a class="nav-item" href="index.html">
+                    <span class="nav-icon">🏠</span> Portal
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <button class="btn-logout" onclick="fazerLogout()">
+                    <span>⎋</span> Sair do sistema
+                </button>
+            </div>
+        </aside>
+
+        <!-- ══ ÁREA PRINCIPAL ════════════════════════════ -->
+        <div class="main-area">
+
+            <div class="topbar">
+                <button class="btn-menu" onclick="toggleSidebar()">☰</button>
+                <div>
+                    <div class="topbar-title">Usuários do Sistema</div>
+                    <div class="topbar-sub">Cadastro de acesso ao Portal COAUD (somente dev)</div>
+                </div>
+                <div class="topbar-right">
+                    <div id="spinner" class="spinner" style="margin:0"></div>
+                    <p id="progressText" style="font-size:11px;color:var(--text-muted);margin:0"></p>
+                </div>
+            </div>
+
+            <div class="page-content">
+
+                <div id="reconectar-banner">
+                    <span id="reconectar-msg"></span>
+                    <button onclick="solicitarToken()">🔐 Reconectar com Google</button>
+                </div>
+
+                <!-- ═══ NOVO USUÁRIO ═══ -->
+                <div class="card">
+                    <div class="card-title">Novo usuário</div>
+
+                    <div class="form-grid">
+                        <div class="field-block">
+                            <label for="uPonto">Número de ponto</label>
+                            <input type="text" id="uPonto" placeholder="Ex.: 922.083" autocomplete="off" inputmode="numeric">
+                        </div>
+                        <div class="field-block">
+                            <label for="uNome">Nome completo</label>
+                            <input type="text" id="uNome" placeholder="Ex.: Maria da Silva Souza" autocomplete="off">
+                        </div>
+                    </div>
+
+                    <div class="form-grid dois">
+                        <div class="field-block">
+                            <label for="uSenha">Senha inicial</label>
+                            <div class="senha-linha">
+                                <input type="text" id="uSenha" placeholder="Mínimo 6 caracteres" autocomplete="off">
+                                <button type="button" class="backButton" onclick="gerarSenha()">🎲 Gerar</button>
+                            </div>
+                            <p class="ajuda">Passe essa senha para a pessoa. No primeiro acesso o sistema pede para ela criar a própria senha.</p>
+                        </div>
+                        <div class="field-block">
+                            <label for="uPerm">Permissão</label>
+                            <select id="uPerm">
+                                <option value="operador">Operador</option>
+                                <option value="almoxarifado">Almoxarifado</option>
+                                <option value="supervisor">Supervisor</option>
+                                <option value="dev">Dev</option>
+                            </select>
+                            <p id="desc-permissao"></p>
+                        </div>
+                    </div>
+
+                    <button type="button" id="btnCadastrar" onclick="cadastrarUsuario()">✔ Cadastrar usuário</button>
+                    <p class="msg-form" id="msgForm"></p>
+                    <p class="ajuda">
+                        ⚠ Para usar o sistema, a <strong>conta Google</strong> da pessoa também precisa ter acesso de edição
+                        às planilhas que ela vai usar (patrimônio e/ou almoxarifado).
+                    </p>
+                </div>
+
+                <!-- ═══ LISTA ═══ -->
+                <div class="card" style="padding:0;overflow:hidden">
+                    <div style="padding:14px 16px 8px">
+                        <div class="card-title" style="margin:0 0 10px;border:none;padding:0">Usuários cadastrados</div>
+                        <div class="topo-lista">
+                            <input type="text" id="buscaUsuario" placeholder="🔎 Buscar por nome, ponto ou permissão..." autocomplete="off">
+                            <button type="button" class="backButton" onclick="carregarUsuarios()">🔄 Atualizar</button>
+                        </div>
+                    </div>
+                    <div class="table-wrapper">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Ponto</th>
+                                    <th>Nome</th>
+                                    <th>Permissão</th>
+                                    <th>Situação</th>
+                                </tr>
+                            </thead>
+                            <tbody id="listaUsuarios">
+                                <tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:20px">Carregando...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+
+            <footer class="site-footer">
+                © 2025 BrenoDoria — Câmara dos Deputados / COAUD
+            </footer>
+        </div>
+    </div>
+
+    <script>
+    // Sidebar (usuário, permissões, tema, logout, menu mobile) vem do sidebar-init.js
+
+    const CLIENT_ID     = '286050228811-cv6vsd075480anb1i6auuc421enuaf8q.apps.googleusercontent.com';
+    const USUARIOS_FILE = '1Qny6BzFcU-4Ghll2xTcJGt6ZGmt0O4DqYMUePdMJQ3U';   // planilha de login
+
+    const DESCRICOES = {
+        operador:     'Acessa só o Escaneamento (bipagem). Não cria inventário nem vê Dashboard.',
+        almoxarifado: 'Acessa só o Controle de Almoxarifado (retiradas e devoluções).',
+        supervisor:   'Acessa todos os sistemas, cria inventários e cadastra operadores do almoxarifado.',
+        dev:          'Tudo do supervisor + cadastro de usuários do sistema (esta tela).'
+    };
+
+    let tokenClient = null;
+    let accessToken = null;
+    let abaUsuarios = null;     // nome da aba de login (a primeira da planilha)
+    let usuarios    = [];       // linhas lidas
+    // Formato em que a planilha guarda os dados (detectado na leitura)
+    let pontoEhNumero        = false;
+    let pontoComPonto        = true;
+    let primeiroAcessoBooleano = true;
+
+    function setProgress(msg) { const el = document.getElementById('progressText'); if (el) el.textContent = msg; }
+    function spinner(on) { document.getElementById('spinner').style.display = on ? 'inline-block' : 'none'; }
+    function esc(t) {
+        return (t === undefined || t === null ? '' : t.toString())
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    function norm(t) {
+        return (t || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toUpperCase();
+    }
+    function soDigitos(v) { return (v === undefined || v === null ? '' : v.toString()).replace(/\D/g, ''); }
+    function formatarPonto(v) { return soDigitos(v).replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
+
+    function mensagem(texto, tipo) {
+        const el = document.getElementById('msgForm');
+        el.textContent = texto;
+        el.className = 'msg-form ' + (tipo || '');
+    }
+
+    // ══ Sessão Google (mesmo padrão das outras páginas) ══
+    function tokenExpirado() {
+        const exp = parseInt(localStorage.getItem('token_expira_em') || '0', 10);
+        return !exp || exp < (Date.now() + 60000);
+    }
+    function mostrarReconectar(msg) {
+        document.getElementById('reconectar-msg').textContent = msg || 'Sessão do Google expirada.';
+        document.getElementById('reconectar-banner').style.display = 'flex';
+    }
+    function esconderReconectar() { document.getElementById('reconectar-banner').style.display = 'none'; }
+    function solicitarToken() { if (tokenClient) tokenClient.requestAccessToken({ prompt: 'select_account' }); }
+    function sessaoExpirou() {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('token_expira_em');
+        accessToken = null;
+        spinner(false);
+        mostrarReconectar('Sessão do Google expirada. Reconecte para continuar.');
+    }
+
+    window.addEventListener('load', () => {
+        atualizarDescricao();
+        document.getElementById('uPerm').addEventListener('change', atualizarDescricao);
+        document.getElementById('uPonto').addEventListener('blur', e => { e.target.value = formatarPonto(e.target.value); });
+        document.getElementById('buscaUsuario').addEventListener('input', renderizarUsuarios);
+
+        const iniciar = () => {
+            if (typeof google === 'undefined' || !google.accounts) { setTimeout(iniciar, 300); return; }
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: 'https://www.googleapis.com/auth/spreadsheets',
+                callback: (resp) => {
+                    if (resp.error) { setProgress('Erro: ' + resp.error); return; }
+                    accessToken = resp.access_token;
+                    localStorage.setItem('access_token', accessToken);
+                    localStorage.setItem('token_expira_em', Date.now() + ((resp.expires_in || 3600) * 1000));
+                    esconderReconectar();
+                    carregarUsuarios();
+                }
+            });
+            const salvo = localStorage.getItem('access_token');
+            if (salvo && !tokenExpirado()) { accessToken = salvo; carregarUsuarios(); }
+            else mostrarReconectar('Conecte-se ao Google para gerenciar os usuários.');
+        };
+        iniciar();
+    });
+
+    function atualizarDescricao() {
+        document.getElementById('desc-permissao').textContent = DESCRICOES[document.getElementById('uPerm').value] || '';
+    }
+
+    function gerarSenha() {
+        const letras = 'abcdefghjkmnpqrstuvwxyz', numeros = '23456789';
+        let s = '';
+        for (let i = 0; i < 4; i++) s += letras[Math.floor(Math.random() * letras.length)];
+        for (let i = 0; i < 4; i++) s += numeros[Math.floor(Math.random() * numeros.length)];
+        document.getElementById('uSenha').value = s;
+    }
+
+    async function apiFetch(url, opcoes = {}) {
+        const headers = { 'Authorization': `Bearer ${accessToken}` };
+        if (opcoes.body) headers['Content-Type'] = 'application/json';
+        const r = await fetch(url, { ...opcoes, headers });
+        if (r.status === 401) throw new Error('SESSAO_EXPIRADA');
+        if (r.status === 403) throw new Error('Sua conta Google não tem permissão de edição na planilha de usuários.');
+        if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error?.message || ('HTTP ' + r.status)); }
+        return r.json();
+    }
+
+    function rangeUsuarios(colunas) {
+        return encodeURIComponent(`'${abaUsuarios.replace(/'/g, "''")}'!${colunas}`);
+    }
+
+    // ══ Leitura ══════════════════════════════════════════
+    async function carregarUsuarios() {
+        if (!accessToken || tokenExpirado()) { mostrarReconectar('Conecte-se ao Google para gerenciar os usuários.'); return; }
+        spinner(true);
+        setProgress('Lendo usuários...');
+        try {
+            if (!abaUsuarios) {
+                const meta = await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${USUARIOS_FILE}?fields=sheets.properties(title,sheetId,index)`);
+                const abas = (meta.sheets || []).map(s => s.properties).sort((a, b) => a.index - b.index);
+                const aba = abas.find(a => a.sheetId === 0) || abas[0];
+                if (!aba) throw new Error('Planilha de usuários sem abas.');
+                abaUsuarios = aba.title;
+            }
+            const d = await apiFetch(
+                `https://sheets.googleapis.com/v4/spreadsheets/${USUARIOS_FILE}/values/${rangeUsuarios('A:E')}?valueRenderOption=UNFORMATTED_VALUE`);
+            const linhas = (d.values || []).slice(1).filter(r => r && (r[0] !== undefined && r[0] !== '' || r[1]));
+
+            // Detecta o formato já usado na planilha, para gravar igual
+            const amostraPonto = linhas.map(r => r[0]).find(v => v !== undefined && v !== '');
+            if (amostraPonto !== undefined) {
+                pontoEhNumero = typeof amostraPonto === 'number';
+                pontoComPonto = !pontoEhNumero && amostraPonto.toString().includes('.');
+            }
+            const amostraPA = linhas.map(r => r[3]).find(v => v !== undefined && v !== '');
+            if (amostraPA !== undefined) primeiroAcessoBooleano = typeof amostraPA === 'boolean';
+
+            usuarios = linhas.map(r => ({
+                ponto: r[0], nome: (r[1] || '').toString(),
+                primeiroAcesso: r[3] === true || norm(r[3]) === 'TRUE' || norm(r[3]) === 'VERDADEIRO',
+                permissao: (r[4] || '').toString().trim()
+            }));
+            renderizarUsuarios();
+            setProgress(`✅ ${usuarios.length} usuário(s) na aba "${abaUsuarios}".`);
+        } catch (e) {
+            if (e.message === 'SESSAO_EXPIRADA') sessaoExpirou();
+            else { setProgress('Erro: ' + e.message); mensagem(e.message, 'erro'); }
+        } finally {
+            spinner(false);
+        }
+    }
+
+    function renderizarUsuarios() {
+        const busca = norm(document.getElementById('buscaUsuario').value);
+        const lista = usuarios
+            .filter(u => !busca || norm(`${u.nome} ${u.ponto} ${formatarPonto(u.ponto)} ${u.permissao}`).includes(busca))
+            .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+        const classe = p => ['dev', 'supervisor', 'almoxarifado', 'operador'].includes(p) ? 'perm-' + p : 'perm-outra';
+        document.getElementById('listaUsuarios').innerHTML = lista.length
+            ? lista.map(u => `
+                <tr>
+                    <td style="font-family:monospace;white-space:nowrap">${esc(formatarPonto(u.ponto))}</td>
+                    <td>${esc(u.nome)}</td>
+                    <td><span class="badge-perm ${classe(u.permissao)}">${esc(u.permissao || '—')}</span></td>
+                    <td style="font-size:12px">${u.primeiroAcesso ? '⏳ Aguardando primeiro acesso' : '✅ Ativo'}</td>
+                </tr>`).join('')
+            : `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:20px">Nenhum usuário encontrado.</td></tr>`;
+    }
+
+    // ══ Cadastro ═════════════════════════════════════════
+    async function sha256Hex(texto) {
+        const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(texto));
+        return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    async function cadastrarUsuario() {
+        const digitos = soDigitos(document.getElementById('uPonto').value);
+        const nome    = document.getElementById('uNome').value.replace(/\s+/g, ' ').trim();
+        const senha   = document.getElementById('uSenha').value.trim();
+        const perm    = document.getElementById('uPerm').value;
+
+        if (!digitos)          { mensagem('Informe o número de ponto.', 'erro'); return; }
+        if (nome.length < 5)   { mensagem('Informe o nome completo.', 'erro'); return; }
+        if (senha.length < 6)  { mensagem('A senha inicial precisa ter pelo menos 6 caracteres.', 'erro'); return; }
+        if (!DESCRICOES[perm]) { mensagem('Escolha a permissão.', 'erro'); return; }
+        if (!accessToken || tokenExpirado()) { mostrarReconectar('Reconecte para cadastrar.'); return; }
+        if (!abaUsuarios) { mensagem('Aguarde a lista de usuários carregar.', 'erro'); return; }
+
+        if (usuarios.some(u => soDigitos(u.ponto) === digitos)) {
+            mensagem(`Já existe um usuário com o ponto ${formatarPonto(digitos)}.`, 'erro');
+            return;
+        }
+        if (usuarios.some(u => norm(u.nome) === norm(nome)) &&
+            !confirm(`Já existe um usuário chamado "${nome}". Cadastrar mesmo assim?`)) return;
+        if (perm === 'dev' && !confirm('A permissão DEV dá acesso ao cadastro de usuários. Confirmar?')) return;
+
+        const btn = document.getElementById('btnCadastrar');
+        btn.disabled = true;
+        spinner(true);
+        mensagem('Cadastrando...', '');
+        try {
+            const hash  = await sha256Hex(senha);
+            const ponto = pontoEhNumero ? Number(digitos) : (pontoComPonto ? formatarPonto(digitos) : digitos);
+            const primeiro = primeiroAcessoBooleano ? true : 'TRUE';
+
+            await apiFetch(
+                `https://sheets.googleapis.com/v4/spreadsheets/${USUARIOS_FILE}/values/${rangeUsuarios('A:E')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+                { method: 'POST', body: JSON.stringify({ values: [[ponto, nome, hash, primeiro, perm]] }) });
+
+            mensagem(`✅ ${nome} cadastrado como ${perm}. Senha inicial: ${senha}`, 'ok');
+            ['uPonto', 'uNome', 'uSenha'].forEach(id => { document.getElementById(id).value = ''; });
+            await carregarUsuarios();
+        } catch (e) {
+            if (e.message === 'SESSAO_EXPIRADA') sessaoExpirou();
+            else mensagem('Erro ao cadastrar: ' + e.message, 'erro');
+        } finally {
+            btn.disabled = false;
+            spinner(false);
+        }
+    }
+    </script>
+</body>
+</html>
