@@ -234,14 +234,14 @@
                 <div class="card">
                     <div class="card-title">Levantamento</div>
 
-                    <!--<div class="segmented">
+                    <div class="segmented">
                         <button type="button" id="btnFonteInv" class="ativo" onclick="mudarFonte('inventario')">
                             📋 Inventário (bipagens)
                         </button>
                         <button type="button" id="btnFontePlan" onclick="mudarFonte('planilha')">
                             📄 Planilha Excel
                         </button>
-                    </div>-->
+                    </div>
 
                     <!-- Fonte: aba INVENTARIO -->
                     <div id="painelFonteInv">
@@ -254,7 +254,9 @@
                             </div>
                             <button type="button" class="backButton" onclick="carregarBases(true)">🔄 Atualizar dados</button>
                         </div>
-                        
+                        <p class="ajuda" id="ajudaInv">
+                            Usa o que já foi bipado no Escaneamento. Nada para carregar.
+                        </p>
                     </div>
 
                     <!-- Fonte: planilha Excel -->
@@ -266,7 +268,10 @@
                             <input type="file" id="fileInputExportada" accept=".xlsx,.xls,.csv">
                             <span class="file-name" id="fileName">Nenhum arquivo escolhido</span>
                         </div>
-                        
+                        <p class="ajuda">
+                            O NRP deve estar na primeira coluna. Se a planilha tiver várias abas, todas são lidas.
+                            Na COAUD, a sala é reconhecida pela coluna C.
+                        </p>
                     </div>
                 </div>
 
