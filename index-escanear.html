@@ -28,6 +28,15 @@
             color: #60a5fa;
             margin-bottom: 4px;
         }
+        #statusSalvamento {
+            font-size: 11px;
+            font-weight: 600;
+            margin-bottom: 4px;
+            color: var(--text-muted);
+        }
+        #statusSalvamento.ok       { color: #4ade80; }
+        #statusSalvamento.pendente { color: #fbbf24; }
+        #statusSalvamento.erro     { color: #f87171; }
         .nrp-row {
             display: flex; gap: 8px; align-items: flex-end;
         }
@@ -249,6 +258,13 @@
                 <div class="card">
                     <div class="card-title">Seleção de Sala</div>
 
+                    <div class="field-block" style="margin-bottom:14px">
+                        <label for="inventarioNome">Inventário</label>
+                        <input type="text" id="inventarioNome" list="lista-inventarios"
+                            autocomplete="off" placeholder="Ex.: Inventário 2026">
+                        <datalist id="lista-inventarios"></datalist>
+                    </div>
+
                     <div class="modo-coleta" id="modoColeta">
                         <button type="button" id="btnModoZero" class="ativo" onclick="mudarModo('zero')">
                             🆕 Começar do zero
@@ -281,8 +297,8 @@
                             <span class="file-name" id="fileContinuarNome">Nenhum arquivo escolhido</span>
                         </div>
                         <p class="ajuda">
-                            Use a planilha exportada por este sistema. A sala é identificada pela coluna C (Localização).
-                            A tabela vai mostrar só o que ainda falta coletar, e a próxima exportação junta os itens da planilha com os novos.
+                            Use para trazer uma planilha exportada antes (Excel). A sala é identificada pela coluna C (Localização)
+                            e os itens da planilha são gravados na aba INVENTARIO. Depois disso, a sala continua de onde parou.
                         </p>
                     </div>
 
@@ -313,6 +329,7 @@
                 <div class="inventario-header" id="inventarioHeader">
                     <h3>📦 Inventário da Sala: <span id="salaTitle"></span></h3>
                     <div id="salaInfoExtra"></div>
+                    <div id="statusSalvamento"></div>
                     <div class="legend">
                         🔴 Vermelho = Ainda não encontrado &nbsp;|&nbsp;
                         🟢 Verde = Bipado / Encontrado &nbsp;|&nbsp;
@@ -439,8 +456,12 @@
         "JOSE HENRIQUE FERREIRA DA SILVA (7913)"
     ];
 
+    const ABA_INV = 'INVENTARIO';
+
     let salaSelecionada       = "";
-    let patrimoniosColetados  = [];
+    let registrosInv          = [];   // linhas da aba INVENTARIO (memória)
+    let filaEnvio             = [];   // bips ainda não gravados na planilha
+    let enviando              = false;
     let sigmasData            = [];
     let coaudData             = [];
     let sheetIds              = {};
@@ -448,8 +469,7 @@
 
     // Continuação a partir de planilha
     let modoColeta      = 'zero';     // 'zero' | 'continuar'
-    let nrpsCarregados  = new Set();  // NRPs que vieram da planilha anterior
-    let carregadosDaSala = 0;         // quantos desses são da sala atual
+    let nrpsCarregados  = new Set();  // NRPs já registrados nesta sala neste inventário
 
     let transfPendente = null;
     let novoRespSelecionado = null;
@@ -486,6 +506,137 @@
         const min  = String(d.getMinutes()).padStart(2, '0');
         return `alterado: "${tipo}" data: ${dia}/${mes}/${ano} hora: ${hora}:${min}hs pelo operador: ${operador}`;
     }
+
+    // ══════════════════════════════════════════════════════
+    //  ABA INVENTARIO — leitura, registro e envio em lote
+    //  Colunas: A NRP | B Material | C Localização | D Responsável |
+    //           E Situação | F Sala anterior | G Data/Hora | H Operador | I Inventário
+    // ══════════════════════════════════════════════════════
+    function normInv(t) {
+        return (t || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/\s+/g, ' ').trim().toUpperCase();
+    }
+
+    function nomeInventario() {
+        const v = document.getElementById('inventarioNome').value.trim();
+        return v || `Inventário ${new Date().getFullYear()}`;
+    }
+
+    function operadorAtual() {
+        const u = JSON.parse(localStorage.getItem('usuarioLogado')) || {};
+        return u.nome || u.email || u.mail || 'desconhecido';
+    }
+
+    function dataHoraAgora() {
+        const d = new Date(), p = n => String(n).padStart(2, '0');
+        return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+    }
+
+    function linhaParaRegistro(row) {
+        return {
+            NRP: (row[0] || '').toString(), Material: (row[1] || '').toString(),
+            Localização: (row[2] || '').toString(), Responsável: (row[3] || '').toString(),
+            situacao: (row[4] || '').toString(), salaAnterior: (row[5] || '').toString(),
+            dataHora: (row[6] || '').toString(), operador: (row[7] || '').toString(),
+            inventario: (row[8] || '').toString()
+        };
+    }
+
+    // Registros do inventário atual (opcionalmente só de uma sala)
+    function registrosDoInventario(sala) {
+        const inv = normInv(nomeInventario());
+        return registrosInv.filter(r =>
+            normInv(r.inventario) === inv &&
+            (!sala || normInv(r.Localização) === normInv(sala)));
+    }
+
+    function preencherListaInventarios() {
+        const nomes = [...new Set(registrosInv.map(r => r.inventario.trim()).filter(Boolean))];
+        document.getElementById('lista-inventarios').innerHTML =
+            nomes.map(n => `<option value="${n.replace(/"/g, '&quot;')}"></option>`).join('');
+        const campo = document.getElementById('inventarioNome');
+        if (!campo.value.trim()) {
+            campo.value = registrosInv.length
+                ? registrosInv[registrosInv.length - 1].inventario || `Inventário ${new Date().getFullYear()}`
+                : `Inventário ${new Date().getFullYear()}`;
+        }
+    }
+
+    // Registra um bip: entra na memória na hora e vai para a fila de envio
+    function registrarNoInventario(item, situacao, salaAnterior) {
+        const linha = [
+            (item.NRP || '').toString(), (item.Material || '').toString(),
+            (item.Localização || salaSelecionada || '').toString(), (item.Responsável || '').toString(),
+            situacao, salaAnterior || '', dataHoraAgora(), operadorAtual(), nomeInventario()
+        ];
+        registrosInv.push(linhaParaRegistro(linha));
+        filaEnvio.push(linha);
+        atualizarStatusSalvamento();
+    }
+
+    async function enviarFila() {
+        if (enviando || !filaEnvio.length) return;
+        if (!accessToken || tokenExpirado()) {
+            atualizarStatusSalvamento('erro');
+            mostrarReconectar('Sessão expirada. Reconecte para salvar os bips pendentes (eles não foram perdidos).');
+            return;
+        }
+        enviando = true;
+        const lote = filaEnvio.slice(0, 50);
+        try {
+            const r = await fetch(
+                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/${ABA_INV}!A:I:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+                { method: 'POST',
+                  headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ values: lote }) }
+            );
+            if (r.status === 401) throw new Error('SESSAO_EXPIRADA');
+            if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error?.message || r.status); }
+            filaEnvio.splice(0, lote.length);
+            atualizarStatusSalvamento();
+        } catch (error) {
+            if (error.message === 'SESSAO_EXPIRADA') {
+                sessaoExpirou('Sessão expirada. Reconecte para salvar os bips pendentes (eles não foram perdidos).');
+            }
+            atualizarStatusSalvamento('erro');
+            console.error('Erro ao salvar no INVENTARIO:', error);
+        } finally {
+            enviando = false;
+        }
+    }
+
+    // Espera a fila esvaziar (usado antes de exportar/importar)
+    async function esvaziarFila() {
+        for (let i = 0; i < 20 && filaEnvio.length; i++) {
+            if (!enviando) await enviarFila();
+            if (filaEnvio.length && (!accessToken || tokenExpirado())) break;
+            if (filaEnvio.length) await new Promise(res => setTimeout(res, 300));
+        }
+    }
+
+    function atualizarStatusSalvamento(estado) {
+        const el = document.getElementById('statusSalvamento');
+        if (!el) return;
+        el.className = '';
+        if (estado === 'erro' && filaEnvio.length) {
+            el.textContent = `⚠ ${filaEnvio.length} bip(s) ainda não salvos na planilha — reconecte para enviar.`;
+            el.classList.add('erro');
+        } else if (filaEnvio.length) {
+            el.textContent = `⏳ ${filaEnvio.length} bip(s) aguardando envio...`;
+            el.classList.add('pendente');
+        } else {
+            el.textContent = '☁ Tudo salvo na aba INVENTARIO.';
+            el.classList.add('ok');
+        }
+    }
+
+    // Envia a cada 3 segundos (agrupa bips rápidos em uma só gravação)
+    setInterval(enviarFila, 3000);
+
+    // Avisa antes de fechar a página se houver bip não salvo
+    window.addEventListener('beforeunload', function(e) {
+        if (filaEnvio.length) { e.preventDefault(); e.returnValue = ''; }
+    });
 
     // ══════════════════════════════════════════════════════
     //  SESSÃO GOOGLE / RECONEXÃO
@@ -542,6 +693,7 @@
                     // Só recarrega a base se ainda não tinha carregado
                     // (assim o inventário em andamento não é perdido)
                     if (!sigmasData.length) carregarDados(accessToken);
+                    enviarFila();
                 }
             });
 
@@ -590,6 +742,20 @@
             if (!r2.ok) { const e = await r2.json(); throw new Error(e.error?.message); }
             coaudData = (await r2.json()).values || [];
 
+            // INVENTARIO
+            const r3 = await fetch(
+                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/${ABA_INV}!A:I`,
+                { headers: { 'Authorization': `Bearer ${accessToken}` } }
+            );
+            if (r3.status === 401) throw new Error('SESSAO_EXPIRADA');
+            if (!r3.ok) {
+                throw new Error('Não foi possível ler a aba INVENTARIO. Confira se ela existe na planilha com esse nome exato.');
+            }
+            registrosInv = ((await r3.json()).values || []).slice(1)
+                .filter(row => normalizeNRP(row[0]))
+                .map(linhaParaRegistro);
+            preencherListaInventarios();
+
             // Popula salas (apenas da aba COAUD)
             if (coaudData.length > 1) {
                 const salas = [...new Set(
@@ -605,7 +771,7 @@
                     sel.appendChild(opt);
                 });
             }
-            setProgress(`✅ SIGMAS: ${sigmasData.length-1} | COAUD: ${coaudData.length-1}`);
+            setProgress(`✅ SIGMAS: ${sigmasData.length-1} | COAUD: ${coaudData.length-1} | INVENTARIO: ${registrosInv.length}`);
             document.getElementById("spinner").style.display = "none";
             document.getElementById("salaSelect").focus();
         } catch (error) {
@@ -659,9 +825,13 @@
         sel.value = sala;
         sel.disabled = true;
         document.getElementById("confirmarSala").disabled = true;
+        document.getElementById("inventarioNome").disabled = true;
         travarModo(true);
 
-        // Inventário vem da COAUD, sem os itens que já estavam na planilha carregada
+        // Itens desta sala já registrados neste inventário (por qualquer pessoa)
+        nrpsCarregados = new Set(registrosDoInventario(sala).map(r => normalizeNRP(r.NRP)));
+
+        // Lista vem da COAUD, sem os itens já registrados
         const todosDaSala = coaudData.slice(1)
             .filter(row => (row[2] || '').trim().toUpperCase() === sala.toUpperCase());
 
@@ -678,17 +848,15 @@
         document.getElementById("inventarioHeader").style.display = "block";
         document.getElementById("salaTitle").textContent = sala;
 
-        carregadosDaSala = todosDaSala.length - currentSalaInventario.length;
-
         updateInventarioTable();
         document.getElementById("patrimonioInput").focus();
-        setProgress(`✅ Sala "${sala}" pronta. ${currentSalaInventario.length} itens aguardando bipagem.`);
+        atualizarStatusSalvamento();
+        setProgress(`✅ Sala "${sala}" pronta (${nomeInventario()}). ${currentSalaInventario.length} itens aguardando bipagem.`);
     }
 
     document.getElementById("confirmarSala").addEventListener("click", function() {
         const sala = document.getElementById("salaSelect").value.trim();
         if (!sala) { alert("Selecione uma sala."); return; }
-        nrpsCarregados = new Set();
         iniciarSala(sala);
     });
 
@@ -757,9 +925,9 @@
                 if (salas.length > 1) {
                     msg += `\n\nAtenção: a planilha também tem itens de outras localizações ` +
                            `(${salas.slice(1).map(s => s[0]).join(', ')}). ` +
-                           `Eles serão mantidos na exportação.`;
+                           `Eles também serão gravados no inventário.`;
                 }
-                msg += `\n\nContinuar a coleta desta sala?`;
+                msg += `\n\nOs itens serão gravados na aba INVENTARIO (${nomeInventario()}) e a coleta desta sala continua de onde parou. Confirmar?`;
                 if (!confirm(msg)) {
                     setProgress('Continuação cancelada.');
                     nomeEl.textContent = 'Nenhum arquivo escolhido';
@@ -767,11 +935,25 @@
                     return;
                 }
 
-                // Guarda os itens anteriores para concatenar na exportação
-                nrpsCarregados = new Set(itens.map(i => normalizeNRP(i.NRP)));
-                itens.forEach(i => patrimoniosColetados.push({ ...i, origem: 'planilha' }));
+                // Grava na aba INVENTARIO só o que ainda não estiver registrado
+                let novos = 0;
+                itens.forEach(i => {
+                    const salaItem = i.Localização || sala;
+                    const jaTem = registrosDoInventario(salaItem)
+                        .some(r => normalizeNRP(r.NRP) === normalizeNRP(i.NRP));
+                    if (!jaTem) {
+                        registrarNoInventario({ ...i, Localização: salaItem }, 'Importado da planilha', '');
+                        novos++;
+                    }
+                });
 
-                iniciarSala(sala);
+                setProgress(`Gravando ${novos} itens importados na aba INVENTARIO...`);
+                esvaziarFila().then(() => {
+                    iniciarSala(sala);
+                    if (novos < itens.length) {
+                        setProgress(`✅ ${novos} itens importados (${itens.length - novos} já estavam no inventário).`);
+                    }
+                });
             } catch (err) {
                 setProgress('Erro ao ler a planilha: ' + err.message);
                 alert('Erro ao ler a planilha: ' + err.message);
@@ -815,10 +997,12 @@
 
         const n = normalizeNRP(input);
 
-        // ── Passo 0: já estava na planilha carregada? ──
+        // ── Passo 0: já foi registrado nesta sala neste inventário? ──
         if (nrpsCarregados.has(n)) {
-            alert(`⚠ O patrimônio "${input}" já foi coletado (está na planilha carregada).`);
-            setProgress(`⚠ NRP "${input}" já consta na planilha anterior.`);
+            const reg = registrosDoInventario(salaSelecionada).find(r => normalizeNRP(r.NRP) === n);
+            alert(`⚠ O patrimônio "${input}" já foi registrado nesta sala` +
+                  (reg ? ` em ${reg.dataHora} por ${reg.operador}.` : '.'));
+            setProgress(`⚠ NRP "${input}" já registrado neste inventário.`);
             document.getElementById("patrimonioInput").value = "";
             document.getElementById("patrimonioInput").focus();
             return;
@@ -836,10 +1020,10 @@
                 // move o item encontrado para o TOPO da lista
                 currentSalaInventario.splice(idxInventario, 1);
                 currentSalaInventario.unshift(item);
-                patrimoniosColetados.push({
+                registrarNoInventario({
                     NRP: item.NRP, Material: item.Material,
                     Localização: salaSelecionada, Responsável: item.Responsável
-                });
+                }, 'Encontrado', '');
                 updateInventarioTable();
                 setProgress(`✅ NRP "${input}" localizado na sala.`);
             } else {
@@ -895,7 +1079,7 @@
         });
     }
 
-    function marcarComoColetado(rowRef, status) {
+    function marcarComoColetado(rowRef, status, situacao, salaAnterior) {
         const n = normalizeNRP(rowRef[0]);
         const idx = currentSalaInventario.findIndex(item => normalizeNRP(item.NRP) === n);
         if (idx !== -1) {
@@ -913,12 +1097,12 @@
                 status
             });
         }
-        patrimoniosColetados.push({
+        registrarNoInventario({
             NRP: rowRef[0]?.toString(),
             Material: rowRef[1]?.toString() || 'N/A',
             Localização: salaSelecionada,
             Responsável: rowRef[3]?.toString() || ''
-        });
+        }, situacao, salaAnterior);
         updateInventarioTable();
     }
 
@@ -940,15 +1124,16 @@
 
     function atualizarInfoContinuacao() {
         const extra = document.getElementById("salaInfoExtra");
-        if (!salaSelecionada || !nrpsCarregados.size) {
+        if (!salaSelecionada) {
             extra.textContent = '';
             extra.style.display = 'none';
             return;
         }
         const faltam = currentSalaInventario.filter(i => i.status === 'red').length;
+        const registrados = registrosDoInventario(salaSelecionada).length;
         extra.textContent =
-            `📂 Continuação: ${nrpsCarregados.size} itens vieram da planilha anterior ` +
-            `(${carregadosDaSala} desta sala). Faltam ${faltam} itens para coletar.`;
+            `📂 ${nomeInventario()}: ${registrados} itens já registrados nesta sala. ` +
+            `Faltam ${faltam} itens para coletar.`;
         extra.style.display = 'block';
     }
 
@@ -1063,7 +1248,7 @@
                 atualizarMemoria(coaudData, nrp, null);
             }
 
-            marcarComoColetado(linha, 'yellow');
+            marcarComoColetado(linha, 'yellow', 'Transferido', transfPendente.salaOriginal);
             setProgress(`✅ Transferido de ${transfPendente.salaOriginal} → ${salaSelecionada}.`);
             fecharModalTransf();
         } catch (error) {
@@ -1165,7 +1350,7 @@
                 setProgress(`✅ NRP ${nrp} inserido em SIGMAS.`);
             }
 
-            marcarComoColetado(linha, 'yellow');
+            marcarComoColetado(linha, 'yellow', 'Cadastrado', '');
             fecharModalNovo();
         } catch (error) {
             if (error.message === 'SESSAO_EXPIRADA') {
@@ -1231,6 +1416,7 @@
         currentSalaInventario = [];
         nrpsCarregados = new Set();
         travarModo(false);
+        document.getElementById("inventarioNome").disabled = false;
         const nomeEl = document.getElementById("fileContinuarNome");
         nomeEl.textContent = 'Nenhum arquivo escolhido';
         nomeEl.classList.remove('loaded');
@@ -1240,15 +1426,15 @@
     });
 
     // ══════════════════════════════════════════════════════
-    //  EXPORTS XLSX (planilha carregada + novos, sem duplicar)
+    //  EXPORTS XLSX — lidos da aba INVENTARIO
+    //  (sala atual; sem sala escolhida = inventário inteiro)
     // ══════════════════════════════════════════════════════
     function coletadosSemDuplicados() {
         const mapa = new Map();
-        patrimoniosColetados.forEach(item => {
+        registrosDoInventario(salaSelecionada || '').forEach(item => {
             const n = normalizeNRP(item.NRP);
             if (!n) return;
-            // O registro mais recente prevalece (ex.: transferido depois de carregado)
-            mapa.set(n, item);
+            mapa.set(n, item);   // o registro mais recente prevalece
         });
         return [...mapa.values()];
     }
@@ -1256,22 +1442,28 @@
     // normalizarNome() e ehResponsavelCoaud() vêm do coaud-regras.js
 
     function sufixoArquivo() {
-        return salaSelecionada ? '_' + nomeArquivoSeguro(salaSelecionada) : '';
+        return '_' + nomeArquivoSeguro(salaSelecionada || nomeInventario());
     }
 
-    // Responsáveis específicos = planilha carregada (inteira) + novos itens de Alberto, Paulo e José Henrique
-    function exportPlanilhaEspecifica() {
+    function ehImportado(item) {
+        return (item.situacao || '').toUpperCase().startsWith('IMPORTADO');
+    }
+
+    // Responsáveis específicos = itens importados da planilha + itens de Alberto, Paulo e José Henrique
+    async function exportPlanilhaEspecifica() {
+        await esvaziarFila();
         const dados = coletadosSemDuplicados().filter(item =>
-            item.origem === 'planilha' || ehResponsavelCoaud(item.Responsável));
+            ehImportado(item) || ehResponsavelCoaud(item.Responsável));
         if (!dados.length) { alert("Nenhum patrimônio para responsáveis específicos."); return; }
         exportarXLSX(dados, "Responsaveis_Especificos",
             `Responsaveis_COAUD${sufixoArquivo()}_${formatarData()}.xlsx`);
     }
 
-    function exportPlanilhaOutros() {
-        // Outros responsáveis = somente itens coletados agora cujo responsável não é um dos 3
+    // Outros responsáveis = itens coletados cujo responsável não é um dos 3
+    async function exportPlanilhaOutros() {
+        await esvaziarFila();
         const dados = coletadosSemDuplicados().filter(item =>
-            item.origem !== 'planilha' && !ehResponsavelCoaud(item.Responsável));
+            !ehImportado(item) && !ehResponsavelCoaud(item.Responsável));
         if (!dados.length) { alert("Nenhum patrimônio para outros responsáveis."); return; }
         exportarXLSX(dados, "Outros_Responsaveis",
             `Outros_Responsaveis${sufixoArquivo()}_${formatarData()}.xlsx`);
@@ -1287,23 +1479,22 @@
         XLSX.utils.book_append_sheet(wb, ws, nomePlanilha);
         XLSX.writeFile(wb, nomeArquivo);
 
-        const daPlanilha = dados.filter(d => d.origem === 'planilha').length;
-        setProgress(daPlanilha
-            ? `⬇ Exportados ${dados.length} itens (${daPlanilha} da planilha anterior + ${dados.length - daPlanilha} novos).`
-            : `⬇ Exportados ${dados.length} itens.`);
+        const pend = filaEnvio.length
+            ? ` Atenção: ${filaEnvio.length} bip(s) ainda não foram salvos na planilha.` : '';
+        setProgress(`⬇ Exportados ${dados.length} itens de ${salaSelecionada || nomeInventario()}.${pend}`);
     }
 
     // ══════════════════════════════════════════════════════
     //  RESET TOTAL
     // ══════════════════════════════════════════════════════
     document.getElementById("refreshButton").addEventListener("click", function() {
-        if (!confirm("RESET TOTAL? Todos os dados coletados desta sessão serão perdidos.")) return;
+        if (!confirm("RESET TOTAL? Limpa a tela e libera a sala.\n\nOs bips já salvos na aba INVENTARIO NÃO são apagados.")) return;
         salaSelecionada = "";
-        patrimoniosColetados = [];
         currentSalaInventario = [];
         nrpsCarregados = new Set();
         travarModo(false);
         mudarModo('zero');
+        document.getElementById("inventarioNome").disabled = false;
         const nomeEl = document.getElementById("fileContinuarNome");
         nomeEl.textContent = 'Nenhum arquivo escolhido';
         nomeEl.classList.remove('loaded');
