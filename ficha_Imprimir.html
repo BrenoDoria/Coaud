@@ -414,7 +414,7 @@
         <button class="btn-print"  onclick="window.print()">🖨 Imprimir</button>
         <button class="btn-voltar" onclick="window.location.href='fichas.html'">← Voltar</button>
     </div>
-
+<script src="coaud-operadores.js"></script>
 <script>
 const operadoresPontos = {
     "Adson Miranda dos Anjos": "914.262",
@@ -541,7 +541,7 @@ function carregarFicha() {
     const [dataParte, horaParte] = (f.dataRetirada || '').split(', ');
     const data = dataParte || '-';
     const hora = horaParte || '-';
-    const pt   = nome => operadoresPontos[nome] || 'N/A';
+        const pt   = nome => pontoDoOperador(nome) || operadoresPontos[nome] || 'N/A';
     const set  = (id, val) => {
         const el = document.getElementById(id);
         if (el) el.textContent = val || '-';
