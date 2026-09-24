@@ -251,114 +251,7 @@
     <script>
 
 
-          const todosOperadores = listaOperadoresAtivos();
-    vincularListaOperadores(todosOperadores, FILE_ID);
-
-    // ══════════════════════════════════════════════════════
-    //  BUSCA DE OPERADOR — lista ao focar + teclado
-    // ══════════════════════════════════════════════════════
-    let operadorFocusIndex = -1;
-
-    function renderListaOperador1(filtrados, busca) {
-        const lista = document.getElementById('operador1Lista');
-        lista.innerHTML = '';
-        operadorFocusIndex = -1;
-
-        if (!filtrados.length) {
-            const li = document.createElement('li');
-            li.textContent = 'Nenhum operador encontrado.';
-            li.style.color = 'var(--text-muted)';
-            lista.appendChild(li);
-        } else {
-            const regex = busca
-                ? new RegExp(`(${busca.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`, 'gi')
-                : null;
-            filtrados.forEach(nome => {
-                const li = document.createElement('li');
-                li.innerHTML = regex
-                    ? nome.replace(regex, '<strong style="color:#4ade80">$1</strong>')
-                    : nome;
-                li.dataset.nome = nome;
-                li.onmousedown = () => selecionarOperador1(nome);
-                lista.appendChild(li);
-            });
-        }
-        lista.style.display = 'block';
-    }
-
-    function filtrarOperador1() {
-        const busca = document.getElementById('operador1Busca').value.trim().toLowerCase();
-        if (busca.length === 0) {
-            limparSelecaoOperador1();
-            renderListaOperador1(todosOperadores, '');
-            return;
-        }
-        const filtrados = todosOperadores.filter(n => n.toLowerCase().includes(busca));
-        renderListaOperador1(filtrados, busca);
-    }
-
-    function abrirListaOperador1() {
-        filtrarOperador1();
-    }
-
-    function selecionarOperador1(nome) {
-        document.getElementById('operador1Busca').value  = nome;
-        document.getElementById('operador1Select').value = nome;
-        document.getElementById('operador1Lista').style.display = 'none';
-        const tag = document.getElementById('operador1Selecionado');
-        tag.textContent   = '✔ ' + nome;
-        tag.style.display = 'block';
-        atualizarOperador2();
-        autoPreencherLocalEEvento();
-        atualizarEstadoBotaoRegistrar();
-    }
-
-    function limparSelecaoOperador1() {
-        document.getElementById('operador1Select').value = '';
-        const tag = document.getElementById('operador1Selecionado');
-        tag.textContent   = '';
-        tag.style.display = 'none';
-        atualizarEstadoBotaoRegistrar();
-    }
-
-    function fecharListaOperador1() {
-        document.getElementById('operador1Lista').style.display = 'none';
-        operadorFocusIndex = -1;
-    }
-
-    document.getElementById('operador1Busca').addEventListener('keydown', function(e) {
-        const lista = document.getElementById('operador1Lista');
-        const itens = Array.from(lista.querySelectorAll('li[data-nome]'));
-        if (lista.style.display === 'none' || !itens.length) return;
-
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            operadorFocusIndex = Math.min(operadorFocusIndex + 1, itens.length - 1);
-            destacarItemFocado(itens);
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            operadorFocusIndex = Math.max(operadorFocusIndex - 1, 0);
-            destacarItemFocado(itens);
-        } else if (e.key === 'Enter') {
-            e.preventDefault();
-            if (operadorFocusIndex >= 0) {
-                selecionarOperador1(itens[operadorFocusIndex].dataset.nome);
-            } else if (itens.length === 1) {
-                selecionarOperador1(itens[0].dataset.nome);
-            }
-        } else if (e.key === 'Escape') {
-            fecharListaOperador1();
-        }
-    });
-
-    function destacarItemFocado(itens) {
-        itens.forEach((li, i) => {
-            li.style.background = i === operadorFocusIndex ? 'rgba(0,176,79,0.25)' : '';
-        });
-        if (operadorFocusIndex >= 0) {
-            itens[operadorFocusIndex].scrollIntoView({ block: 'nearest' });
-        }
-    }
+         
         
         
     // ══════════════════════════════════════════════════════
@@ -504,6 +397,115 @@
         "Wendel Vieira da Costa","Wesley Maurício Ribeiro França",
         "William Neves da Silva","Wirlem Silva Alves"
     ];
+
+         const todosOperadores = listaOperadoresAtivos();
+    vincularListaOperadores(todosOperadores, FILE_ID);
+
+    // ══════════════════════════════════════════════════════
+    //  BUSCA DE OPERADOR — lista ao focar + teclado
+    // ══════════════════════════════════════════════════════
+    let operadorFocusIndex = -1;
+
+    function renderListaOperador1(filtrados, busca) {
+        const lista = document.getElementById('operador1Lista');
+        lista.innerHTML = '';
+        operadorFocusIndex = -1;
+
+        if (!filtrados.length) {
+            const li = document.createElement('li');
+            li.textContent = 'Nenhum operador encontrado.';
+            li.style.color = 'var(--text-muted)';
+            lista.appendChild(li);
+        } else {
+            const regex = busca
+                ? new RegExp(`(${busca.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`, 'gi')
+                : null;
+            filtrados.forEach(nome => {
+                const li = document.createElement('li');
+                li.innerHTML = regex
+                    ? nome.replace(regex, '<strong style="color:#4ade80">$1</strong>')
+                    : nome;
+                li.dataset.nome = nome;
+                li.onmousedown = () => selecionarOperador1(nome);
+                lista.appendChild(li);
+            });
+        }
+        lista.style.display = 'block';
+    }
+
+    function filtrarOperador1() {
+        const busca = document.getElementById('operador1Busca').value.trim().toLowerCase();
+        if (busca.length === 0) {
+            limparSelecaoOperador1();
+            renderListaOperador1(todosOperadores, '');
+            return;
+        }
+        const filtrados = todosOperadores.filter(n => n.toLowerCase().includes(busca));
+        renderListaOperador1(filtrados, busca);
+    }
+
+    function abrirListaOperador1() {
+        filtrarOperador1();
+    }
+
+    function selecionarOperador1(nome) {
+        document.getElementById('operador1Busca').value  = nome;
+        document.getElementById('operador1Select').value = nome;
+        document.getElementById('operador1Lista').style.display = 'none';
+        const tag = document.getElementById('operador1Selecionado');
+        tag.textContent   = '✔ ' + nome;
+        tag.style.display = 'block';
+        atualizarOperador2();
+        autoPreencherLocalEEvento();
+        atualizarEstadoBotaoRegistrar();
+    }
+
+    function limparSelecaoOperador1() {
+        document.getElementById('operador1Select').value = '';
+        const tag = document.getElementById('operador1Selecionado');
+        tag.textContent   = '';
+        tag.style.display = 'none';
+        atualizarEstadoBotaoRegistrar();
+    }
+
+    function fecharListaOperador1() {
+        document.getElementById('operador1Lista').style.display = 'none';
+        operadorFocusIndex = -1;
+    }
+
+    document.getElementById('operador1Busca').addEventListener('keydown', function(e) {
+        const lista = document.getElementById('operador1Lista');
+        const itens = Array.from(lista.querySelectorAll('li[data-nome]'));
+        if (lista.style.display === 'none' || !itens.length) return;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            operadorFocusIndex = Math.min(operadorFocusIndex + 1, itens.length - 1);
+            destacarItemFocado(itens);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            operadorFocusIndex = Math.max(operadorFocusIndex - 1, 0);
+            destacarItemFocado(itens);
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (operadorFocusIndex >= 0) {
+                selecionarOperador1(itens[operadorFocusIndex].dataset.nome);
+            } else if (itens.length === 1) {
+                selecionarOperador1(itens[0].dataset.nome);
+            }
+        } else if (e.key === 'Escape') {
+            fecharListaOperador1();
+        }
+    });
+
+    function destacarItemFocado(itens) {
+        itens.forEach((li, i) => {
+            li.style.background = i === operadorFocusIndex ? 'rgba(0,176,79,0.25)' : '';
+        });
+        if (operadorFocusIndex >= 0) {
+            itens[operadorFocusIndex].scrollIntoView({ block: 'nearest' });
+        }
+    }
 
     // ══════════════════════════════════════════════════════
     //  DASHBOARD — KPIs
