@@ -1931,6 +1931,12 @@
         const btn   = document.getElementById('btnNovoInv');
         const aviso = document.getElementById('avisoNovoInv');
         if (!btn) return;
+        // Operador não cria inventário: o botão nem aparece
+        if (!ehGestor()) {
+            btn.style.display = 'none';
+            aviso.style.display = 'none';
+            return;
+        }
         const ult = ultimoInventario();
 
         let liberado = false, msg = '';
@@ -1968,6 +1974,7 @@
     //  NOVO INVENTÁRIO (cria a aba "INV <nome>" na planilha)
     // ══════════════════════════════════════════════════════
     function abrirModalNovoInv() {
+        if (!ehGestor()) { toast('Só supervisor ou dev pode criar inventário.', 'aviso'); return; }
         if (salaSelecionada) { toast('Clique em "Nova Sala" antes de criar um inventário.', 'aviso'); return; }
         if (!accessToken || tokenExpirado()) { mostrarReconectar('Reconecte para criar o inventário.'); return; }
         const ult = ultimoInventario();
@@ -2031,9 +2038,16 @@
         return registrosDoInventario(salaSelecionada).filter(r => normalizeNRP(r.NRP) === n).pop() || null;
     }
 
+    // supervisor e dev têm os poderes de gestão (desconsiderar de outros, criar inventário)
+    function ehGestor() {
+        const u = JSON.parse(localStorage.getItem('usuarioLogado')) || {};
+        const p = (u.permissao || '').toString().toLowerCase();
+        return p === 'supervisor' || p === 'dev';
+    }
+
     function podeDesconsiderar(reg) {
         const u = JSON.parse(localStorage.getItem('usuarioLogado')) || {};
-        if ((u.permissao || '').toString().toLowerCase() === 'supervisor') return true;
+        if (ehGestor()) return true;
         return normInv(reg.operador) === normInv(operadorAtual());
     }
 
