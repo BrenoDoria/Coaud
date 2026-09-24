@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════
-//  COAUD — script.js (v4)
+//  COAUD — script.js (v5)
 // ══════════════════════════════════════════════════════
 //
 //  REGRAS DE OURO deste arquivo (aprendidas na prática):
@@ -16,6 +16,9 @@
 //    perdida). A recuperação não é retentar às cegas: é
 //    VERIFICAR — tenta logar com a senha nova; se entra,
 //    a troca foi aplicada e seguimos como sucesso.
+//
+//  v5: permissões "dev" (tudo + Usuários do sistema) e
+//      "operador" (só Escaneamento).
 // ══════════════════════════════════════════════════════
 
 const AUTH_URL = 'https://script.google.com/macros/s/AKfycbwAIg5XQiQQPDcfWYUgI-sRX51qlVpcSD6X7uE3z6-PjTDrdpE2MB7mTIfsPFFKsBed/exec';
@@ -23,8 +26,10 @@ const AUTH_URL = 'https://script.google.com/macros/s/AKfycbwAIg5XQiQQPDcfWYUgI-s
 const CLIENT_ID = '286050228811-cv6vsd075480anb1i6auuc421enuaf8q.apps.googleusercontent.com';
 
 const PERMISSOES = {
+    dev:          ['scanSystem', 'compareSystem', 'locateSystem', 'almoxarifadoSystem', 'usersSystem'],
     supervisor:   ['scanSystem', 'compareSystem', 'locateSystem', 'almoxarifadoSystem'],
     almoxarifado: ['almoxarifadoSystem'],
+    operador:     ['scanSystem'],
 };
 
 // Leitura (hedged): tentativas em 0ms, 2.5s e 8s
@@ -186,7 +191,7 @@ function aquecerServidor(motivo) {
 // ══ Sistemas visíveis conforme permissão ═══════════════
 function configurarSistemas(permissao) {
     console.log(`✓ configurarSistemas("${permissao}")`);
-    const todos = ['scanSystem', 'compareSystem', 'locateSystem', 'almoxarifadoSystem'];
+    const todos = ['scanSystem', 'compareSystem', 'locateSystem', 'almoxarifadoSystem', 'usersSystem'];
     const liberados = PERMISSOES[permissao] || [];
 
     if (liberados.length === 0) {
