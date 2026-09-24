@@ -14,7 +14,8 @@ const CABECALHO_INV = [
     'NRP', 'Material', 'Localização', 'Responsável', 'Situação',
     'Sala anterior', 'Data/Hora', 'Operador', 'Inventário', 'Responsável anterior'
 ];
-const CABECALHO_CONTROLE = ['Nome', 'Aba', 'Criado em', 'Criado por', 'Concluído em'];
+const CABECALHO_CONTROLE = ['Nome', 'Aba', 'Criado em', 'Criado por', 'Concluído em', 'Responsáveis'];
+const SEP_RESPONSAVEIS   = ' | ';   // separador dos nomes na coluna F da aba INVENTARIOS
 
 // "INV 2026" → "SOBRAS INV 2026"
 function abaSobrasDe(abaInv) {
@@ -56,7 +57,7 @@ async function listarInventarios(token, fileId) {
 
     let controle = [];
     if (sheetIds[ABA_CONTROLE_INV] !== undefined) {
-        const d = await sheetsFetch(token, `${SHEETS_API}${fileId}/values/${urlRange(ABA_CONTROLE_INV, 'A:E')}`);
+        const d = await sheetsFetch(token, `${SHEETS_API}${fileId}/values/${urlRange(ABA_CONTROLE_INV, 'A:F')}`);
         controle = (d.values || []).slice(1);
     }
 
@@ -77,6 +78,8 @@ async function listarInventarios(token, fileId) {
                 criadoEm: c ? (c[2] || '') : '',
                 criadoPor: c ? (c[3] || '') : '',
                 concluidoEm: c ? (c[4] || '') : '',
+                // responsáveis considerados neste inventário (vazio nos inventários antigos)
+                responsaveis: c && c[5] ? c[5].toString().split(SEP_RESPONSAVEIS).map(x => x.trim()).filter(Boolean) : [],
                 linhaControle: i >= 0 ? i + 2 : -1   // linha na aba INVENTARIOS
             };
         });
@@ -100,7 +103,8 @@ async function criarAba(token, fileId, titulo, cabecalho) {
 }
 
 // Cria a aba "INV <nome>" com o cabeçalho e registra na aba INVENTARIOS
-async function criarInventario(token, fileId, nome, operador) {
+// responsaveis = lista de nomes considerados neste inventário (fica gravada na coluna F)
+async function criarInventario(token, fileId, nome, operador, responsaveis) {
     nome = (nome || '').toString().trim();
     if (!nome) throw new Error('Digite um nome para o inventário.');
     if (/[\[\]\*\?\/\\:]/.test(nome)) throw new Error('O nome não pode ter os caracteres [ ] * ? / \\ :');
@@ -120,12 +124,18 @@ async function criarInventario(token, fileId, nome, operador) {
 
     if (sheetIds[ABA_CONTROLE_INV] === undefined) {
         await criarAba(token, fileId, ABA_CONTROLE_INV, CABECALHO_CONTROLE);
+    } else {
+        // abas INVENTARIOS antigas não têm o título da coluna F
+        await sheetsFetch(token,
+            `${SHEETS_API}${fileId}/values/${urlRange(ABA_CONTROLE_INV, 'F1')}?valueInputOption=RAW`,
+            { method: 'PUT', body: JSON.stringify({ values: [[CABECALHO_CONTROLE[5]]] }) });
     }
+    const listaResp = (responsaveis || []).join(SEP_RESPONSAVEIS);
     await sheetsFetch(token,
-        `${SHEETS_API}${fileId}/values/${urlRange(ABA_CONTROLE_INV, 'A:E')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
-        { method: 'POST', body: JSON.stringify({ values: [[nome, aba, dataHoraBR(), operador || '', '']] }) });
+        `${SHEETS_API}${fileId}/values/${urlRange(ABA_CONTROLE_INV, 'A:F')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+        { method: 'POST', body: JSON.stringify({ values: [[nome, aba, dataHoraBR(), operador || '', '', listaResp]] }) });
 
-    return { aba, nome, sheetId, abaSobras: abaSobrasDe(aba) };
+    return { aba, nome, sheetId, abaSobras: abaSobrasDe(aba), responsaveis: (responsaveis || []).slice() };
 }
 
 // Cria a aba de sobras de um inventário antigo, se ainda não existir.
@@ -184,7 +194,7 @@ async function localizarLinhaRegistro(token, fileId, aba, reg) {
 // ══════════════════════════════════════════════════════
 //  REGRA DE CONCLUSÃO DO INVENTÁRIO
 //  Um inventário está concluído quando TODOS estes itens foram bipados:
-//   • itens da SIGMAS cujo responsável é um dos 3 da COAUD
+//   • itens da SIGMAS cujo responsável está na lista de responsáveis (aba CONFIG)
 //   • itens da aba COAUD (mesmo que a SIGMAS esteja divergente)
 //  (usa ehResponsavelCoaud do coaud-regras.js)
 // ══════════════════════════════════════════════════════
@@ -194,11 +204,12 @@ function normNRPInv(nrp) {
 }
 
 // sigmasRows / coaudRows SEM o cabeçalho. Devolve Map(nrp → linha)
-function itensExigidosParaConcluir(sigmasRows, coaudRows) {
+// lista (opcional) = responsáveis a considerar; sem ela, usa a lista atual (aba CONFIG)
+function itensExigidosParaConcluir(sigmasRows, coaudRows, lista) {
     const exigidos = new Map();
     (sigmasRows || []).forEach(r => {
         const n = r && normNRPInv(r[0]);
-        if (n && ehResponsavelCoaud(r[3])) exigidos.set(n, r);
+        if (n && ehResponsavelCoaud(r[3], lista)) exigidos.set(n, r);
     });
     (coaudRows || []).forEach(r => {
         const n = r && normNRPInv(r[0]);
@@ -212,4 +223,63 @@ function pendentesParaConcluir(exigidos, nrpsInventario) {
     const pend = [];
     exigidos.forEach((row, n) => { if (!nrpsInventario.has(n)) pend.push(row); });
     return pend;
+}
+
+
+// ══════════════════════════════════════════════════════
+//  SINCRONIZAR A ABA COAUD COM A LISTA DE RESPONSÁVEIS
+//  Usado quando um novo inventário muda os responsáveis:
+//   • ENTRAM na COAUD os itens da SIGMAS dos responsáveis da lista
+//     que ainda não estão lá
+//   • SAEM da COAUD os itens cujo responsável não está na lista
+//  A SIGMAS nunca é alterada.
+// ══════════════════════════════════════════════════════
+function previaSincronizacaoCoaud(sigmasRows, coaudRows, lista) {
+    const naCoaud = new Set((coaudRows || []).map(r => r && normNRPInv(r[0])).filter(Boolean));
+    const vistos  = new Set();
+    const adicionar = (sigmasRows || []).filter(r => {
+        const n = r && normNRPInv(r[0]);
+        if (!n || naCoaud.has(n) || vistos.has(n) || !ehResponsavelCoaud(r[3], lista)) return false;
+        vistos.add(n);
+        return true;
+    });
+    const remover = (coaudRows || []).filter(r => r && normNRPInv(r[0]) && !ehResponsavelCoaud(r[3], lista));
+    return { adicionar, remover };
+}
+
+// Aplica a sincronização relendo SIGMAS e COAUD AGORA (não usa dados antigos da memória).
+// Devolve { adicionados, removidos }.
+async function aplicarSincronizacaoCoaud(token, fileId, lista, textoLog) {
+    const meta = await sheetsFetch(token, `${SHEETS_API}${fileId}?fields=sheets.properties(title,sheetId)`);
+    const coaud = (meta.sheets || []).map(x => x.properties).find(p => p.title === 'COAUD');
+    if (!coaud) throw new Error('Aba COAUD não encontrada.');
+
+    const q = ['SIGMAS!A:D', 'COAUD!A:D'].map(r => 'ranges=' + encodeURIComponent(r)).join('&');
+    const d = await sheetsFetch(token, `${SHEETS_API}${fileId}/values:batchGet?${q}`);
+    const vr = d.valueRanges || [];
+    const sigmas = ((vr[0] && vr[0].values) || []).slice(1);
+    const coaudLinhas = ((vr[1] && vr[1].values) || []);   // com cabeçalho (índice = linha - 1)
+
+    // Linhas a apagar (de baixo para cima, numa só operação)
+    const apagar = [];
+    for (let i = coaudLinhas.length - 1; i >= 1; i--) {
+        const r = coaudLinhas[i] || [];
+        if (normNRPInv(r[0]) && !ehResponsavelCoaud(r[3], lista)) apagar.push(i);
+    }
+    if (apagar.length) {
+        await sheetsFetch(token, `${SHEETS_API}${fileId}:batchUpdate`, {
+            method: 'POST',
+            body: JSON.stringify({ requests: apagar.map(i => ({ deleteDimension: { range: {
+                sheetId: coaud.sheetId, dimension: 'ROWS', startIndex: i, endIndex: i + 1 } } })) })
+        });
+    }
+
+    const { adicionar } = previaSincronizacaoCoaud(sigmas, coaudLinhas.slice(1), lista);
+    if (adicionar.length) {
+        const log = textoLog || ('entrou na COAUD pela lista de responsáveis em ' + dataHoraBR());
+        await sheetsFetch(token,
+            `${SHEETS_API}${fileId}/values/${urlRange('COAUD', 'A:E')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+            { method: 'POST', body: JSON.stringify({ values: adicionar.map(r => [r[0] || '', r[1] || '', r[2] || '', r[3] || '', log]) }) });
+    }
+    return { adicionados: adicionar.length, removidos: apagar.length };
 }
