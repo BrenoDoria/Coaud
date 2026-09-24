@@ -3,875 +3,120 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>COAUD — Localizador e Transferência</title>
+    <title>COAUD — Portal de Sistemas</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='4' fill='%2300b04f'/><text y='22' x='5' font-size='17' fill='white' font-family='Arial' font-weight='bold'>C</text></svg>">
     <link rel="stylesheet" href="style.css">
     <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <script src="sidebar-init.js" defer></script>
-    <script src="coaud-regras.js"></script>
     <style>
-        .aba-info-chip {
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-            padding: 3px 10px;
-            border-radius: 20px;
-            font-size: 10px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: .3px;
-            margin-right: 4px;
-        }
-        .chip-sigmas { background: rgba(96,165,250,0.15); color: #60a5fa; border: 1px solid rgba(96,165,250,0.3); }
-        .chip-coaud  { background: rgba(0,176,79,0.15); color: #4ade80; border: 1px solid rgba(0,176,79,0.3); }
-
-        .ficha-resultado {
-            background: rgba(0,0,0,0.2);
-            border: 1px solid var(--card-border);
-            border-radius: var(--radius-sm);
-            padding: 14px 16px;
-            margin-bottom: 8px;
-        }
-        .ficha-resultado .campo {
+        /* Página de login — sem sidebar, centralizado */
+        body {
             display: flex;
-            gap: 10px;
-            margin-bottom: 6px;
-            font-size: 13px;
-            align-items: baseline;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background: var(--page-bg);
+            padding: 20px;
         }
-        .ficha-resultado .campo strong {
-            color: var(--verde);
-            font-weight: 700;
-            min-width: 110px;
-            text-transform: uppercase;
-            font-size: 10px;
-            letter-spacing: .4px;
-        }
-        .ficha-resultado .campo span {
-            color: var(--text);
+        .login-page-wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
             flex: 1;
-        }
-
-        .editor-section {
-            background: rgba(0,176,79,0.06);
-            border: 1px solid rgba(0,176,79,0.2);
-            border-radius: var(--radius);
-            padding: 16px 18px;
-            margin-top: 14px;
-        }
-        .editor-section h3 {
-            font-size: 12px;
-            font-weight: 700;
-            color: var(--verde);
-            text-transform: uppercase;
-            letter-spacing: .5px;
-            margin-bottom: 12px;
-            padding-bottom: 6px;
-            border-bottom: 1px solid rgba(0,176,79,0.15);
-        }
-
-        .novo-patrimonio-form {
-            background: rgba(26,95,168,0.08);
-            border: 1px solid rgba(26,95,168,0.2);
-            border-radius: var(--radius);
-            padding: 16px 18px;
-            margin-top: 14px;
-            display: none;
-        }
-        .novo-patrimonio-form h3 {
-            font-size: 12px;
-            font-weight: 700;
-            color: #60a5fa;
-            text-transform: uppercase;
-            letter-spacing: .5px;
-            margin-bottom: 12px;
-            padding-bottom: 6px;
-            border-bottom: 1px solid rgba(26,95,168,0.2);
-        }
-
-        #responsavel-list, #novo-responsavel-list {
-            list-style: none;
-            max-height: 200px;
-            overflow-y: auto;
-            border: 1px solid var(--card-border);
-            border-radius: var(--radius-sm);
-            background: rgba(0,0,0,0.25);
-            margin-top: 8px;
-            padding: 0;
-            display: none;
-        }
-        #responsavel-list li, #novo-responsavel-list li {
-            padding: 8px 12px;
-            cursor: pointer;
-            font-size: 12px;
-            color: var(--text);
-            border-bottom: 1px solid var(--border-light);
-        }
-        #responsavel-list li:hover, #novo-responsavel-list li:hover {
-            background: rgba(0,176,79,0.12);
-            color: #4ade80;
-        }
-        #responsavel-list li:last-child, #novo-responsavel-list li:last-child { border-bottom: none; }
-
-        /* Banner de reconexão da sessão Google (mesmo das outras telas) */
-        #reconectar-banner {
-            display: none; align-items: center; gap: 12px; flex-wrap: wrap;
-            background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.35);
-            border-radius: 6px; padding: 12px 16px; margin-bottom: 14px;
-        }
-        #reconectar-msg { color: #fbbf24; font-size: 13px; font-weight: 600; }
-
-        .form-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            margin-bottom: 12px;
-        }
-        @media(max-width:600px) {
-            .form-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 <body>
 
-    <div class="app-layout">
+    <div class="login-page-wrap">
 
-        <!-- ══ SIDEBAR ═══════════════════════════════════ -->
-        <aside class="sidebar" id="sidebar">
-            <div class="sidebar-brand">
-                <div class="brand-row">
-                    <div class="brand-icon">C</div>
-                    <div>
-                        <div class="brand-name">CÂMARA DOS DEPUTADOS</div>
-                        <div class="brand-sub">COAUD</div>
-                    </div>
+        <!-- ── LOGIN ── -->
+        <div id="login-container" class="login-card">
+            <div class="login-brasao">
+                <img src="LOGOCOAUD.png" alt="COAUD"
+                    style="width:64px;height:auto;margin-bottom:6px">
+            </div>
+            <h1 class="login-titulo">Portal COAUD</h1>
+            <p class="login-subtitulo">Entre com seu número de ponto</p>
+
+            <div class="field-group">
+                <label class="field-label" for="username">Número de ponto</label>
+                <input type="text" id="username"
+                    placeholder="Ex.: 922.083" autocomplete="off">
+            </div>
+            <div class="field-group">
+                <label class="field-label" for="password">Senha</label>
+                <input type="password" id="password" placeholder="••••••">
+            </div>
+
+            <button id="loginButton" class="btn-primary-full">Entrar</button>
+            <p id="loginMessage" class="login-msg"></p>
+        </div>
+
+        <!-- ── PORTAL (após login) ── -->
+        <div id="systems-container" class="systems-card" style="display:none">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid var(--card-border)">
+                <div>
+                    <div style="font-size:13px;font-weight:700;color:var(--verde)">Portal COAUD</div>
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Selecione o sistema</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px">
+                    <span class="topbar-chip" id="nome-usuario"></span>
+                    <button id="logoutButton" class="btn-logout"
+                        style="width:auto;padding:5px 12px;font-size:11px">
+                        ⎋ Sair
+                    </button>
                 </div>
             </div>
-            <div class="sidebar-user">
-                <div class="user-avatar" id="user-avatar">?</div>
-                <div class="user-info">
-                    <div class="user-name" id="user-name">Carregando...</div>
-                    <div class="user-role" id="user-role"></div>
-                </div>
-            </div>
-            <nav class="sidebar-nav">
-                <div class="nav-section-title">Sistemas</div>
-                <a class="nav-item" id="nav-escanear" href="index-escanear.html">
-                    <span class="nav-icon">📷</span> Sistema de Escaneamento
-                </a>
-                <a class="nav-item" id="nav-comparador" href="index-comparador.html">
-                    <span class="nav-icon">🔍</span> Comparador de Patrimônios
-                </a>
 
-                <!-- Localizador com subgrupo -->
-                <a class="nav-item nav-parent active" id="nav-localizador" href="index_Local.html">
-                    <span class="nav-icon" >📍</span> Localizador e Transferência
-                </a>
-                <div class="nav-subgroup">
-                    <a class="nav-subitem" id="tab-sigmas" onclick="mudarAba('SIGMAS');return false;" href="#">
-                        <span class="nav-sub-icon">↳</span> SIGMAS (todos)
-                    </a>
-                    <a class="nav-subitem" id="tab-coaud" onclick="mudarAba('COAUD');return false;" href="#">
-                        <span class="nav-sub-icon">↳</span> COAUD (responsáveis)
-                    </a>
-                </div>
-
-                <a class="nav-item" id="nav-almoxarifado" href="index-almoxarifado.html">
-                    <span class="nav-icon">📋</span> Controle de Almoxarifado
-                </a>
-                <a class="nav-item" href="index.html">
-                    <span class="nav-icon">🏠</span> Portal
-                </a>
-            </nav>
-            <div class="sidebar-footer">
-                <button class="btn-logout" onclick="fazerLogout()">
-                    <span>⎋</span> Sair do sistema
+            <div class="systems-grid" id="system-options">
+                <button id="scanSystem" class="system-btn"
+                    onclick="window.location.href='index-escanear.html'">
+                    <span class="system-icon">📷</span>
+                    <span class="system-label">Escaneamento</span>
+                </button>
+                <button id="compareSystem" class="system-btn" style="display:none"
+                    onclick="window.location.href='index-comparador.html'">
+                    <span class="system-icon">🔍</span>
+                    <span class="system-label">Comparador</span>
+                </button>
+                <button id="locateSystem" class="system-btn" style="display:none"
+                    onclick="window.location.href='index_Local.html'">
+                    <span class="system-icon">📍</span>
+                    <span class="system-label">Localizador</span>
+                </button>
+                <button id="almoxarifadoSystem" class="system-btn" style="display:none"
+                    onclick="window.location.href='index-almoxarifado.html'">
+                    <span class="system-icon">📋</span>
+                    <span class="system-label">Almoxarifado</span>
+                </button>
+                <!-- Só aparece para a permissão "dev" -->
+                <button id="usersSystem" class="system-btn" style="display:none"
+                    onclick="window.location.href='usuarios.html'">
+                    <span class="system-icon">👤</span>
+                    <span class="system-label">Usuários</span>
                 </button>
             </div>
-        </aside>
-
-        <!-- ══ ÁREA PRINCIPAL ════════════════════════════ -->
-        <div class="main-area">
-
-            <div class="topbar">
-                <button class="btn-menu" onclick="toggleSidebar()">☰</button>
-                <div>
-                    <div class="topbar-title">Localizador e Transferência</div>
-                    <div class="topbar-sub">
-                        Aba atual: <span id="aba-atual-label" style="color:var(--verde);font-weight:700">SIGMAS</span>
-                    </div>
-                </div>
-                <div class="topbar-right">
-                    <div id="spinner" class="spinner" style="margin:0"></div>
-                    <p id="progressText" style="font-size:11px;color:var(--text-muted);margin:0"></p>
-                </div>
-            </div>
-
-            <div class="page-content">
-
-                <!-- ══ BANNER DE RECONEXÃO ══ -->
-                <div id="reconectar-banner">
-                    <span id="reconectar-msg"></span>
-                    <button onclick="solicitarToken()">🔐 Reconectar com Google</button>
-                </div>
-
-                <!-- Login (antigo — mantido, mas agora fica oculto; o banner acima substitui) -->
-                <div id="login-section" style="display:none;text-align:center;padding:32px 0">
-                    <button onclick="solicitarToken()">🔐 Fazer Login com Google</button>
-                </div>
-
-                <!-- ═══ REGRA (info) ═══ -->
-                <div id="regras-info" class="alert alert-info" style="display:none">
-                    <div>
-                        <strong>ATENÇÃO:</strong><br>
-                        <span style="font-size:11px">
-                            • <strong>SIGMAS</strong>: contém <em>todos</em> os patrimônios.
-                            Nunca é apagado, apenas alterado.<br>
-                            • <strong>COAUD</strong>: Apenas dos responsáveis
-                            (<span id="resp-resumo">ALBERTO, PAULO, JOSE HENRIQUE</span>). Se o responsável mudar
-                            para outro, o patrimônio sai de COAUD (permanece em SIGMAS).
-                        </span>
-                    </div>
-                </div>
-
-                <!-- ═══ BUSCA ═══ -->
-                <div id="busca-section" class="card" style="display:none">
-                    <div class="card-title">Buscar Patrimônio</div>
-
-                    <div class="field-block" style="margin-bottom:12px">
-                        <label for="patrimonioInput">NRP do Patrimônio</label>
-                        <input type="text" id="patrimonioInput"
-                            placeholder="Digite o NRP e pressione Enter"
-                            onkeypress="if(event.key==='Enter') buscarPatrimonio()">
-                    </div>
-
-                    <button onclick="buscarPatrimonio()">🔍 Buscar</button>
-                </div>
-
-                <!-- ═══ RESULTADO ═══ -->
-                <div id="result-container" style="display:none">
-                    <div class="card">
-                        <div class="card-title">Patrimônio Encontrado</div>
-                        <div id="ficha-resultado"></div>
-                    </div>
-
-                    <!-- Editor -->
-                    <div id="editor-section" class="editor-section" style="display:none">
-                        <h3>✏ Editar Patrimônio</h3>
-
-                        <div class="form-grid">
-                            <div class="field-block">
-                                <label for="novoLocal">Nova Localização</label>
-                                <input type="text" id="novoLocal">
-                            </div>
-                            <div class="field-block">
-                                <label for="responsavelInput">Responsável</label>
-                                <input type="text" id="responsavelInput"
-                                    placeholder="Digite 3 letras para buscar..."
-                                    autocomplete="off"
-                                    oninput="filtrarResponsavel()">
-                                <ul id="responsavel-list"></ul>
-                            </div>
-                        </div>
-
-                        <div id="resp-selecionado-info" style="font-size:11px;color:var(--verde);margin-bottom:10px;display:none"></div>
-
-                        <div style="display:flex;gap:8px;flex-wrap:wrap">
-                            <button onclick="salvarAlteracoes()">✔ Salvar</button>
-                            <button class="cancelButton" onclick="cancelarEdicao()">✕ Cancelar</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- ═══ INSERIR NOVO ═══ -->
-                <div id="novo-patrimonio-container" class="novo-patrimonio-form">
-                    <h3>+ Inserir Novo Patrimônio</h3>
-
-                    <div class="form-grid">
-                        <div class="field-block">
-                            <label for="novoNRP">NRP</label>
-                            <input type="text" id="novoNRP" readonly>
-                        </div>
-                        <div class="field-block">
-                            <label for="novoMaterial">Material</label>
-                            <input type="text" id="novoMaterial" placeholder="Descrição do material">
-                        </div>
-                    </div>
-
-                    <div class="form-grid">
-                        <div class="field-block">
-                            <label for="novaLocalizacao">Localização</label>
-                            <input type="text" id="novaLocalizacao">
-                        </div>
-                        <div class="field-block">
-                            <label for="novoResponsavelInput">Responsável</label>
-                            <input type="text" id="novoResponsavelInput"
-                                placeholder="Digite 3 letras para buscar..."
-                                autocomplete="off"
-                                oninput="filtrarNovoResponsavel()">
-                            <ul id="novo-responsavel-list"></ul>
-                        </div>
-                    </div>
-
-                    <div id="novo-resp-info" style="font-size:11px;color:#60a5fa;margin-bottom:10px;display:none"></div>
-
-                    <div style="display:flex;gap:8px;flex-wrap:wrap">
-                        <button onclick="inserirNovoPatrimonio()">✔ Inserir</button>
-                        <button class="cancelButton" onclick="cancelarNovoPatrimonio()">✕ Cancelar</button>
-                    </div>
-                </div>
-
-            </div>
-
-            <footer class="site-footer">
-                © 2025 BrenoDoria — Câmara dos Deputados / COAUD
-            </footer>
         </div>
+
     </div>
 
+    <footer class="site-footer">
+        © 2025 BrenoDoria — Câmara dos Deputados / COAUD
+    </footer>
+
+    <script src="script.js"></script>
     <script>
-    // ══ SIDEBAR / USUÁRIO ════════════════════════════════
-    function preencherUsuarioSidebar() {
-        const u = JSON.parse(localStorage.getItem('usuarioLogado'));
-        if (!u) { window.location.href = 'index.html'; return; }
-
-        const initials = nome => nome
-            ? nome.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()
-            : '?';
-
-        const avatarEl = document.getElementById('user-avatar');
-        const nameEl   = document.getElementById('user-name');
-        const roleEl   = document.getElementById('user-role');
-
-        if (avatarEl) avatarEl.textContent = initials(u.nome);
-        if (nameEl)   nameEl.textContent   = u.nome || 'Usuário';
-        if (roleEl)   roleEl.textContent   = u.permissao || '';
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', preencherUsuarioSidebar);
-    } else {
-        preencherUsuarioSidebar();
-    }
-
-    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
-
-    function fazerLogout() {
-        localStorage.removeItem('usuarioLogado');
-        localStorage.removeItem('access_token');
-        window.location.href = 'index.html';
-    }
-
-    function setProgress(msg) {
-        const el = document.getElementById("progressText");
-        if (el) el.textContent = msg;
-    }
-
-    // ══ CONFIGURAÇÃO ══════════════════════════════════════
-    const CLIENT_ID = '286050228811-cv6vsd075480anb1i6auuc421enuaf8q.apps.googleusercontent.com';
-    const FILE_ID   = '1iNeSf0wakQ6j9Eg_qOCzVNKcIVVIsukeThL0Phpd5LE';
-
-    // Responsáveis considerados "da COAUD"
-    const RESPONSAVEIS_COAUD = [
-        "ALBERTO CESAR SOUZA ALMEIDA (5302)",
-        "PAULO FERNANDO VOLPE (5933)",
-        "JOSE HENRIQUE FERREIRA DA SILVA (7913)"
-    ];
-
-    let tokenClient;
-    let accessToken                = null;
-    let sigmasData                 = [];
-    let coaudData                  = [];
-    let sheetIds                   = {};
-    let abaAtual                   = "SIGMAS";
-    let patrimonioEditando         = null;
-    let responsavelSelecionado     = null;
-    let novoResponsavelSelecionado = null;
-
-    // ══ LOG (usa a do sidebar-init.js se existir) ═════════
-    function gerarLog(acao) {
-        if (typeof window.montarLog === 'function' && window.montarLog !== gerarLog) {
-            return window.montarLog(acao);
-        }
-        let nome = 'Desconhecido';
-        try {
-            const u = JSON.parse(localStorage.getItem('usuarioLogado') || '{}');
-            if (u && u.nome) nome = u.nome;
-        } catch (e) { /* ignora */ }
-        return `${new Date().toLocaleString('pt-BR')} - ${nome} - ${acao}`;
-    }
-
-    // ══ SESSÃO GOOGLE / RECONEXÃO (mesmo padrão do Escaneamento) ══
-    //  requestAccessToken() só é chamado pelo clique no botão do
-    //  banner — nunca automático (o navegador bloquearia o popup).
-    function tokenExpirado() {
-        const exp = parseInt(localStorage.getItem('token_expira_em') || '0', 10);
-        return !exp || exp < (Date.now() + 60000);   // 1 min de folga
-    }
-    function mostrarReconectar(msg) {
-        document.getElementById('reconectar-msg').textContent = msg || 'Sessão do Google expirada.';
-        document.getElementById('reconectar-banner').style.display = 'flex';
-    }
-    function esconderReconectar() {
-        document.getElementById('reconectar-banner').style.display = 'none';
-    }
-    // Não esconde nada da tela: a busca, o resultado e o editor continuam abertos
-    function sessaoExpirou(msg) {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('token_expira_em');
-        accessToken = null;
-        document.getElementById('spinner').style.display = 'none';
-        mostrarReconectar(msg || 'Sessão do Google expirada. Reconecte para continuar.');
-    }
-
-    function solicitarToken() {
-        if (tokenClient) tokenClient.requestAccessToken({ prompt: 'select_account' });
-        else setProgress("Aguarde, carregando login do Google...");
-    }
-
-    function mudarAba(aba) {
-        abaAtual = aba;
-        document.getElementById('aba-atual-label').textContent = aba;
-        document.getElementById('tab-sigmas').classList.toggle('active', aba === 'SIGMAS');
-        document.getElementById('tab-coaud').classList.toggle('active', aba === 'COAUD');
-        setProgress(`Aba ativa: ${aba}. Nova busca considerará esta aba.`);
-        // Fecha resultados anteriores
-        document.getElementById('result-container').style.display = 'none';
-        document.getElementById('editor-section').style.display = 'none';
-        document.getElementById('novo-patrimonio-container').style.display = 'none';
-    }
-
-    window.addEventListener('load', () => {
-        mudarAba('SIGMAS');
-
-        const inicializarGoogle = () => {
-            if (typeof google === 'undefined' || !google.accounts) {
-                setTimeout(inicializarGoogle, 300);
-                return;
+        // Atualiza chip do usuário quando já logado
+        window.addEventListener('load', () => {
+            const u = JSON.parse(localStorage.getItem('usuarioLogado'));
+            if (u) {
+                const el = document.getElementById('nome-usuario');
+                if (el) el.textContent = u.nome || '';
             }
-            tokenClient = google.accounts.oauth2.initTokenClient({
-                client_id: CLIENT_ID,
-                scope: 'https://www.googleapis.com/auth/spreadsheets',
-                callback: (tokenResponse) => {
-                    if (tokenResponse.error) {
-                        setProgress("Erro: " + tokenResponse.error);
-                        return;
-                    }
-                    accessToken = tokenResponse.access_token;
-                    localStorage.setItem("access_token", accessToken);
-                    localStorage.setItem("token_expira_em",
-                        Date.now() + ((tokenResponse.expires_in || 3600) * 1000));
-                    esconderReconectar();
-                    mostrarConteudo();
-                    // Só recarrega as bases se ainda não tinham sido carregadas
-                    // (assim uma edição aberta não se perde)
-                    if (sigmasData.length <= 1) carregarDados();
-                    else setProgress("✅ Reconectado. Pode salvar de novo.");
-                }
-            });
-
-            const savedToken = localStorage.getItem("access_token");
-            if (savedToken && !tokenExpirado()) {
-                accessToken = savedToken;
-                mostrarConteudo();
-                setProgress("Carregando dados...");
-                carregarDados();
-            } else {
-                mostrarReconectar('Conecte-se ao Google para carregar os patrimônios.');
-                setProgress("Aguardando conexão com o Google.");
-            }
-        };
-        inicializarGoogle();
-    });
-
-    function mostrarConteudo() {
-        document.getElementById("login-section").style.display = "none";
-        document.getElementById("busca-section").style.display = "block";
-        document.getElementById("regras-info").style.display   = "flex";
-    }
-
-    // ══ CARREGAR AMBAS AS ABAS ═══════════════════════════
-    async function carregarDados() {
-        if (!accessToken || tokenExpirado()) {
-            mostrarReconectar('Conecte-se ao Google para carregar os patrimônios.');
-            return;
-        }
-        document.getElementById("spinner").style.display = "inline-block";
-        setProgress("Consultando servidor...");
-
-        try {
-            const meta = await fetch(
-                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}`,
-                { headers: { 'Authorization': `Bearer ${accessToken}` } }
-            );
-            if (meta.status === 401) throw new Error("401");
-            if (!meta.ok) throw new Error("Erro ao obter metadados.");
-            const metaData = await meta.json();
-            metaData.sheets.forEach(s => { sheetIds[s.properties.title] = s.properties.sheetId; });
-
-            // Responsáveis da COAUD (aba CONFIG; sem ela, usa a lista reserva desta página)
-            await carregarResponsaveis(accessToken, FILE_ID);
-            const resumoEl = document.getElementById('resp-resumo');
-            if (resumoEl) resumoEl.textContent = responsaveisResumo();
-
-            // SIGMAS
-            const r1 = await fetch(
-                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/SIGMAS!A:D`,
-                { headers: { 'Authorization': `Bearer ${accessToken}` } }
-            );
-            if (!r1.ok) { const e = await r1.json(); throw new Error(e.error?.message); }
-            sigmasData = (await r1.json()).values || [];
-
-            // COAUD
-            const r2 = await fetch(
-                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/COAUD!A:D`,
-                { headers: { 'Authorization': `Bearer ${accessToken}` } }
-            );
-            if (!r2.ok) { const e = await r2.json(); throw new Error(e.error?.message); }
-            coaudData = (await r2.json()).values || [];
-
-            setProgress(`✅ SIGMAS: ${sigmasData.length - 1} registros | COAUD: ${coaudData.length - 1} registros.`);
-            document.getElementById("spinner").style.display = "none";
-            document.getElementById("patrimonioInput").focus();
-        } catch (error) {
-            const msg = error.message || "";
-            if (msg.includes("401") || msg === 'SESSAO_EXPIRADA' || msg.toLowerCase().includes("invalid authentication")) {
-                sessaoExpirou('Sessão do Google expirada. Reconecte para carregar os patrimônios.');
-                setProgress("Sessão expirada. Clique em \"Reconectar com Google\".");
-                return;
-            }
-            setProgress("Erro: " + msg);
-            document.getElementById("spinner").style.display = "none";
-        }
-    }
-
-    function normalizeNRP(nrp) {
-        if (!nrp) return "";
-        return nrp.toString().replace(/\./g, "").replace(/^0+/, "").trim();
-    }
-
-    // ══ BUSCA (respeita a aba selecionada) ═══════════════
-    function buscarPatrimonio() {
-        const nrp = document.getElementById("patrimonioInput").value.trim().replace(/\./g, "");
-        if (!nrp) { setProgress("Digite um NRP."); return; }
-        const n = normalizeNRP(nrp);
-
-        // Localiza nas duas abas (necessário para aplicar as regras ao salvar)
-        const acharEm = (dados) => {
-            for (let i = 1; i < dados.length; i++) {
-                if (normalizeNRP(dados[i][0]) === n) return { idx: i, row: dados[i] };
-            }
-            return { idx: -1, row: null };
-        };
-        const { idx: idxS, row: rowS } = acharEm(sigmasData);
-        const { idx: idxC, row: rowC } = acharEm(coaudData);
-
-        // Esconde tudo
-        document.getElementById("result-container").style.display = "none";
-        document.getElementById("editor-section").style.display    = "none";
-        document.getElementById("novo-patrimonio-container").style.display = "none";
-
-        // Exibe SOMENTE o registro da aba selecionada
-        const rowExibida = abaAtual === 'COAUD' ? rowC : rowS;
-
-        if (!rowExibida) {
-            if (abaAtual === 'COAUD') {
-                if (rowS) {
-                    const ok = confirm(
-                        `Patrimônio "${nrp}" não está na aba COAUD.\n` +
-                        `Ele existe em SIGMAS com responsável: ${rowS[3] || '(vazio)'}.\n\n` +
-                        `Deseja abrir na aba SIGMAS?`
-                    );
-                    if (ok) { mudarAba('SIGMAS'); buscarPatrimonio(); }
-                    else setProgress(`❌ "${nrp}" não está em COAUD.`);
-                } else {
-                    const ok = confirm(`Patrimônio "${nrp}" não encontrado em COAUD nem em SIGMAS.\n\nDeseja cadastrá-lo agora?`);
-                    if (ok) abrirFormularioNovo(nrp, "");
-                    else setProgress(`❌ "${nrp}" não encontrado.`);
-                }
-            } else {
-                const aviso = rowC ? `\n\n(Atenção: ele existe apenas em COAUD — dados inconsistentes.)` : '';
-                const ok = confirm(`Patrimônio "${nrp}" não encontrado em SIGMAS.${aviso}\n\nDeseja cadastrá-lo agora em SIGMAS?`);
-                if (ok) abrirFormularioNovo(nrp, rowC ? (rowC[1] || "") : "");
-                else setProgress(`❌ "${nrp}" não encontrado em SIGMAS.`);
-            }
-            return;
-        }
-
-        patrimonioEditando = {
-            emSigmas: !!rowS, emCoaud: !!rowC,
-            rowSigmas: rowS, rowCoaud: rowC,
-            idxSigmas: idxS, idxCoaud: idxC,
-            rowExibida: rowExibida,
-            nrp: rowExibida[0]
-        };
-
-        const chipsHTML = [
-            rowS ? '<span class="aba-info-chip chip-sigmas">📘 SIGMAS</span>' : '',
-            rowC ? '<span class="aba-info-chip chip-coaud">📗 COAUD</span>' : ''
-        ].join('');
-
-        document.getElementById("ficha-resultado").innerHTML = `
-            <div style="margin-bottom:10px">${chipsHTML}
-                <span style="font-size:11px;color:var(--text-muted)">Exibindo dados da aba <strong>${abaAtual}</strong></span>
-            </div>
-            <div class="ficha-resultado">
-                <div class="campo"><strong>NRP</strong><span>${rowExibida[0] || '-'}</span></div>
-                <div class="campo"><strong>Material</strong><span>${rowExibida[1] || '-'}</span></div>
-                <div class="campo"><strong>Localização</strong><span>${rowExibida[2] || '-'}</span></div>
-                <div class="campo"><strong>Responsável</strong><span>${rowExibida[3] || '-'}</span></div>
-            </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-                <button onclick="abrirEditor()">✏ Editar</button>
-            </div>
-        `;
-        document.getElementById("result-container").style.display = "block";
-        setProgress(`✅ Encontrado na aba ${abaAtual}. Presente em: ${rowS ? 'SIGMAS' : ''}${rowS && rowC ? ' + ' : ''}${rowC ? 'COAUD' : ''}.`);
-    }
-
-    function abrirFormularioNovo(nrp, material) {
-        document.getElementById("novoNRP").value = nrp;
-        document.getElementById("novoMaterial").value = material || "";
-        document.getElementById("novaLocalizacao").value = "";
-        document.getElementById("novoResponsavelInput").value = "";
-        document.getElementById("novo-resp-info").style.display = "none";
-        novoResponsavelSelecionado = null;
-        document.getElementById("novo-patrimonio-container").style.display = "block";
-    }
-
-    function abrirEditor() {
-        if (!patrimonioEditando) return;
-        const p = patrimonioEditando.rowExibida;
-        document.getElementById("novoLocal").value = p[2] || "";
-        document.getElementById("responsavelInput").value = "";
-        document.getElementById("responsavel-list").innerHTML = "";
-        document.getElementById("responsavel-list").style.display = "none";
-        responsavelSelecionado = p[3] || null;
-        document.getElementById("resp-selecionado-info").textContent =
-            responsavelSelecionado ? `Atual: ${responsavelSelecionado}` : "Sem responsável atual";
-        document.getElementById("resp-selecionado-info").style.display = "block";
-        document.getElementById("editor-section").style.display = "block";
-    }
-
-    function cancelarEdicao() {
-        document.getElementById("editor-section").style.display = "none";
-        responsavelSelecionado = null;
-        setProgress("Edição cancelada.");
-    }
-
-    function cancelarNovoPatrimonio() {
-        document.getElementById("novo-patrimonio-container").style.display = "none";
-        novoResponsavelSelecionado = null;
-        setProgress("Cadastro cancelado.");
-    }
-
-    // ══ FILTRO DE RESPONSÁVEIS ═══════════════════════════
-    function montarListaResponsaveis(inputId, listaId, aoSelecionar) {
-        const busca = document.getElementById(inputId).value.trim().toLowerCase();
-        const lista = document.getElementById(listaId);
-        lista.innerHTML = "";
-        if (busca.length < 3) { lista.style.display = 'none'; return; }
-
-        // Responsáveis únicos da base SIGMAS
-        const todosResp = [...new Set(sigmasData.slice(1).map(r => r[3]).filter(Boolean))];
-        const filtrados = todosResp.filter(r => r.toLowerCase().includes(busca));
-
-        if (!filtrados.length) {
-            const li = document.createElement("li");
-            li.textContent = 'Nenhum responsável encontrado.';
-            li.style.color = 'var(--text-muted)';
-            lista.appendChild(li);
-        } else {
-            filtrados.forEach(nome => {
-                const li = document.createElement("li");
-                const isCoaud = ehResponsavelCoaud(nome);
-                li.innerHTML = `${nome} ${isCoaud ? '<span class="aba-info-chip chip-coaud" style="font-size:9px;margin-left:4px">COAUD</span>' : ''}`;
-                li.onmousedown = () => {
-                    aoSelecionar(nome);
-                    document.getElementById(inputId).value = nome;
-                    lista.style.display = 'none';
-                };
-                lista.appendChild(li);
-            });
-        }
-        lista.style.display = 'block';
-    }
-
-    function filtrarResponsavel() {
-        montarListaResponsaveis("responsavelInput", "responsavel-list", nome => {
-            responsavelSelecionado = nome;
-            const info = document.getElementById("resp-selecionado-info");
-            info.textContent = `Selecionado: ${nome}`;
-            info.style.display = 'block';
         });
-    }
-
-    function filtrarNovoResponsavel() {
-        montarListaResponsaveis("novoResponsavelInput", "novo-responsavel-list", nome => {
-            novoResponsavelSelecionado = nome;
-            const info = document.getElementById("novo-resp-info");
-            info.textContent = `Selecionado: ${nome}`;
-            info.style.display = 'block';
-        });
-    }
-
-    // ══ SALVAR (APLICA AS REGRAS) ════════════════════════
-    async function salvarAlteracoes() {
-        if (!patrimonioEditando) return;
-
-        const novoLocal = document.getElementById("novoLocal").value.trim();
-        const novoResp  = responsavelSelecionado || "";
-        const p         = patrimonioEditando;
-
-        if (!novoLocal) { alert("Digite a nova localização."); return; }
-        if (!accessToken || tokenExpirado()) {
-            mostrarReconectar('Sessão expirada. Reconecte e clique em Salvar novamente — a edição continua na tela.');
-            return;
-        }
-
-        document.getElementById("spinner").style.display = "inline-block";
-        setProgress("Aplicando regras e salvando...");
-
-        try {
-            const material  = (p.rowSigmas || p.rowCoaud)[1];
-            const nrp       = p.nrp;
-            const linhaNova = [nrp, material, novoLocal, novoResp, gerarLog("sala/responsável")];
-            const isNovoRespCoaud = ehResponsavelCoaud(novoResp);
-
-            // ── SIGMAS: confere a linha ATUAL do NRP antes de gravar (nunca apaga) ──
-            const linhaS = await localizarLinhaAtual(accessToken, FILE_ID, 'SIGMAS', nrp);
-            if (linhaS > 0) await atualizarLinha('SIGMAS', linhaS, linhaNova);
-            else            await appendLinha('SIGMAS', linhaNova);
-            atualizarMemoria(sigmasData, nrp, linhaNova);
-
-            // ── COAUD: confere a linha ATUAL e aplica as regras ──
-            const linhaC = await localizarLinhaAtual(accessToken, FILE_ID, 'COAUD', nrp);
-            if (isNovoRespCoaud) {
-                if (linhaC > 0) await atualizarLinha('COAUD', linhaC, linhaNova);
-                else            await appendLinha('COAUD', linhaNova);
-                atualizarMemoria(coaudData, nrp, linhaNova);
-            } else {
-                if (linhaC > 0) await deletarLinha('COAUD', linhaC - 1);
-                atualizarMemoria(coaudData, nrp, null);
-            }
-
-            document.getElementById("editor-section").style.display = "none";
-            document.getElementById("patrimonioInput").value = nrp;
-
-            // Se saiu da COAUD e o usuário estava nessa aba, mostra em SIGMAS
-            if (!isNovoRespCoaud && abaAtual === 'COAUD') mudarAba('SIGMAS');
-            buscarPatrimonio();
-
-            setProgress(`✅ Alterações salvas. ${isNovoRespCoaud ? 'Presente em SIGMAS + COAUD.' : 'Presente apenas em SIGMAS.'}`);
-
-        } catch (error) {
-            if (error.message === 'SESSAO_EXPIRADA') {
-                sessaoExpirou('Sessão expirada. Reconecte e clique em Salvar novamente — a edição continua na tela.');
-            }
-            setProgress(error.message === 'SESSAO_EXPIRADA'
-                ? "Sessão do Google expirada. Reconecte e salve de novo."
-                : "Erro: " + error.message);
-            console.error(error);
-        } finally {
-            document.getElementById("spinner").style.display = "none";
-        }
-    }
-
-    async function atualizarLinha(aba, linha, valores) {
-        const r = await fetch(
-            `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/${aba}!A${linha}:E${linha}?valueInputOption=RAW`,
-            { method: 'PUT',
-              headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ values: [valores] }) }
-        );
-        if (r.status === 401) throw new Error('SESSAO_EXPIRADA');
-        if (!r.ok) { const e = await r.json(); throw new Error(`Erro em ${aba}: ${e.error?.message}`); }
-    }
-
-    async function appendLinha(aba, valores) {
-        const r = await fetch(
-            `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/${aba}!A:E:append?valueInputOption=RAW`,
-            { method: 'POST',
-              headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ values: [valores] }) }
-        );
-        if (r.status === 401) throw new Error('SESSAO_EXPIRADA');
-        if (!r.ok) { const e = await r.json(); throw new Error(`Erro append ${aba}: ${e.error?.message}`); }
-    }
-
-    async function deletarLinha(aba, idx) {
-        const r = await fetch(
-            `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}:batchUpdate`,
-            { method: 'POST',
-              headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ requests: [{
-                deleteDimension: { range: {
-                    sheetId: sheetIds[aba], dimension: 'ROWS',
-                    startIndex: idx, endIndex: idx + 1
-                }}
-              }]}) }
-        );
-        if (r.status === 401) throw new Error('SESSAO_EXPIRADA');
-        if (!r.ok) { const e = await r.json(); throw new Error(`Erro delete ${aba}: ${e.error?.message}`); }
-    }
-
-    // ══ INSERIR NOVO ══════════════════════════════════════
-    async function inserirNovoPatrimonio() {
-        const nrp         = document.getElementById("novoNRP").value.trim();
-        const material    = document.getElementById("novoMaterial").value.trim();
-        const localizacao = document.getElementById("novaLocalizacao").value.trim();
-        const responsavel = novoResponsavelSelecionado || "";
-
-        if (!nrp || !material || !localizacao) {
-            alert("Preencha NRP, Material e Localização.");
-            return;
-        }
-        if (!accessToken || tokenExpirado()) {
-            mostrarReconectar('Sessão expirada. Reconecte e clique em Inserir novamente — os dados continuam na tela.');
-            return;
-        }
-
-        document.getElementById("spinner").style.display = "inline-block";
-        setProgress("Inserindo em SIGMAS...");
-
-        try {
-            const linha = [nrp, material, localizacao, responsavel, gerarLog("cadastro")];
-            // SIGMAS: confere na planilha se já existe; insere só se não existir
-            const linhaS = await localizarLinhaAtual(accessToken, FILE_ID, 'SIGMAS', nrp);
-            if (linhaS < 0) {
-                await appendLinha('SIGMAS', linha);
-                atualizarMemoria(sigmasData, nrp, linha);
-            }
-
-            // COAUD: só se o responsável for da COAUD e ainda não estiver lá
-            const jaEmCoaud    = (await localizarLinhaAtual(accessToken, FILE_ID, 'COAUD', nrp)) > 0;
-            const vaiParaCoaud = ehResponsavelCoaud(responsavel);
-
-            if (vaiParaCoaud && !jaEmCoaud) {
-                await appendLinha('COAUD', linha);
-                atualizarMemoria(coaudData, nrp, linha);
-            }
-
-            document.getElementById("novo-patrimonio-container").style.display = "none";
-            document.getElementById("patrimonioInput").value = nrp;
-
-            // Mostra o resultado numa aba onde ele exista
-            if (abaAtual === 'COAUD' && !vaiParaCoaud && !jaEmCoaud) mudarAba('SIGMAS');
-            buscarPatrimonio();
-
-            setProgress(`✅ Patrimônio ${nrp} inserido em SIGMAS${vaiParaCoaud ? ' + COAUD' : ''}.`);
-
-        } catch (error) {
-            if (error.message === 'SESSAO_EXPIRADA') {
-                sessaoExpirou('Sessão expirada. Reconecte e clique em Inserir novamente — os dados continuam na tela.');
-            }
-            setProgress(error.message === 'SESSAO_EXPIRADA'
-                ? "Sessão do Google expirada. Reconecte e insira de novo."
-                : "Erro: " + error.message);
-        } finally {
-            document.getElementById("spinner").style.display = "none";
-        }
-    }
     </script>
 </body>
 </html>
