@@ -32,6 +32,23 @@
         .sit.inativo { color: var(--text-muted); }
         .btn-mini { margin: 0; padding: 3px 10px; font-size: 11px; }
         tr.inativo td { opacity: .55; }
+        .acoes { display: flex; gap: 6px; flex-wrap: wrap; }
+        .btn-apagar { background: rgba(231,76,60,.15); color: #f87171; border: 1px solid rgba(231,76,60,.3); }
+        .aviso-faltando {
+            display: none; align-items: center; gap: 12px; flex-wrap: wrap;
+            background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.3);
+            border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 14px;
+            font-size: 12px; color: #fbbf24; font-weight: 600;
+        }
+        .aviso-faltando button { margin: 0; }
+        .modal-op { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 500; align-items: center; justify-content: center; }
+        .modal-op.aberto { display: flex; }
+        .modal-op .conteudo {
+            background: #1a2a1a; border: 1px solid rgba(0,176,79,.3); border-radius: var(--radius);
+            padding: 22px; width: 92%; max-width: 460px;
+        }
+        .modal-op h2 { font-size: 14px; color: var(--verde); margin: 0 0 14px; text-transform: uppercase; letter-spacing: .5px; }
+        .modal-op .rodape { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
     </style>
 </head>
 <body>
@@ -141,6 +158,11 @@
                     </p>
                 </div>
 
+                <div class="aviso-faltando" id="avisoFaltando">
+                    <span id="avisoFaltandoTxt"></span>
+                    <button type="button" onclick="adicionarFaltantes()">➕ Adicionar na aba</button>
+                </div>
+
                 <!-- ═══ LISTA ═══ -->
                 <div class="card" style="padding:0;overflow:hidden">
                     <div style="padding:14px 16px 8px">
@@ -162,7 +184,7 @@
                                     <th>Nome</th>
                                     <th style="width:120px">Ponto</th>
                                     <th style="width:110px">Situação</th>
-                                    <th style="width:120px">Ação</th>
+                                    <th style="width:250px">Ações</th>
                                 </tr>
                             </thead>
                             <tbody id="listaOp">
@@ -177,6 +199,26 @@
             <footer class="site-footer">
                 © 2025 BrenoDoria — Câmara dos Deputados / COAUD
             </footer>
+        </div>
+    </div>
+
+    <!-- ══ MODAL EDITAR OPERADOR ══ -->
+    <div class="modal-op" id="modalEditar" onclick="if(event.target===this) fecharEditar()">
+        <div class="conteudo">
+            <h2>✏ Editar operador</h2>
+            <div class="field-block" style="margin-bottom:10px">
+                <label for="edNome">Nome completo</label>
+                <input type="text" id="edNome" autocomplete="off">
+            </div>
+            <div class="field-block">
+                <label for="edPonto">Ponto</label>
+                <input type="text" id="edPonto" autocomplete="off" inputmode="numeric">
+            </div>
+            <p class="ajuda">Fichas já registradas continuam com o nome antigo; as novas usam o nome editado.</p>
+            <div class="rodape">
+                <button type="button" class="cancelButton" onclick="fecharEditar()">Cancelar</button>
+                <button type="button" id="btnSalvarEd" onclick="salvarEdicao()">✔ Salvar</button>
+            </div>
         </div>
     </div>
 
@@ -231,6 +273,8 @@
         document.getElementById('filtroSit').addEventListener('change', renderizar);
         document.getElementById('opPonto').addEventListener('blur', e => { e.target.value = formatarPonto(e.target.value); });
         document.getElementById('opPonto').addEventListener('keydown', e => { if (e.key === 'Enter') adicionarOperador(); });
+        document.getElementById('edPonto').addEventListener('blur', e => { e.target.value = formatarPonto(e.target.value); });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') fecharEditar(); });
 
         const iniciar = () => {
             if (typeof google === 'undefined' || !google.accounts) { setTimeout(iniciar, 300); return; }
@@ -266,13 +310,8 @@
                 lista = await lerOperadoresPlanilha(accessToken, FILE_ID);
                 mensagem('✅ Aba OPERADORES criada na planilha do almoxarifado com a lista atual.', 'ok');
             }
-            // Completa a aba com os nomes que estavam no código e faltam nela
-            const adicionados = await completarOperadoresFaltantes(accessToken, FILE_ID, lista);
-            if (adicionados > 0) {
-                lista = await lerOperadoresPlanilha(accessToken, FILE_ID);
-                mensagem(`✅ ${adicionados} operador(es) que estavam no sistema e faltavam na aba OPERADORES foram adicionados.`, 'ok');
-            }
             operadores = lista || [];
+            atualizarAvisoFaltando();
             salvarCacheOperadores(operadores.map(({ nome, ponto, ativo }) => ({ nome, ponto, ativo })));
             renderizar();
             setProgress(`✅ ${operadores.filter(o => o.ativo).length} ativos | ${operadores.filter(o => !o.ativo).length} desativados.`);
@@ -299,8 +338,12 @@
                     <td style="font-family:monospace">${esc(o.ponto) || '—'}</td>
                     <td><span class="sit ${o.ativo ? 'ativo' : 'inativo'}">${o.ativo ? '● Ativo' : '○ Desativado'}</span></td>
                     <td>
-                        <button type="button" class="btn-mini ${o.ativo ? 'cancelButton' : ''}"
-                            onclick="alternarAtivo(${o.linha})">${o.ativo ? 'Desativar' : 'Reativar'}</button>
+                        <div class="acoes">
+                            <button type="button" class="btn-mini backButton" onclick="abrirEditar(${o.linha})">✏ Editar</button>
+                            <button type="button" class="btn-mini ${o.ativo ? 'cancelButton' : ''}"
+                                onclick="alternarAtivo(${o.linha})">${o.ativo ? 'Desativar' : 'Reativar'}</button>
+                            <button type="button" class="btn-mini btn-apagar" onclick="apagarOperador(${o.linha})">🗑</button>
+                        </div>
                     </td>
                 </tr>`).join('')
             : `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:20px">Nenhum operador com esse filtro.</td></tr>`;
@@ -340,6 +383,111 @@
             btn.disabled = false;
             spinner(false);
         }
+    }
+
+    // Confere na planilha, agora, se a linha ainda é desse operador
+    async function conferirLinha(o) {
+        const atual = await lerOperadoresPlanilha(accessToken, FILE_ID);
+        return (atual || []).some(x => x.linha === o.linha && normNomeOp(x.nome) === normNomeOp(o.nome));
+    }
+
+    function atualizarAvisoFaltando() {
+        const falt = operadoresDaReservaFaltando(operadores);
+        const el = document.getElementById('avisoFaltando');
+        if (!falt.length) { el.style.display = 'none'; return; }
+        document.getElementById('avisoFaltandoTxt').textContent =
+            `⚠ ${falt.length} nome(s) da lista antiga do sistema não estão na aba OPERADORES: ` +
+            falt.slice(0, 5).map(f => f[0]).join(', ') + (falt.length > 5 ? '...' : '') +
+            '. Eles não aparecem na Nova Retirada.';
+        el.style.display = 'flex';
+    }
+
+    async function adicionarFaltantes() {
+        const falt = operadoresDaReservaFaltando(operadores);
+        if (!falt.length) return;
+        if (!confirm(`Adicionar ${falt.length} nome(s) na aba OPERADORES?\n\n` + falt.map(f => '• ' + f[0]).join('\n'))) return;
+        if (!accessToken || tokenExpirado()) { mostrarReconectar('Reconecte para continuar.'); return; }
+        spinner(true);
+        try {
+            await lerOperadoresPlanilha(accessToken, FILE_ID);
+            const n = await completarOperadoresFaltantes(accessToken, FILE_ID, operadores);
+            mensagem(`✅ ${n} nome(s) adicionado(s) na aba OPERADORES.`, 'ok');
+            await carregarLista();
+        } catch (e) {
+            if (e.message === 'SESSAO_EXPIRADA') sessaoExpirou();
+            else mensagem('Erro: ' + e.message, 'erro');
+        } finally { spinner(false); }
+    }
+
+    let editando = null;
+    function abrirEditar(linha) {
+        editando = operadores.find(x => x.linha === linha);
+        if (!editando) return;
+        document.getElementById('edNome').value  = editando.nome;
+        document.getElementById('edPonto').value = editando.ponto;
+        document.getElementById('modalEditar').classList.add('aberto');
+        setTimeout(() => document.getElementById('edNome').focus(), 50);
+    }
+    function fecharEditar() {
+        document.getElementById('modalEditar').classList.remove('aberto');
+        editando = null;
+    }
+
+    async function salvarEdicao() {
+        const o = editando;
+        if (!o) return;
+        const nome  = document.getElementById('edNome').value.replace(/\s+/g, ' ').trim();
+        const ponto = formatarPonto(document.getElementById('edPonto').value);
+        if (nome.length < 5) { alert('Informe o nome completo.'); return; }
+        if (!ponto) { alert('Informe o ponto.'); return; }
+        const outro = operadores.find(x => x.linha !== o.linha && normNomeOp(x.nome) === normNomeOp(nome));
+        if (outro) { alert(`Já existe outro operador chamado "${outro.nome}".`); return; }
+        if (!accessToken || tokenExpirado()) { mostrarReconectar('Reconecte para continuar.'); return; }
+
+        const btn = document.getElementById('btnSalvarEd');
+        btn.disabled = true;
+        spinner(true);
+        try {
+            if (!await conferirLinha(o)) {
+                fecharEditar();
+                mensagem('A lista mudou na planilha. Atualizei a tela — tente de novo.', 'erro');
+                await carregarLista();
+                return;
+            }
+            await editarOperadorPlanilha(accessToken, FILE_ID, o.linha, nome, ponto);
+            fecharEditar();
+            mensagem(`✅ ${nome} atualizado.`, 'ok');
+            await carregarLista();
+        } catch (e) {
+            if (e.message === 'SESSAO_EXPIRADA') sessaoExpirou();
+            else alert('Erro ao salvar: ' + e.message);
+        } finally {
+            btn.disabled = false;
+            spinner(false);
+        }
+    }
+
+    async function apagarOperador(linha) {
+        const o = operadores.find(x => x.linha === linha);
+        if (!o) return;
+        if (!confirm(`APAGAR "${o.nome}" da aba OPERADORES?\n\n` +
+            'A linha é removida da planilha. As fichas antigas continuam com o nome.\n' +
+            'Se a ideia é só tirar da lista de retirada, prefira "Desativar".')) return;
+        if (!accessToken || tokenExpirado()) { mostrarReconectar('Reconecte para continuar.'); return; }
+        spinner(true);
+        try {
+            if (!await conferirLinha(o)) {
+                mensagem('A lista mudou na planilha. Atualizei a tela — tente de novo.', 'erro');
+                await carregarLista();
+                return;
+            }
+            await excluirOperadorPlanilha(accessToken, FILE_ID, o.linha);
+            mensagem(`🗑 ${o.nome} apagado.`, 'ok');
+            await carregarLista();
+        } catch (e) {
+            if (e.message === 'SESSAO_EXPIRADA') sessaoExpirou();
+            else mensagem('Erro ao apagar: ' + e.message, 'erro');
+        } finally { spinner(false); }
     }
 
     async function alternarAtivo(linha) {
