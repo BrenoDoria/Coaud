@@ -13,12 +13,20 @@
 // ══════════════════════════════════════════════════════
 
 // "José Henrique Ferreira da Silva (7913)" → "JOSE HENRIQUE FERREIRA DA SILVA"
+// Guarda o resultado: a SIGMAS tem ~500 mil linhas, mas poucos milhares de nomes diferentes.
+const _memoNomes = new Map();
 function normalizarNome(nome) {
-    return (nome || '').toString()
+    const bruto = (nome || '').toString();
+    const salvo = _memoNomes.get(bruto);
+    if (salvo !== undefined) return salvo;
+    const r = bruto
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         .replace(/\(\s*\d+\s*\)/g, '')
         .replace(/\s+/g, ' ')
         .trim().toUpperCase();
+    if (_memoNomes.size > 50000) _memoNomes.clear();
+    _memoNomes.set(bruto, r);
+    return r;
 }
 
 // ══ LISTA DE RESPONSÁVEIS (aba CONFIG) ════════════════
@@ -28,13 +36,20 @@ const CACHE_RESPONSAVEIS   = 'coaud_responsaveis';
 let   RESPONSAVEIS_ATIVOS  = null;   // lida da aba CONFIG (null = ainda não lida)
 
 // Lista em uso: aba CONFIG → cópia guardada no navegador → reserva da página
+// (a cópia do navegador é lida uma única vez e fica na memória)
+let _respDoNavegador;          // undefined = ainda não lido | null = não tem
+const _SEM_LISTA = [];
 function listaResponsaveis() {
     if (RESPONSAVEIS_ATIVOS && RESPONSAVEIS_ATIVOS.length) return RESPONSAVEIS_ATIVOS;
-    try {
-        const c = JSON.parse(localStorage.getItem(CACHE_RESPONSAVEIS));
-        if (Array.isArray(c) && c.length) return c;
-    } catch (e) { /* ignora */ }
-    return (typeof RESPONSAVEIS_COAUD !== 'undefined') ? RESPONSAVEIS_COAUD : [];
+    if (_respDoNavegador === undefined) {
+        _respDoNavegador = null;
+        try {
+            const c = JSON.parse(localStorage.getItem(CACHE_RESPONSAVEIS));
+            if (Array.isArray(c) && c.length) _respDoNavegador = c;
+        } catch (e) { /* ignora */ }
+    }
+    if (_respDoNavegador) return _respDoNavegador;
+    return (typeof RESPONSAVEIS_COAUD !== 'undefined') ? RESPONSAVEIS_COAUD : _SEM_LISTA;
 }
 
 // "ALBERTO, PAULO e JOSE HENRIQUE" (para textos na tela)
@@ -45,14 +60,31 @@ function responsaveisResumo() {
 }
 
 // true se o responsável estiver na lista (qualquer grafia, com ou sem matrícula)
+// O conjunto de nomes normalizados de cada lista é montado uma vez só.
+const _conjuntosResp = new WeakMap();
 function ehResponsavelCoaud(resp, listaOpcional) {
     const lista = listaOpcional || listaResponsaveis();
+    let conj = _conjuntosResp.get(lista);
+    if (!conj || conj._tam !== lista.length) {
+        conj = new Set(lista.map(normalizarNome));
+        conj._tam = lista.length;
+        _conjuntosResp.set(lista, conj);
+    }
     const r = normalizarNome(resp);
-    return !!r && lista.some(x => normalizarNome(x) === r);
+    return !!r && conj.has(r);
 }
 
 // Lê a aba CONFIG. Se ela não existir, mantém a reserva da página.
 async function carregarResponsaveis(token, fileId) {
+    const m = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${fileId}?fields=sheets.properties.title`,
+        { headers: { 'Authorization': `Bearer ${token}` } }
+    );
+    if (m.status === 401) throw new Error('SESSAO_EXPIRADA');
+    if (m.ok) {
+        const titulos = ((await m.json()).sheets || []).map(x => x.properties.title);
+        if (!titulos.includes(ABA_CONFIG)) { RESPONSAVEIS_ATIVOS = null; return listaResponsaveis(); }
+    }
     const r = await fetch(
         `https://sheets.googleapis.com/v4/spreadsheets/${fileId}/values/${encodeURIComponent(ABA_CONFIG + '!A:A')}`,
         { headers: { 'Authorization': `Bearer ${token}` } }
@@ -63,6 +95,7 @@ async function carregarResponsaveis(token, fileId) {
     const lista = ((await r.json()).values || []).slice(1)
         .map(l => (l[0] || '').toString().trim()).filter(Boolean);
     RESPONSAVEIS_ATIVOS = lista.length ? lista : null;
+    _respDoNavegador = undefined;
     if (lista.length) {
         try { localStorage.setItem(CACHE_RESPONSAVEIS, JSON.stringify(lista)); } catch (e) { /* ignora */ }
     }
@@ -90,6 +123,7 @@ async function salvarResponsaveis(token, fileId, lista) {
     await chamar(`${api}/values/${encodeURIComponent(ABA_CONFIG + '!A1:A' + valores.length)}?valueInputOption=RAW`,
         { method: 'PUT', body: JSON.stringify({ values: valores }) });
     RESPONSAVEIS_ATIVOS = lista.slice();
+    _respDoNavegador = undefined;
     try { localStorage.setItem(CACHE_RESPONSAVEIS, JSON.stringify(lista)); } catch (e) { /* ignora */ }
 }
 

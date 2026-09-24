@@ -2030,9 +2030,30 @@
     // ── Lista de responsáveis do novo inventário ──
     let respNovoInv = [];
 
-    function contarItensResp(nome) {
-        const alvo = normalizarNome(nome);
-        return sigmasData.slice(1).filter(r => normalizarNome(r[3]) === alvo).length;
+    // Nomes de responsáveis da SIGMAS, só para a busca (como no Localizador).
+    // Guardados na primeira busca; nada de contar itens aqui.
+    let nomesResp = null, nomesRespTam = -1;
+    function listaNomesResp() {
+        if (!nomesResp || nomesRespTam !== sigmasData.length) {
+            nomesResp = [...new Set(sigmasData.slice(1).map(r => (r[3] || '').toString().trim()).filter(Boolean))];
+            nomesRespTam = sigmasData.length;
+        }
+        return nomesResp;
+    }
+
+    // Prévia do ajuste da COAUD: calculada UMA vez, só ao clicar em "Criar inventário"
+    function previaRapidaResp(lista) {
+        const alvo = new Set(lista.map(normalizarNome));
+        const naCoaud = new Set(coaudData.slice(1).map(r => normalizeNRP(r[0])).filter(Boolean));
+        const entram = new Set();
+        for (let i = 1; i < sigmasData.length; i++) {
+            const r = sigmasData[i];
+            if (!r[3] || !alvo.has(normalizarNome(r[3]))) continue;
+            const n = normalizeNRP(r[0]);
+            if (n && !naCoaud.has(n)) entram.add(n);
+        }
+        const saem = coaudData.slice(1).filter(r => normalizeNRP(r[0]) && !alvo.has(normalizarNome(r[3]))).length;
+        return { entram: entram.size, saem };
     }
 
     function renderizarRespNovoInv() {
@@ -2041,10 +2062,9 @@
         respNovoInv.forEach((nome, i) => {
             const chip = document.createElement('span');
             chip.className = 'resp-chip';
-            chip.innerHTML = `<span></span><span class="qtd"></span><button type="button" title="Tirar da lista">✕</button>`;
+            chip.innerHTML = `<span></span><button type="button" title="Tirar da lista">✕</button>`;
             chip.children[0].textContent = nome;
-            chip.children[1].textContent = `(${contarItensResp(nome)} itens)`;
-            chip.children[2].onclick = () => { respNovoInv.splice(i, 1); renderizarRespNovoInv(); };
+            chip.children[1].onclick = () => { respNovoInv = respNovoInv.filter((_, j) => j !== i); renderizarRespNovoInv(); };
             box.appendChild(chip);
         });
         if (!respNovoInv.length) {
@@ -2055,12 +2075,10 @@
 
     function atualizarPreviaResp() {
         const el = document.getElementById('respPrevia');
-        if (!respNovoInv.length) { el.innerHTML = ''; return; }
-        const { adicionar, remover } = previaSincronizacaoCoaud(sigmasData.slice(1), coaudData.slice(1), respNovoInv);
-        el.innerHTML = (adicionar.length || remover.length)
-            ? `Ao criar, a aba COAUD será ajustada: <strong>+${adicionar.length}</strong> item(ns) entram e ` +
-              `<strong>−${remover.length}</strong> item(ns) saem. A SIGMAS não muda.`
-            : 'A aba COAUD já está de acordo com esta lista (nada muda).';
+        el.innerHTML = respNovoInv.length
+            ? 'Ao clicar em <strong>Criar inventário</strong>, o sistema mostra quantos itens entram e saem da COAUD ' +
+              'antes de gravar qualquer coisa. A SIGMAS não muda.'
+            : '';
     }
 
     document.getElementById('novoInvRespInput').addEventListener('input', function() {
@@ -2069,7 +2087,7 @@
         lista.innerHTML = '';
         if (busca.length < 3) { lista.style.display = 'none'; return; }
         const jaTem = new Set(respNovoInv.map(normalizarNome));
-        const todos = [...new Set(sigmasData.slice(1).map(r => (r[3] || '').toString().trim()).filter(Boolean))]
+        const todos = listaNomesResp()
             .filter(n => n.toLowerCase().includes(busca) && !jaTem.has(normalizarNome(n)))
             .sort((a, b) => a.localeCompare(b, 'pt-BR'));
         if (!todos.length) {
@@ -2080,9 +2098,9 @@
         } else {
             todos.slice(0, 30).forEach(nome => {
                 const li = document.createElement('li');
-                li.textContent = `${nome} (${contarItensResp(nome)} itens)`;
+                li.textContent = nome;
                 li.onmousedown = () => {
-                    respNovoInv.push(nome);
+                    respNovoInv = respNovoInv.concat([nome]);
                     document.getElementById('novoInvRespInput').value = '';
                     lista.style.display = 'none';
                     renderizarRespNovoInv();
@@ -2104,12 +2122,14 @@
             document.getElementById("spinner").style.display = "none";
             return;
         }
-        const previa = previaSincronizacaoCoaud(sigmasData.slice(1), coaudData.slice(1), respNovoInv);
-        if ((previa.adicionar.length || previa.remover.length) && !confirm(
+        setProgress('Calculando o ajuste da COAUD...');
+        const previa = previaRapidaResp(respNovoInv);
+        setProgress('');
+        if ((previa.entram || previa.saem) && !confirm(
             `Responsáveis deste inventário:\n• ${respNovoInv.join('\n• ')}\n\n` +
             `A aba COAUD será ajustada para esta lista:\n` +
-            `  + ${previa.adicionar.length} item(ns) entram (itens desses responsáveis na SIGMAS)\n` +
-            `  − ${previa.remover.length} item(ns) saem (responsável fora da lista)\n\n` +
+            `  + ${previa.entram} item(ns) entram (itens desses responsáveis na SIGMAS)\n` +
+            `  − ${previa.saem} item(ns) saem (responsável fora da lista)\n\n` +
             `A SIGMAS não é alterada. Continuar?`)) {
             btn.disabled = false;
             document.getElementById("spinner").style.display = "none";
