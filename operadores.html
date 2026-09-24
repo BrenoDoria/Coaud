@@ -266,6 +266,12 @@
                 lista = await lerOperadoresPlanilha(accessToken, FILE_ID);
                 mensagem('✅ Aba OPERADORES criada na planilha do almoxarifado com a lista atual.', 'ok');
             }
+            // Completa a aba com os nomes que estavam no código e faltam nela
+            const adicionados = await completarOperadoresFaltantes(accessToken, FILE_ID, lista);
+            if (adicionados > 0) {
+                lista = await lerOperadoresPlanilha(accessToken, FILE_ID);
+                mensagem(`✅ ${adicionados} operador(es) que estavam no sistema e faltavam na aba OPERADORES foram adicionados.`, 'ok');
+            }
             operadores = lista || [];
             salvarCacheOperadores(operadores.map(({ nome, ponto, ativo }) => ({ nome, ponto, ativo })));
             renderizar();
