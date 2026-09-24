@@ -10,7 +10,7 @@
 
 const ABA_OPERADORES   = 'OPERADORES';
 const CAB_OPERADORES   = ['Nome', 'Ponto', 'Ativo'];
-const CACHE_OPERADORES = 'coaud_operadores';
+const CACHE_OPERADORES = 'coaud_operadores_v2';   // v2: descarta cache antigo com colunas trocadas
 
 // Lista reserva = lista que estava no código até agora.
 // [nome, ponto, ativo]  (ativo=false: não aparece na lista de retirada,
@@ -202,24 +202,80 @@ async function operadoresFetch(token, url, opcoes = {}) {
     return r.json();
 }
 
+// ══ Layout da aba: em qual coluna está Nome, Ponto e Ativo ══
+// Descoberto pelo cabeçalho (linha 1). Se não houver cabeçalho,
+// descobre pelo conteúdo (coluna com letras = nome; com números = ponto).
+let layoutOperadores = { idxNome: 0, idxPonto: 1, idxAtivo: 2, temCabecalho: true, largura: 3 };
+
+function letraColuna(idx) {
+    let s = '', n = idx + 1;
+    while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); }
+    return s;
+}
+
+function descobrirLayout(valores) {
+    const cab = (valores[0] || []).map(c => normNomeOp(c));
+    const achar = re => cab.findIndex(c => re.test(c));
+    let idxNome  = achar(/^NOME/);
+    let idxPonto = achar(/^PONTO|^MATRICULA/);
+    let idxAtivo = achar(/^ATIVO|^SITUACAO|^STATUS/);
+    let temCabecalho = idxNome >= 0 || idxPonto >= 0;
+
+    if (!temCabecalho) {
+        // Sem cabeçalho: olha o conteúdo das primeiras linhas
+        const amostra = valores.slice(0, 30);
+        const largura = Math.max(0, ...amostra.map(r => (r || []).length));
+        const nota = (col, teste) => amostra.filter(r => r && r[col] !== undefined && teste(String(r[col]).trim())).length;
+        let melhorNome = -1, melhorPonto = -1, pn = -1, pp = -1;
+        for (let c = 0; c < largura; c++) {
+            const letras  = nota(c, v => /[A-Za-zÀ-ú]{3,}/.test(v));
+            const numeros = nota(c, v => /^[\d.\s-]+$/.test(v) && /\d/.test(v));
+            if (letras > pn)  { pn = letras;  melhorNome = c; }
+            if (numeros > pp) { pp = numeros; melhorPonto = c; }
+        }
+        idxNome  = melhorNome;
+        idxPonto = melhorPonto === melhorNome ? -1 : melhorPonto;
+    }
+    if (idxNome < 0) idxNome = 0;
+    const largura = Math.max(cab.length, idxNome + 1, idxPonto + 1, idxAtivo + 1);
+    return { idxNome, idxPonto, idxAtivo, temCabecalho, largura };
+}
+
 // Lê a aba OPERADORES. Devolve null se a aba ainda não existir.
 // Cada item: { nome, ponto, ativo, linha }  (linha = nº da linha na planilha)
 async function lerOperadoresPlanilha(token, fileId) {
     try {
         const d = await operadoresFetch(token,
-            `https://sheets.googleapis.com/v4/spreadsheets/${fileId}/values/${ABA_OPERADORES}!A:C`);
-        return (d.values || []).slice(1)
+            `https://sheets.googleapis.com/v4/spreadsheets/${fileId}/values/${ABA_OPERADORES}!A:Z`);
+        const valores = d.values || [];
+        layoutOperadores = descobrirLayout(valores);
+        const L = layoutOperadores;
+        const inicio = L.temCabecalho ? 1 : 0;
+        return valores.slice(inicio)
             .map((r, i) => ({
-                nome: (r[0] || '').toString().trim(),
-                ponto: (r[1] || '').toString().trim(),
-                ativo: valorAtivo(r[2]),
-                linha: i + 2
+                nome:  ((r || [])[L.idxNome] || '').toString().trim(),
+                ponto: L.idxPonto >= 0 ? formatarPonto((r || [])[L.idxPonto]) : '',
+                ativo: L.idxAtivo >= 0 ? valorAtivo((r || [])[L.idxAtivo]) : true,
+                linha: i + 1 + inicio
             }))
             .filter(o => o.nome);
     } catch (e) {
         if (e.status === 400) return null;   // aba não existe
         throw e;
     }
+}
+
+// Garante que exista uma coluna "Ativo" (cria no fim do cabeçalho, se faltar)
+async function garantirColunaAtivo(token, fileId) {
+    const L = layoutOperadores;
+    if (L.idxAtivo >= 0) return;
+    if (!L.temCabecalho) throw new Error('A aba OPERADORES não tem cabeçalho. Coloque na linha 1 os títulos "Nome" e "Ponto".');
+    const col = L.largura;
+    await operadoresFetch(token,
+        `https://sheets.googleapis.com/v4/spreadsheets/${fileId}/values/${ABA_OPERADORES}!${letraColuna(col)}1?valueInputOption=RAW`,
+        { method: 'PUT', body: JSON.stringify({ values: [['Ativo']] }) });
+    L.idxAtivo = col;
+    L.largura = col + 1;
 }
 
 // Liga a lista da página à planilha: atualiza o array no lugar
@@ -252,14 +308,25 @@ async function criarAbaOperadores(token, fileId) {
         { method: 'PUT', body: JSON.stringify({ values: linhas }) });
 }
 
+// Adiciona respeitando a ordem das colunas da aba
 async function adicionarOperadorPlanilha(token, fileId, nome, ponto) {
+    await lerOperadoresPlanilha(token, fileId);          // atualiza o layout
+    await garantirColunaAtivo(token, fileId);
+    const L = layoutOperadores;
+    const linha = new Array(L.largura).fill('');
+    linha[L.idxNome] = nome;
+    if (L.idxPonto >= 0) linha[L.idxPonto] = ponto;
+    linha[L.idxAtivo] = true;
     await operadoresFetch(token,
-        `https://sheets.googleapis.com/v4/spreadsheets/${fileId}/values/${ABA_OPERADORES}!A:C:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
-        { method: 'POST', body: JSON.stringify({ values: [[nome, ponto, true]] }) });
+        `https://sheets.googleapis.com/v4/spreadsheets/${fileId}/values/${ABA_OPERADORES}!A:${letraColuna(L.largura - 1)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+        { method: 'POST', body: JSON.stringify({ values: [linha] }) });
 }
 
+// Ativa/desativa: grava só a célula da coluna "Ativo" (não mexe em nome e ponto)
 async function atualizarOperadorPlanilha(token, fileId, linha, nome, ponto, ativo) {
+    await garantirColunaAtivo(token, fileId);
+    const col = letraColuna(layoutOperadores.idxAtivo);
     await operadoresFetch(token,
-        `https://sheets.googleapis.com/v4/spreadsheets/${fileId}/values/${ABA_OPERADORES}!A${linha}:C${linha}?valueInputOption=RAW`,
-        { method: 'PUT', body: JSON.stringify({ values: [[nome, ponto, !!ativo]] }) });
+        `https://sheets.googleapis.com/v4/spreadsheets/${fileId}/values/${ABA_OPERADORES}!${col}${linha}?valueInputOption=RAW`,
+        { method: 'PUT', body: JSON.stringify({ values: [[!!ativo]] }) });
 }
