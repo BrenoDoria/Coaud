@@ -13,8 +13,9 @@ const CAB_OPERADORES   = ['Nome', 'Ponto', 'Ativo'];
 const CACHE_OPERADORES = 'coaud_operadores_v2';   // v2: descarta cache antigo com colunas trocadas
 
 // Lista reserva = TODOS os nomes que estavam no código até agora
-// (lista da Nova Retirada + lista de pontos das impressões), todos ativos.
-// Ela nunca é descartada: a lista mostrada é a aba OPERADORES + estes nomes.
+// (lista da Nova Retirada + lista de pontos das impressões).
+// Usada só quando a aba OPERADORES não pode ser lida, e para achar o ponto
+// de nomes antigos nas impressões. A fonte oficial é a aba OPERADORES.
 // [nome, ponto, ativo]
 const OPERADORES_RESERVA = [
     ["Adson Miranda dos Anjos", "914.262", true],
@@ -165,15 +166,17 @@ function listaCompletaOperadores() {
 }
 
 // Nomes ativos, em ordem alfabética (para as listas de seleção).
-// = ativos da aba OPERADORES + nomes da lista reserva que ainda não estão na aba
-//   (quem foi DESATIVADO na aba não volta pela reserva).
+// Vem da aba OPERADORES (guardada no navegador); sem ela, da lista reserva.
 function listaOperadoresAtivos() {
-    const daAba = listaCompletaOperadores();
-    const naAba = new Set(daAba.map(o => normNomeOp(o.nome)));
-    const nomes = daAba.filter(o => o.ativo && o.nome).map(o => o.nome);
-    OPERADORES_RESERVA.forEach(([nome]) => { if (!naAba.has(normNomeOp(nome))) nomes.push(nome); });
+    const nomes = listaCompletaOperadores().filter(o => o.ativo && o.nome).map(o => o.nome);
     return [...new Map(nomes.map(n => [normNomeOp(n), n])).values()]
         .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+// Nomes da lista reserva que não estão na aba (para o aviso da tela Operadores)
+function operadoresDaReservaFaltando(listaDaAba) {
+    const naAba = new Set((listaDaAba || []).map(o => normNomeOp(o.nome)));
+    return OPERADORES_RESERVA.filter(([nome]) => !naAba.has(normNomeOp(nome)));
 }
 
 // Ponto de um operador (ignora acentos e maiúsculas). '' se não achar.
@@ -345,6 +348,29 @@ async function completarOperadoresFaltantes(token, fileId, listaDaAba) {
         `https://sheets.googleapis.com/v4/spreadsheets/${fileId}/values/${ABA_OPERADORES}!A:${letraColuna(L.largura - 1)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
         { method: 'POST', body: JSON.stringify({ values: linhas }) });
     return faltando.length;
+}
+
+// Edita nome e ponto de uma linha (não mexe na coluna Ativo)
+async function editarOperadorPlanilha(token, fileId, linha, nome, ponto) {
+    const L = layoutOperadores;
+    const data = [{ range: `${ABA_OPERADORES}!${letraColuna(L.idxNome)}${linha}`, values: [[nome]] }];
+    if (L.idxPonto >= 0) data.push({ range: `${ABA_OPERADORES}!${letraColuna(L.idxPonto)}${linha}`, values: [[ponto]] });
+    await operadoresFetch(token, `https://sheets.googleapis.com/v4/spreadsheets/${fileId}/values:batchUpdate`,
+        { method: 'POST', body: JSON.stringify({ valueInputOption: 'RAW', data }) });
+}
+
+// Apaga a linha inteira da aba OPERADORES
+async function excluirOperadorPlanilha(token, fileId, linha) {
+    const meta = await operadoresFetch(token,
+        `https://sheets.googleapis.com/v4/spreadsheets/${fileId}?fields=sheets.properties(title,sheetId)`);
+    const aba = (meta.sheets || []).map(x => x.properties).find(p => p.title === ABA_OPERADORES);
+    if (!aba) throw new Error('Aba OPERADORES não encontrada.');
+    await operadoresFetch(token, `https://sheets.googleapis.com/v4/spreadsheets/${fileId}:batchUpdate`, {
+        method: 'POST',
+        body: JSON.stringify({ requests: [{ deleteDimension: { range: {
+            sheetId: aba.sheetId, dimension: 'ROWS', startIndex: linha - 1, endIndex: linha
+        } } }] })
+    });
 }
 
 // Ativa/desativa: grava só a célula da coluna "Ativo" (não mexe em nome e ponto)
