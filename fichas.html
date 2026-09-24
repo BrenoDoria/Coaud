@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="style.css">
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="sidebar-init.js" defer></script>
-        <script src="coaud-operadores.js"></script>
+    <script src="coaud-operadores.js"></script>
     <style>
         .equipamentos-cell {
             text-align: left;
@@ -398,7 +398,8 @@
         "William Neves da Silva","Wirlem Silva Alves"
     ];
 
-        
+    const todosOperadores = listaOperadoresAtivos();
+    vincularListaOperadores(todosOperadores, FILE_ID);
 
     // ══════════════════════════════════════════════════════
     //  DASHBOARD — KPIs
