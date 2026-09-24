@@ -11,6 +11,7 @@
         document.documentElement.setAttribute('data-tema',
             localStorage.getItem('tema-coaud') || 'verde-neon');
     </script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
     <script src="sidebar-init.js" defer></script>
     <script src="coaud-inventario.js"></script>
@@ -67,6 +68,14 @@
         .resumo-item strong { color: var(--text); }
 
         #card-sala select, #inventarioSelect { width: 100%; }
+
+        /* Banner de reconexão da sessão Google (mesmo das outras telas) */
+        #reconectar-banner {
+            display: none; align-items: center; gap: 12px; flex-wrap: wrap;
+            background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.35);
+            border-radius: 6px; padding: 12px 16px; margin-bottom: 14px;
+        }
+        #reconectar-msg { color: #fbbf24; font-size: 13px; font-weight: 600; }
 
         /* ── Fonte do levantamento ── */
         .segmented {
@@ -230,6 +239,12 @@
 
             <div class="page-content">
 
+                <!-- ══ BANNER DE RECONEXÃO ══ -->
+                <div id="reconectar-banner">
+                    <span id="reconectar-msg"></span>
+                    <button onclick="solicitarToken()">🔐 Reconectar com Google</button>
+                </div>
+
                 <!-- ═══ FONTE DO LEVANTAMENTO ═══ -->
                 <div class="card">
                     <div class="card-title">Levantamento</div>
@@ -359,10 +374,12 @@
     // ══════════════════════════════════════════════════════
     //  CONFIGURAÇÃO — mesma planilha do Localizador
     // ══════════════════════════════════════════════════════
-    const FILE_ID = '1iNeSf0wakQ6j9Eg_qOCzVNKcIVVIsukeThL0Phpd5LE';
+    const FILE_ID   = '1iNeSf0wakQ6j9Eg_qOCzVNKcIVVIsukeThL0Phpd5LE';
+    const CLIENT_ID = '286050228811-cv6vsd075480anb1i6auuc421enuaf8q.apps.googleusercontent.com';
 
     const TODAS   = '__TODAS__';
 
+    let tokenClient       = null;
     let accessToken       = null;
     let bases             = { SIGMAS: [], COAUD: [] };  // [NRP, Material, Local, Responsável]
     let registrosInv      = [];        // linhas da aba do inventário escolhido ("INV ...")
@@ -484,17 +501,73 @@
     // ══════════════════════════════════════════════════════
     //  CARREGAMENTO (SIGMAS, COAUD e INVENTARIO)
     // ══════════════════════════════════════════════════════
+    // ══════════════════════════════════════════════════════
+    //  SESSÃO GOOGLE / RECONEXÃO (mesmo padrão do Escaneamento)
+    //  requestAccessToken() só é chamado pelo clique no botão
+    //  do banner — nunca automático (o navegador bloquearia).
+    // ══════════════════════════════════════════════════════
+    function tokenExpirado() {
+        const exp = parseInt(localStorage.getItem('token_expira_em') || '0', 10);
+        return !exp || exp < (Date.now() + 60000);   // 1 min de folga
+    }
+    function mostrarReconectar(msg) {
+        document.getElementById('reconectar-msg').textContent = msg || 'Sessão do Google expirada.';
+        document.getElementById('reconectar-banner').style.display = 'flex';
+    }
+    function esconderReconectar() {
+        document.getElementById('reconectar-banner').style.display = 'none';
+    }
+    function sessaoExpirou(msg) {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('token_expira_em');
+        accessToken = null;
+        document.getElementById('spinner').style.display = 'none';
+        mostrarReconectar(msg || 'Sessão do Google expirada. Reconecte para continuar.');
+        setProgress('⚠ Sessão expirada. Os dados na tela continuam disponíveis.');
+    }
+    function solicitarToken() {
+        if (tokenClient) tokenClient.requestAccessToken({ prompt: 'select_account' });
+        else setProgress('Aguarde, carregando login do Google...');
+    }
+
     window.addEventListener('load', () => {
         configurarControles();
         mudarBase('COAUD');
 
-        accessToken = localStorage.getItem('access_token');
-        if (!accessToken) {
-            alert('Sessão expirada. Faça login novamente.');
-            window.location.href = 'index.html';
-            return;
+        const inicializarGoogle = () => {
+            if (typeof google === 'undefined' || !google.accounts) {
+                setTimeout(inicializarGoogle, 300);
+                return;
+            }
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: 'https://www.googleapis.com/auth/spreadsheets',
+                callback: (tokenResponse) => {
+                    if (tokenResponse.error) {
+                        setProgress('Erro: ' + tokenResponse.error);
+                        return;
+                    }
+                    accessToken = tokenResponse.access_token;
+                    localStorage.setItem('access_token', accessToken);
+                    localStorage.setItem('token_expira_em',
+                        Date.now() + ((tokenResponse.expires_in || 3600) * 1000));
+                    esconderReconectar();
+                    setProgress('✅ Reconectado.');
+                    carregarBases(true);
+                }
+            });
+        };
+        inicializarGoogle();
+
+        const salvo = localStorage.getItem('access_token');
+        if (salvo && !tokenExpirado()) {
+            accessToken = salvo;
+            carregarBases(false);
+        } else {
+            mostrarReconectar('Conecte-se ao Google para carregar as bases.');
+            setProgress('Aguardando conexão com o Google.');
+            renderizar();
         }
-        carregarBases(false);
     });
 
     async function buscarRanges(ranges) {
@@ -504,9 +577,7 @@
             { headers: { 'Authorization': `Bearer ${accessToken}` } }
         );
         if (r.status === 401) {
-            localStorage.removeItem('access_token');
-            alert('Sessão expirada. Faça login novamente.');
-            window.location.href = 'index.html';
+            sessaoExpirou('Sessão do Google expirada. Reconecte para atualizar os dados.');
             throw new Error('SESSAO_EXPIRADA');
         }
         if (!r.ok) {
@@ -517,6 +588,10 @@
     }
 
     async function carregarBases(manual) {
+        if (!accessToken || tokenExpirado()) {
+            mostrarReconectar('Sessão do Google expirada. Reconecte para atualizar os dados.');
+            return;
+        }
         document.getElementById('spinner').style.display = 'inline-block';
         setProgress(manual ? 'Atualizando dados...' : 'Carregando bases...');
         try {
@@ -525,9 +600,7 @@
                 inventarios = (await listarInventarios(accessToken, FILE_ID)).lista;
             } catch (e) {
                 if (e.message === 'SESSAO_EXPIRADA') {
-                    localStorage.removeItem('access_token');
-                    alert('Sessão expirada. Faça login novamente.');
-                    window.location.href = 'index.html';
+                    sessaoExpirou('Sessão do Google expirada. Reconecte para atualizar os dados.');
                     return;
                 }
                 throw e;
@@ -569,6 +642,10 @@
     async function trocarInventario() {
         const aba = document.getElementById('inventarioSelect').value;
         if (!aba) { registrosInv = []; renderizar(); return; }
+        if (!accessToken || tokenExpirado()) {
+            mostrarReconectar('Sessão do Google expirada. Reconecte para trocar de inventário.');
+            return;
+        }
         document.getElementById('spinner').style.display = 'inline-block';
         try {
             const vr = await buscarRanges([rangeAba(aba, 'A:J')]);
@@ -817,7 +894,7 @@
         if (!basesCarregadas || !temLevantamento()) {
             resultado = [];
             stat.innerHTML = '';
-            let msg = 'Carregando bases...';
+            let msg = accessToken ? 'Carregando bases...' : 'Conecte-se ao Google (botão acima) para carregar as bases.';
             if (basesCarregadas) {
                 msg = fonteAtual === 'planilha'
                     ? 'Carregue a planilha do levantamento para ver o resultado.'

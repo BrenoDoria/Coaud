@@ -113,6 +113,14 @@
         }
         #responsavel-list li:last-child, #novo-responsavel-list li:last-child { border-bottom: none; }
 
+        /* Banner de reconexão da sessão Google (mesmo das outras telas) */
+        #reconectar-banner {
+            display: none; align-items: center; gap: 12px; flex-wrap: wrap;
+            background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.35);
+            border-radius: 6px; padding: 12px 16px; margin-bottom: 14px;
+        }
+        #reconectar-msg { color: #fbbf24; font-size: 13px; font-weight: 600; }
+
         .form-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -201,8 +209,14 @@
 
             <div class="page-content">
 
-                <!-- Login -->
-                <div id="login-section" style="text-align:center;padding:32px 0">
+                <!-- ══ BANNER DE RECONEXÃO ══ -->
+                <div id="reconectar-banner">
+                    <span id="reconectar-msg"></span>
+                    <button onclick="solicitarToken()">🔐 Reconectar com Google</button>
+                </div>
+
+                <!-- Login (antigo — mantido, mas agora fica oculto; o banner acima substitui) -->
+                <div id="login-section" style="display:none;text-align:center;padding:32px 0">
                     <button onclick="solicitarToken()">🔐 Fazer Login com Google</button>
                 </div>
 
@@ -387,8 +401,31 @@
         return `${new Date().toLocaleString('pt-BR')} - ${nome} - ${acao}`;
     }
 
+    // ══ SESSÃO GOOGLE / RECONEXÃO (mesmo padrão do Escaneamento) ══
+    //  requestAccessToken() só é chamado pelo clique no botão do
+    //  banner — nunca automático (o navegador bloquearia o popup).
+    function tokenExpirado() {
+        const exp = parseInt(localStorage.getItem('token_expira_em') || '0', 10);
+        return !exp || exp < (Date.now() + 60000);   // 1 min de folga
+    }
+    function mostrarReconectar(msg) {
+        document.getElementById('reconectar-msg').textContent = msg || 'Sessão do Google expirada.';
+        document.getElementById('reconectar-banner').style.display = 'flex';
+    }
+    function esconderReconectar() {
+        document.getElementById('reconectar-banner').style.display = 'none';
+    }
+    // Não esconde nada da tela: a busca, o resultado e o editor continuam abertos
+    function sessaoExpirou(msg) {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('token_expira_em');
+        accessToken = null;
+        document.getElementById('spinner').style.display = 'none';
+        mostrarReconectar(msg || 'Sessão do Google expirada. Reconecte para continuar.');
+    }
+
     function solicitarToken() {
-        if (tokenClient) tokenClient.requestAccessToken();
+        if (tokenClient) tokenClient.requestAccessToken({ prompt: 'select_account' });
         else setProgress("Aguarde, carregando login do Google...");
     }
 
@@ -422,17 +459,26 @@
                     }
                     accessToken = tokenResponse.access_token;
                     localStorage.setItem("access_token", accessToken);
+                    localStorage.setItem("token_expira_em",
+                        Date.now() + ((tokenResponse.expires_in || 3600) * 1000));
+                    esconderReconectar();
                     mostrarConteudo();
-                    carregarDados();
+                    // Só recarrega as bases se ainda não tinham sido carregadas
+                    // (assim uma edição aberta não se perde)
+                    if (sigmasData.length <= 1) carregarDados();
+                    else setProgress("✅ Reconectado. Pode salvar de novo.");
                 }
             });
 
             const savedToken = localStorage.getItem("access_token");
-            if (savedToken) {
+            if (savedToken && !tokenExpirado()) {
                 accessToken = savedToken;
                 mostrarConteudo();
                 setProgress("Carregando dados...");
                 carregarDados();
+            } else {
+                mostrarReconectar('Conecte-se ao Google para carregar os patrimônios.');
+                setProgress("Aguardando conexão com o Google.");
             }
         };
         inicializarGoogle();
@@ -446,6 +492,10 @@
 
     // ══ CARREGAR AMBAS AS ABAS ═══════════════════════════
     async function carregarDados() {
+        if (!accessToken || tokenExpirado()) {
+            mostrarReconectar('Conecte-se ao Google para carregar os patrimônios.');
+            return;
+        }
         document.getElementById("spinner").style.display = "inline-block";
         setProgress("Consultando servidor...");
 
@@ -481,13 +531,8 @@
         } catch (error) {
             const msg = error.message || "";
             if (msg.includes("401") || msg.toLowerCase().includes("invalid authentication")) {
-                localStorage.removeItem("access_token");
-                accessToken = null;
-                document.getElementById("login-section").style.display = "block";
-                document.getElementById("busca-section").style.display = "none";
-                document.getElementById("regras-info").style.display   = "none";
-                document.getElementById("spinner").style.display = "none";
-                setProgress("Sessão expirada. Faça login novamente.");
+                sessaoExpirou('Sessão do Google expirada. Reconecte para carregar os patrimônios.');
+                setProgress("Sessão expirada. Clique em \"Reconectar com Google\".");
                 return;
             }
             setProgress("Erro: " + msg);
@@ -674,6 +719,10 @@
         const p         = patrimonioEditando;
 
         if (!novoLocal) { alert("Digite a nova localização."); return; }
+        if (!accessToken || tokenExpirado()) {
+            mostrarReconectar('Sessão expirada. Reconecte e clique em Salvar novamente — a edição continua na tela.');
+            return;
+        }
 
         document.getElementById("spinner").style.display = "inline-block";
         setProgress("Aplicando regras e salvando...");
@@ -711,8 +760,11 @@
             setProgress(`✅ Alterações salvas. ${isNovoRespCoaud ? 'Presente em SIGMAS + COAUD.' : 'Presente apenas em SIGMAS.'}`);
 
         } catch (error) {
+            if (error.message === 'SESSAO_EXPIRADA') {
+                sessaoExpirou('Sessão expirada. Reconecte e clique em Salvar novamente — a edição continua na tela.');
+            }
             setProgress(error.message === 'SESSAO_EXPIRADA'
-                ? "Sessão do Google expirada. Faça login novamente e salve de novo."
+                ? "Sessão do Google expirada. Reconecte e salve de novo."
                 : "Erro: " + error.message);
             console.error(error);
         } finally {
@@ -769,6 +821,10 @@
             alert("Preencha NRP, Material e Localização.");
             return;
         }
+        if (!accessToken || tokenExpirado()) {
+            mostrarReconectar('Sessão expirada. Reconecte e clique em Inserir novamente — os dados continuam na tela.');
+            return;
+        }
 
         document.getElementById("spinner").style.display = "inline-block";
         setProgress("Inserindo em SIGMAS...");
@@ -801,8 +857,11 @@
             setProgress(`✅ Patrimônio ${nrp} inserido em SIGMAS${vaiParaCoaud ? ' + COAUD' : ''}.`);
 
         } catch (error) {
+            if (error.message === 'SESSAO_EXPIRADA') {
+                sessaoExpirou('Sessão expirada. Reconecte e clique em Inserir novamente — os dados continuam na tela.');
+            }
             setProgress(error.message === 'SESSAO_EXPIRADA'
-                ? "Sessão do Google expirada. Faça login novamente e insira de novo."
+                ? "Sessão do Google expirada. Reconecte e insira de novo."
                 : "Erro: " + error.message);
         } finally {
             document.getElementById("spinner").style.display = "none";

@@ -85,7 +85,7 @@
         .card-sala:hover, .card-sala:focus-visible { border-color: rgba(0,176,79,.5); outline: none; }
         .card-sala.completa { border-color: rgba(0,176,79,.35); }
         .card-sala .nome {
-            display: -webkit-box; -webkit-line-clamp:  2; line-clamp: 2; -webkit-box-orient:  vertical;
+            display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical;
             overflow: hidden; overflow-wrap: anywhere;
             font-size: 12px; font-weight: 700; line-height: 1.35; min-height: 2.7em;
         }
@@ -448,6 +448,7 @@
         if (!silencioso) spinner(true);
         setProgress('Carregando inventários...');
         try {
+            await carregarResponsaveis(accessToken, FILE_ID);   // aba CONFIG
             const inv = await listarInventarios(accessToken, FILE_ID);
             inventarios = inv.lista;
 
@@ -592,6 +593,7 @@
                         ${c.salasCompletas} de ${c.salas.length} salas completas<br>
                         ${inv.criadoEm ? `Criado em ${esc(inv.criadoEm)}${inv.criadoPor ? ' por ' + esc(inv.criadoPor) : ''}<br>` : ''}
                         ${inv.concluidoEm ? `Concluído em ${esc(inv.concluidoEm)}<br>` : ''}
+                        ${inv.responsaveis && inv.responsaveis.length ? `Responsáveis: ${esc(inv.responsaveis.map(n => normalizarNome(n).split(' ')[0]).join(', '))}<br>` : ''}
                         ${c.ultimo ? `Último bip: ${esc(c.ultimo)}` : 'Nenhum bip ainda'}
                         ${(dadosSobras[inv.aba] || []).length ? `<br>🟣 ${sobrasDoInventario(inv).length} sobra(s)` : ''}
                     </div>
@@ -638,13 +640,13 @@
         document.getElementById('topbarSub').textContent = `Inventário ${inv.nome} (aba ${inv.aba})`;
 
         document.getElementById('detConcluido').innerHTML = inv.concluidoEm
-            ? `<div class="aviso-concluido">🎉 Inventário concluído em ${esc(inv.concluidoEm)}: nenhum item dos 3 responsáveis ficou pendente.` +
+            ? `<div class="aviso-concluido">🎉 Inventário concluído em ${esc(inv.concluidoEm)}: nenhum item dos responsáveis ficou pendente.` +
               (c.completo ? '' : ` <span style="color:#fbbf24;font-weight:600">(Hoje: ${c.faltam} item(ns) novo(s) na COAUD ainda não bipado(s).)</span>`) + `</div>`
             : '';
         if (!inv.concluidoEm && c.pendForaCoaud) {
             document.getElementById('detConcluido').innerHTML +=
                 `<div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);color:#fbbf24;font-size:12px;font-weight:600;border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px">
-                    ⚠ Além das salas abaixo, ${c.pendForaCoaud} item(ns) dos 3 responsáveis estão na SIGMAS mas não em nenhuma sala da COAUD e ainda não foram bipados.
+                    ⚠ Além das salas abaixo, ${c.pendForaCoaud} item(ns) dos responsáveis estão na SIGMAS mas não em nenhuma sala da COAUD e ainda não foram bipados.
                     O inventário só é concluído quando eles também forem encontrados. Veja a lista no Comparador (SIGMAS).</div>`;
         }
 
@@ -655,7 +657,7 @@
                 <div class="kpi-info">
                     <div class="kpi-label">Itens da COAUD</div>
                     <div class="kpi-value">${c.total}</div>
-                    <div class="kpi-sub">Alberto, Paulo e José Henrique</div>
+                    <div class="kpi-sub">${esc((inv.responsaveis && inv.responsaveis.length) ? inv.responsaveis.map(n => normalizarNome(n).split(' ')[0]).join(', ') : responsaveisResumo())}</div>
                 </div>
             </div>
             <div class="kpi">
