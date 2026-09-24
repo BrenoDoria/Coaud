@@ -260,6 +260,8 @@
     let pendentesData      = [];
     let sheetIds           = {};
     let idFichaSelecionada = null;
+    let todosOperadores = [];
+    let operadoresCarregados = false;
 
     function setProgress(msg) {
         const el = document.getElementById("progressText");
@@ -492,15 +494,102 @@
         lista.style.display = 'block';
     }
 
-    function filtrarOperadorDevolucao() {
-        const busca = document.getElementById('operadorDevolucaoBusca').value.trim().toLowerCase();
-        if (busca.length === 0) {
-            renderListaOperadorDev(todosOperadores, '');
+    async function carregarOperadoresDaPlanilha() {
+    if (operadoresCarregados) return;
+
+    if (!accessToken || tokenExpirado()) {
+        exigirLogin('Sessão expirada. Faça login novamente.');
+        return;
+    }
+
+    try {
+        const response = await fetch(
+            `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/Lista%20de%20Operadores!A:Z,
+            {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`
+                }
+            }
+        );
+
+        if (response.status === 401) {
+            exigirLogin();
             return;
         }
-        const filtrados = todosOperadores.filter(n => n.toLowerCase().includes(busca));
-        renderListaOperadorDev(filtrados, busca);
+
+        if (!response.ok) {
+            const erro = await response.json().catch(() => ({}));
+            throw new Error(
+                erro.error?.message || `Erro HTTP ${response.status}`
+            );
+        }
+
+        const data = await response.json();
+        const linhas = data.values || [];
+
+        if (!linhas.length) {
+            todosOperadores = [];
+            operadoresCarregados = true;
+            return;
+        }
+
+        /*
+         * Se a primeira linha for um cabeçalho, ela será ignorada.
+         * Exemplo: Nome, Operador, Operadores etc.
+         */
+        const primeiraLinha = linhas[0][0]?.toString().trim().toLowerCase();
+
+        const inicio = [
+            'nome',
+            'operador',
+            'operadores',
+            'name'
+        ].includes(primeiraLinha) ? 1 : 0;
+
+        todosOperadores = [...new Set(
+            linhas
+                .slice(inicio)
+                .map(linha => linha[1]?.toString().trim())
+                .filter(nome => nome)
+        )].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+        operadoresCarregados = true;
+
+        console.log(
+            `${todosOperadores.length} operadores carregados da aba OPERADORES`
+        );
+
+    } catch (error) {
+        console.error('Erro ao carregar operadores:', error);
+        setProgress('Erro ao carregar operadores: ' + error.message);
+
+        /*
+         * Fallback opcional: usa a lista fixa caso a planilha falhe.
+         */
+        todosOperadores = [...OPERADORES_ANTIGOS];
+        operadoresCarregados = true;
     }
+}
+
+    function filtrarOperadorDevolucao() {
+       const busca = document.getElementById('operadorDevolucaoBusca')
+        .value.trim().toLowerCase();
+
+    const fonte = todosOperadores.length
+        ? todosOperadores
+        : OPERADORES_ANTIGOS;
+
+    if (busca.length === 0) {
+        renderListaOperadorDev(fonte, '');
+        return;
+    }
+
+    const filtrados = fonte.filter(nome =>
+        nome.toLowerCase().includes(busca)
+    );
+
+    renderListaOperadorDev(filtrados, busca);
+}
 
     function abrirListaOperadorDev() {
         filtrarOperadorDevolucao();
@@ -762,11 +851,13 @@
         window.location.href = 'index-almoxarifado.html';
     }
 
-    async function abrirModalDevolucao(idFicha) {
-        idFichaSelecionada = idFicha;
-        limparCamposModal();
+  async function abrirModalDevolucao(idFicha) {
+    idFichaSelecionada = idFicha;
+    limparCamposModal();
 
-        const email = await getCurrentUserEmail();
+    await carregarOperadoresDaPlanilha();
+
+    const email = await getCurrentUserEmail();
         if (email) {
             const nome = emailToNome[email];
             if (nome) {
