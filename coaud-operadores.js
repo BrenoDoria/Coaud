@@ -12,18 +12,20 @@ const ABA_OPERADORES   = 'OPERADORES';
 const CAB_OPERADORES   = ['Nome', 'Ponto', 'Ativo'];
 const CACHE_OPERADORES = 'coaud_operadores_v2';   // v2: descarta cache antigo com colunas trocadas
 
-// Lista reserva = lista que estava no código até agora.
-// [nome, ponto, ativo]  (ativo=false: não aparece na lista de retirada,
-//                        mas o ponto continua saindo nas impressões antigas)
+// Lista reserva = TODOS os nomes que estavam no código até agora
+// (lista da Nova Retirada + lista de pontos das impressões), todos ativos.
+// Ela nunca é descartada: a lista mostrada é a aba OPERADORES + estes nomes.
+// [nome, ponto, ativo]
 const OPERADORES_RESERVA = [
     ["Adson Miranda dos Anjos", "914.262", true],
     ["Afonso Viana de Mesquita Filho", "5.947", true],
     ["Alberto Cesar Souza Almeida", "5.302", true],
     ["Alexander Rafael Carvalho Paim", "882.420", true],
+    ["Alexandre Alves de Siqueira", "919.956", true],
     ["Alison Silva de Oliveira", "914.799", true],
     ["Allan Cosseti Ardisson", "919.895", true],
-    ["Ana Clara Cardoso de Oliveira", "92444", true],
     ["Altamir Araujo da Silva", "881.758", true],
+    ["Ana Clara Cardoso de Oliveira", "92444", true],
     ["Antonio Batista Ângelo", "999.134", true],
     ["Antonio Rodrigues Siqueira Filho", "917.486", true],
     ["Arley Carvalho Alves", "915.546", true],
@@ -31,29 +33,33 @@ const OPERADORES_RESERVA = [
     ["Bruno Fernandes Braga", "881.842", true],
     ["Bruno Rodrigues do Prado", "919.894", true],
     ["Bruno Vieira Rodrigues", "922.084", true],
+    ["Carlos César Ferreira de Sousa", "5.250", true],
     ["Carlos Cesar José da Silva", "920.074", true],
     ["Carlos Eduardo Guedes da Silva", "882.174", true],
     ["Carlos Roberto de Paiva Miranda dos Santos", "922.498", true],
     ["Cinthia Neves Carvalho Barbosa", "5.476", true],
-    ["Claudio Marcelo do Nascimento", "882.421", true],
+    ["Cláudio Marcelo do Nascimento", "882.421", true],
     ["Daniel Deluze Braga", "", true],
     ["Davi Aragão de Paula Gonçalves", "921.627", true],
     ["Douglas Batista da Silva", "920.077", true],
-    ["Emmanuel do Amaral Idelfonso", "920.076", true],
     ["Emanuel Silveira Costa", "922.931", true],
+    ["Emmanuel do Amaral Idelfonso", "920.076", true],
+    ["Enzo Risso Conturbia", "920.438", true],
     ["Eric Samuel do Ouro", "920.359", true],
     ["Erika Fedosseeff Auler", "921.672", true],
     ["Eromilson Monteiro dutra Chaves", "882.134", true],
     ["Evellyn Mendes de Souza Nunes", "915.974", true],
+    ["Fausto Barbosa de Oliveira", "888.223", true],
     ["Felipe Omena Vasconcellos de Assis", "919.593", true],
     ["Fernando de Sousa Vasconcelos", "914.382", true],
-    ["Flavio Lima Camara", "882.218", true],
+    ["Flávio Lima Câmara", "882.218", true],
     ["Francisco de Assis da Silva Sales", "888.744", true],
     ["Francisco de Sousa Filho", "5.953", true],
-    ["Francisco Juniel Sousa E Silva", "915.547", true],
+    ["Francisco Juniel Sousa e Silva", "915.547", true],
     ["Geraldo Ribeiro de Souza Filho", "888.010", true],
     ["Gildo Marques da Silva", "920.092", true],
     ["Gilson Gomes da Silva", "882.541", true],
+    ["Gilson Gustavo de Paiva Oliveira", "5.254", true],
     ["Gleisson Carlos Pereira da Silva", "914.815", true],
     ["Guilherme Malheiro da Rocha Pinto", "4.224", true],
     ["Helisson Rafael de O. Leite", "881.759", true],
@@ -64,6 +70,7 @@ const OPERADORES_RESERVA = [
     ["Isaias Pereira Soares", "919.903", true],
     ["Joel Luiz de Sá Silva", "920.353", true],
     ["Joel Pereira Santos", "882.652", true],
+    ["Joilson Santos de Jesus", "920.123", true],
     ["Jônatas Soares de Andrade", "881.598", true],
     ["Jose Henrique Ferreira da Silva", "7.913", true],
     ["Jose Leandro Marques", "", true],
@@ -78,15 +85,18 @@ const OPERADORES_RESERVA = [
     ["Leonardo Augusto de Freitas", "882.688", true],
     ["Letícia Santana Araújo", "920.816", true],
     ["Lívia Maria de Souza", "916.391", true],
+    ["Lucas Farias de Menezes", "920.362", true],
     ["Lucas Lima Lira", "919.897", true],
     ["Lucas Ribeiro dos Santos", "919.904", true],
     ["Luciano de Freitas Silva", "881.452", true],
+    ["Luis Eduardo Campos Moreira", "919.898", true],
     ["Luiz Henrique Reis de Lima", "888.226", true],
+    ["Marcelo Bruno Rezende Costa", "882.728", true],
     ["Marcelo Gomes da Silva", "918.923", true],
     ["Marco Antonio Baldresca Lambert de Brito", "5.261", true],
     ["Marco Antônio Felício Júnior", "915.553", true],
-    ["Marcos Murilo Antunes", "", true],
     ["Marcos Borges de Souza", "920.075", true],
+    ["Marcos Murilo Antunes", "", true],
     ["Marcus Aurélius Fernandes de Moura", "888.219", true],
     ["Massilon Alves de Sousa Filho", "919.905", true],
     ["Mateus da Silva Lima", "922.278", true],
@@ -100,39 +110,29 @@ const OPERADORES_RESERVA = [
     ["Paulo Soares da Costa", "888.228", true],
     ["Pedro Henrique Candido Boaventura", "920.124", true],
     ["Péricles Cruz da Silva", "881.892", true],
+    ["Priscilla Amorim dos Santos Rodrigues", "7.914", true],
     ["Rafael Queiroz Lemos de Oliveira", "881.782", true],
-    ["Reynaldo Jesse Rodrigues da Silva", "888.131", true],
-    ["Robson da Silva Ferreira", "924.692", true],
-    ["Ronaldo Jovino da Silva", "919.185", true],
+    ["Reynaldo Jessé Rodrigues da Silva", "888.131", true],
     ["Richard Rodrigues dos Santos", "921.026", true],
     ["Roberio Antunes Simionato", "5.266", true],
+    ["Robson da Silva Ferreira", "924.692", true],
+    ["Rodrigo Fonseca Shiratori", "5.272", true],
+    ["Ronaldo Jovino da Silva", "919.185", true],
     ["Rondney Rodrigues Alves Sousa", "881.174", true],
     ["Rosivan Augustinho Pereira", "882.518", true],
     ["Suzana Silva de Oliveira", "917.572", true],
     ["Thiago Veríssimo Cabral Freitas", "922.497", true],
+    ["Vinícius Veríssimo Cabral Freitas", "919.796", true],
+    ["Vivikananda Abdallah Antun Filho", "5.301", true],
     ["Waleria Bastos Cardoso", "915.570", true],
+    ["Wanderson Balzan de Sousa", "918.679", true],
     ["Wellington Jorge Souza Mendes", "881.179", true],
+    ["Wellington Rodrigo Ribeiro Santana", "882.052", true],
     ["Wendel Vieira da Costa", "919.907", true],
+    ["Wesley Laécio da Silva Costa", "882.054", true],
     ["Wesley Maurício Ribeiro França", "888.217", true],
-    ["William Neves da Silva", "", true],
-    ["Wirlem Silva Alves", "919.906", true],
-    ["Alexandre Alves de Siqueira", "919.956", false],
-    ["Carlos César Ferreira de Sousa", "5.250", false],
-    ["Enzo Risso Conturbia", "920.438", false],
-    ["Fausto Barbosa de Oliveira", "888.223", false],
-    ["Gilson Gustavo de Paiva Oliveira", "5.254", false],
-    ["Joilson Santos de Jesus", "920.123", false],
-    ["Luis Eduardo Campos Moreira", "919.898", false],
-    ["Marcelo Bruno Rezende Costa", "882.728", false],
-    ["Priscilla Amorim dos Santos Rodrigues", "7.914", false],
-    ["Rodrigo Fonseca Shiratori", "5.272", false],
-    ["Vinícius Veríssimo Cabral Freitas", "919.796", false],
-    ["Vivikananda Abdallah Antun Filho", "5.301", false],
-    ["Wanderson Balzan de Sousa", "918.679", false],
-    ["Wellington Rodrigo Ribeiro Santana", "882.052", false],
-    ["Wesley Laécio da Silva Costa", "882.054", false],
-    ["Willian Neves da Silva", "888.230", false],
-    ["Lucas Farias de Menezes", "920.362", false]
+    ["Willian Neves da Silva", "888.230", true],
+    ["Wirlem Silva Alves", "919.906", true]
 ];
 
 function normNomeOp(nome) {
@@ -164,11 +164,15 @@ function listaCompletaOperadores() {
     return OPERADORES_RESERVA.map(([nome, ponto, ativo]) => ({ nome, ponto, ativo }));
 }
 
-// Nomes ativos, em ordem alfabética (para as listas de seleção)
+// Nomes ativos, em ordem alfabética (para as listas de seleção).
+// = ativos da aba OPERADORES + nomes da lista reserva que ainda não estão na aba
+//   (quem foi DESATIVADO na aba não volta pela reserva).
 function listaOperadoresAtivos() {
-    return listaCompletaOperadores()
-        .filter(o => o.ativo && o.nome)
-        .map(o => o.nome)
+    const daAba = listaCompletaOperadores();
+    const naAba = new Set(daAba.map(o => normNomeOp(o.nome)));
+    const nomes = daAba.filter(o => o.ativo && o.nome).map(o => o.nome);
+    OPERADORES_RESERVA.forEach(([nome]) => { if (!naAba.has(normNomeOp(nome))) nomes.push(nome); });
+    return [...new Map(nomes.map(n => [normNomeOp(n), n])).values()]
         .sort((a, b) => a.localeCompare(b, 'pt-BR'));
 }
 
@@ -320,6 +324,27 @@ async function adicionarOperadorPlanilha(token, fileId, nome, ponto) {
     await operadoresFetch(token,
         `https://sheets.googleapis.com/v4/spreadsheets/${fileId}/values/${ABA_OPERADORES}!A:${letraColuna(L.largura - 1)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
         { method: 'POST', body: JSON.stringify({ values: [linha] }) });
+}
+
+// Completa a aba com os nomes da lista reserva que estão faltando nela.
+// Não altera nem apaga nenhuma linha existente. Devolve quantos adicionou.
+async function completarOperadoresFaltantes(token, fileId, listaDaAba) {
+    const naAba = new Set((listaDaAba || []).map(o => normNomeOp(o.nome)));
+    const faltando = OPERADORES_RESERVA.filter(([nome]) => !naAba.has(normNomeOp(nome)));
+    if (!faltando.length) return 0;
+    await garantirColunaAtivo(token, fileId);
+    const L = layoutOperadores;
+    const linhas = faltando.map(([nome, ponto]) => {
+        const linha = new Array(L.largura).fill('');
+        linha[L.idxNome] = nome;
+        if (L.idxPonto >= 0) linha[L.idxPonto] = ponto;
+        linha[L.idxAtivo] = true;
+        return linha;
+    });
+    await operadoresFetch(token,
+        `https://sheets.googleapis.com/v4/spreadsheets/${fileId}/values/${ABA_OPERADORES}!A:${letraColuna(L.largura - 1)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+        { method: 'POST', body: JSON.stringify({ values: linhas }) });
+    return faltando.length;
 }
 
 // Ativa/desativa: grava só a célula da coluna "Ativo" (não mexe em nome e ponto)
