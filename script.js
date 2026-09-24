@@ -33,7 +33,9 @@ const PERMISSOES = {
 };
 
 // Leitura (hedged): tentativas em 0ms, 2.5s e 8s
-const HEDGE_LEITURA = { delays: [0, 2500, 8000], timeoutTentativa: 20000, timeoutTotal: 30000 };
+// Cada tentativa espera até 40s (antes 20s): quando o Apps Script está lento,
+// desistir cedo obrigava a clicar de novo e acabava demorando MAIS.
+const HEDGE_LEITURA = { delays: [0, 2500, 8000], timeoutTentativa: 40000, timeoutTotal: 50000 };
 // Escrita (single-flight): 1 tentativa, timeout generoso
 const UNICO_ESCRITA = { delays: [0],             timeoutTentativa: 30000, timeoutTotal: 32000 };
 
