@@ -4,13 +4,24 @@
 // ══════════════════════════════════════════════════════
 
 // ══ PERMISSÕES ═════════════════════════════════════════
+// dev        → tudo + Usuários do sistema
+// supervisor → tudo, menos Usuários do sistema
+// almoxarifado → só Controle de Almoxarifado
+// operador   → só Escanear (sem Dashboard)
 const PERMS_SIDEBAR = {
-    supervisor:   ['nav-escanear', 'nav-comparador', 'nav-localizador', 'nav-almoxarifado'],
+    dev:          ['nav-escanear', 'nav-dashboard-inv', 'nav-comparador', 'nav-localizador',
+                   'nav-almoxarifado', 'nav-operadores', 'nav-usuarios'],
+    supervisor:   ['nav-escanear', 'nav-dashboard-inv', 'nav-comparador', 'nav-localizador',
+                   'nav-almoxarifado', 'nav-operadores'],
     almoxarifado: ['nav-almoxarifado'],
+    operador:     ['nav-escanear'],
 };
 
 const PAGINAS_PERMISSAO = {
     'index-escanear.html':      'nav-escanear',
+    'dashboard-inventario.html':'nav-dashboard-inv',
+    'usuarios.html':            'nav-usuarios',
+    'operadores.html':          'nav-operadores',
     'index-comparador.html':    'nav-comparador',
     'index_Local.html':         'nav-localizador',
     'index-almoxarifado.html':  'nav-almoxarifado',
@@ -61,6 +72,8 @@ function aplicarPermissoesSidebar() {
         }
     });
 
+    injetarItensExtras(liberados);
+
     // Se estiver em página sem permissão, redireciona
     const paginaAtual = window.location.pathname.split('/').pop();
     const permNecessaria = PAGINAS_PERMISSAO[paginaAtual];
@@ -68,6 +81,41 @@ function aplicarPermissoesSidebar() {
         alert('Você não tem permissão para acessar esta página.');
         window.location.href = 'index.html';
     }
+}
+
+// ══ ITENS EXTRAS DO MENU (criados aqui para não editar cada página) ══
+function injetarItensExtras(liberados) {
+    const nav = document.querySelector('.sidebar-nav');
+    if (!nav) return;
+    const paginaAtual = window.location.pathname.split('/').pop();
+
+    // 👤 Usuários do sistema (só dev) — antes do link do Portal/Página Inicial
+    if (liberados.includes('nav-usuarios') && !nav.querySelector('a[href="usuarios.html"]')) {
+        const a = document.createElement('a');
+        a.className = 'nav-item' + (paginaAtual === 'usuarios.html' ? ' active' : '');
+        a.id = 'nav-usuarios';
+        a.href = 'usuarios.html';
+        a.innerHTML = '<span class="nav-icon">👤</span> Usuários do sistema';
+        const portal = [...nav.querySelectorAll('a.nav-item')].find(x => x.getAttribute('href') === 'index.html');
+        nav.insertBefore(a, portal || null);
+    }
+
+    // ↳ Operadores no subgrupo do Controle de Almoxarifado (supervisor e dev)
+    const sub = document.getElementById('nav-almoxarifado-sub');
+    if (sub && liberados.includes('nav-operadores') && !sub.querySelector('a[href="operadores.html"]')) {
+        const a = document.createElement('a');
+        a.className = 'nav-subitem' + (paginaAtual === 'operadores.html' ? ' active' : '');
+        a.setAttribute('data-page', 'operadores.html');
+        a.href = 'operadores.html';
+        a.innerHTML = '<span class="nav-sub-icon">↳</span> Operadores';
+        sub.appendChild(a);
+    }
+
+    // Esconde links para páginas que o usuário não pode abrir (ex.: Dashboard para operador)
+    nav.querySelectorAll('a[href]').forEach(a => {
+        const req = PAGINAS_PERMISSAO[a.getAttribute('href')];
+        if (req && !liberados.includes(req)) a.style.display = 'none';
+    });
 }
 
 // ══ TEMA ═══════════════════════════════════════════════
