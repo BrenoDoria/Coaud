@@ -75,16 +75,18 @@ function ehResponsavelCoaud(resp, listaOpcional) {
 }
 
 // Lê a aba CONFIG. Se ela não existir, mantém a reserva da página.
-async function carregarResponsaveis(token, fileId) {
-    const m = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${fileId}?fields=sheets.properties.title`,
-        { headers: { 'Authorization': `Bearer ${token}` } }
-    );
-    if (m.status === 401) throw new Error('SESSAO_EXPIRADA');
-    if (m.ok) {
-        const titulos = ((await m.json()).sheets || []).map(x => x.properties.title);
-        if (!titulos.includes(ABA_CONFIG)) { RESPONSAVEIS_ATIVOS = null; return listaResponsaveis(); }
+// titulosConhecidos (opcional): nomes das abas, se a página já os tiver (evita outra consulta)
+async function carregarResponsaveis(token, fileId, titulosConhecidos) {
+    let titulos = titulosConhecidos || null;
+    if (!titulos) {
+        const m = await fetch(
+            `https://sheets.googleapis.com/v4/spreadsheets/${fileId}?fields=sheets.properties.title`,
+            { headers: { 'Authorization': `Bearer ${token}` } }
+        );
+        if (m.status === 401) throw new Error('SESSAO_EXPIRADA');
+        if (m.ok) titulos = ((await m.json()).sheets || []).map(x => x.properties.title);
     }
+    if (titulos && !titulos.includes(ABA_CONFIG)) { RESPONSAVEIS_ATIVOS = null; return listaResponsaveis(); }
     const r = await fetch(
         `https://sheets.googleapis.com/v4/spreadsheets/${fileId}/values/${encodeURIComponent(ABA_CONFIG + '!A:A')}`,
         { headers: { 'Authorization': `Bearer ${token}` } }

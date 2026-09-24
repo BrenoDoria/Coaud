@@ -443,35 +443,65 @@
     // ══════════════════════════════════════════════════════
     //  CARGA
     // ══════════════════════════════════════════════════════
+    // SIGMAS reduzida (só NRP e Responsável), guardada entre as atualizações automáticas
+    let sigmasLeve   = null;
+    let sigmasLidaEm = 0;
+    const SIGMAS_VALIDADE_MS = 10 * 60 * 1000;   // relê a SIGMAS no máximo a cada 10 min (ou no 🔄)
+
     async function carregarTudo(silencioso) {
         if (!accessToken) return;
         if (!silencioso) spinner(true);
         setProgress('Carregando inventários...');
         try {
-            await carregarResponsaveis(accessToken, FILE_ID);   // aba CONFIG
-            const inv = await listarInventarios(accessToken, FILE_ID);
+            // Lista de abas uma vez só; responsáveis e inventários em paralelo
+            const meta = await sheetsFetch(accessToken, `${SHEETS_API}${FILE_ID}?fields=sheets.properties(title,sheetId,index)`);
+            const titulos = (meta.sheets || []).map(x => x.properties.title);
+            const [, inv] = await Promise.all([
+                carregarResponsaveis(accessToken, FILE_ID, titulos),   // aba CONFIG
+                listarInventarios(accessToken, FILE_ID, meta)
+            ]);
             inventarios = inv.lista;
 
+            // SIGMAS: só as colunas A (NRP) e D (Responsável); na atualização
+            // automática de 60 s ela NÃO é baixada de novo (só a cada 10 min ou no 🔄)
+            const lerSigmas = !silencioso || !sigmasLeve || (Date.now() - sigmasLidaEm) > SIGMAS_VALIDADE_MS;
+
             const comSobras = inventarios.filter(i => i.temSobras);
-            const ranges = ['SIGMAS!A:D', 'COAUD!A:D']
+            const ranges = ['COAUD!A:D']
+                .concat(lerSigmas ? ['SIGMAS!A:A', 'SIGMAS!D:D'] : [])
                 .concat(inventarios.map(i => rangeAba(i.aba, 'A:J')))
                 .concat(comSobras.map(i => rangeAba(i.abaSobras, 'A:J')));
             const q = ranges.map(r => 'ranges=' + encodeURIComponent(r)).join('&');
             const d = await sheetsFetch(accessToken, `${SHEETS_API}${FILE_ID}/values:batchGet?${q}`);
             const vr = d.valueRanges || [];
+            let pos = 0;
+            const proximo = () => { const v = vr[pos++]; return (v && v.values) || []; };
 
             // Base = aba COAUD (mesmas salas do Escaneamento e do Comparador)
-            baseCoaud = ((vr[1] && vr[1].values) || []).slice(1).filter(row => normalizeNRP(row[0]));
+            baseCoaud = proximo().slice(1).filter(row => normalizeNRP(row[0]));
             nrpsCoaud = new Set(baseCoaud.map(row => normalizeNRP(row[0])));
-            exigidos  = itensExigidosParaConcluir(((vr[0] && vr[0].values) || []).slice(1), baseCoaud);
+
+            if (lerSigmas) {
+                const colA = proximo(), colD = proximo();
+                const total = Math.max(colA.length, colD.length);
+                const linhas = [];
+                for (let i = 1; i < total; i++) {
+                    const nrp = (colA[i] || [])[0];
+                    if (!normalizeNRP(nrp)) continue;
+                    linhas.push([nrp, '', '', (colD[i] || [])[0] || '']);   // mesmas posições da SIGMAS (0 e 3)
+                }
+                sigmasLeve = linhas;
+                sigmasLidaEm = Date.now();
+            }
+            exigidos = itensExigidosParaConcluir(sigmasLeve || [], baseCoaud);
+
             dadosInv = {};
-            inventarios.forEach((i, k) => {
-                dadosInv[i.aba] = (((vr[k + 2] && vr[k + 2].values) || []).slice(1)).filter(row => normalizeNRP(row[0]));
+            inventarios.forEach(i => {
+                dadosInv[i.aba] = proximo().slice(1).filter(row => normalizeNRP(row[0]));
             });
             dadosSobras = {};
-            comSobras.forEach((i, k) => {
-                const v = vr[2 + inventarios.length + k];
-                dadosSobras[i.aba] = (((v && v.values) || []).slice(1)).filter(row => normalizeNRP(row[0]));
+            comSobras.forEach(i => {
+                dadosSobras[i.aba] = proximo().slice(1).filter(row => normalizeNRP(row[0]));
             });
 
             await verificarConclusoes();

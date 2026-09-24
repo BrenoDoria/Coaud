@@ -49,8 +49,9 @@ async function sheetsFetch(token, url, opcoes = {}) {
 
 // Lista os inventários (abas que começam com "INV ") na ordem das abas.
 // O último da lista é o mais recente.
-async function listarInventarios(token, fileId) {
-    const meta = await sheetsFetch(token, `${SHEETS_API}${fileId}?fields=sheets.properties(title,sheetId,index)`);
+// metaConhecido (opcional): resposta de ?fields=sheets.properties(title,sheetId,index) já lida pela página
+async function listarInventarios(token, fileId, metaConhecido) {
+    const meta = metaConhecido || await sheetsFetch(token, `${SHEETS_API}${fileId}?fields=sheets.properties(title,sheetId,index)`);
     const abas = (meta.sheets || []).map(s => s.properties);
     const sheetIds = {};
     abas.forEach(a => { sheetIds[a.title] = a.sheetId; });
