@@ -1,14 +1,18 @@
 // ══════════════════════════════════════════════════════
 //  COAUD — coaud-operadores.js
 //  Lista de OPERADORES do Almoxarifado (nome + ponto)
-//  Fonte: aba "OPERADORES" da planilha do almoxarifado
-//         (colunas: Nome | Ponto | Ativo)
+//  Fonte: aba "OPERADORES" da planilha COAUD — Cadastros
+//         (editável só por supervisor e dev; almoxarifado só lê)
+//  A aba OPERADORES antiga, na planilha do almoxarifado, fica como
+//  reserva de leitura enquanto a Cadastros não estiver acessível.
 //  • Nova Retirada / Fichas Pendentes → lista de nomes ATIVOS
 //  • Impressões                       → ponto de cada nome
 //  Se a aba não puder ser lida, usa a lista reserva abaixo.
 // ══════════════════════════════════════════════════════
 
-const ABA_OPERADORES   = 'OPERADORES';
+const ABA_OPERADORES    = 'OPERADORES';
+const ALMOX_FILE_ID     = '1q9RCwJ4P--QIH4kkMszffrN8ZwzkSsNoZtPH-Usk4Zw';   // planilha do almoxarifado (aba antiga)
+const CADASTROS_FILE_ID = '1enKQptgqclAvOszSNUUob6Lti0UY57TtRVhRfodDNtA';   // planilha COAUD — Cadastros
 const CAB_OPERADORES   = ['Nome', 'Ponto', 'Ativo'];
 const CACHE_OPERADORES = 'coaud_operadores_v2';   // v2: descarta cache antigo com colunas trocadas
 
@@ -287,18 +291,56 @@ async function garantirColunaAtivo(token, fileId) {
 
 // Liga a lista da página à planilha: atualiza o array no lugar
 // (as buscas da página passam a usar a lista nova sem recarregar)
+// Lê primeiro a planilha Cadastros; se não conseguir (sem acesso ou vazia),
+// lê a aba antiga da planilha do almoxarifado (fileId).
 function vincularListaOperadores(arrayDaPagina, fileId) {
     const token  = localStorage.getItem('access_token');
     const expira = parseInt(localStorage.getItem('token_expira_em') || '0', 10);
     if (!token || (expira && expira < Date.now())) return;
-    lerOperadoresPlanilha(token, fileId)
-        .then(lista => {
-            if (!lista || !lista.length) return;
-            salvarCacheOperadores(lista.map(({ nome, ponto, ativo }) => ({ nome, ponto, ativo })));
-            const ativos = listaOperadoresAtivos();
-            arrayDaPagina.splice(0, arrayDaPagina.length, ...ativos);
-        })
-        .catch(e => console.warn('Lista de operadores: usando a reserva.', e.message));
+    const tentar = async id => {
+        try {
+            const l = await lerOperadoresPlanilha(token, id);
+            return l && l.length ? l : null;
+        } catch (e) {
+            console.warn(`Lista de operadores: não consegui ler a planilha ${id}.`, e.message);
+            return null;
+        }
+    };
+    (async () => {
+        let lista = await tentar(CADASTROS_FILE_ID);
+        if (!lista) lista = await tentar(fileId || ALMOX_FILE_ID);
+        if (!lista) { console.warn('Lista de operadores: usando a reserva.'); return; }
+        salvarCacheOperadores(lista.map(({ nome, ponto, ativo }) => ({ nome, ponto, ativo })));
+        const ativos = listaOperadoresAtivos();
+        arrayDaPagina.splice(0, arrayDaPagina.length, ...ativos);
+    })();
+}
+
+// Copia a lista para a planilha Cadastros (usado quando a aba de lá está vazia).
+// Origem: aba OPERADORES antiga do almoxarifado; se não der, a lista reserva.
+// A aba antiga NÃO é apagada.
+async function migrarOperadoresParaCadastros(token) {
+    let antigo = null;
+    try { antigo = await lerOperadoresPlanilha(token, ALMOX_FILE_ID); } catch (e) { antigo = null; }
+    const doAlmox = !!(antigo && antigo.length);
+    const linhas = doAlmox
+        ? antigo.map(o => [o.ponto, o.nome, !!o.ativo])
+        : OPERADORES_RESERVA.map(([n, p, a]) => [p, n, !!a]);
+
+    const meta = await operadoresFetch(token,
+        `https://sheets.googleapis.com/v4/spreadsheets/${CADASTROS_FILE_ID}?fields=sheets.properties(title)`);
+    if (!(meta.sheets || []).some(x => x.properties.title === ABA_OPERADORES)) {
+        await operadoresFetch(token, `https://sheets.googleapis.com/v4/spreadsheets/${CADASTROS_FILE_ID}:batchUpdate`, {
+            method: 'POST',
+            body: JSON.stringify({ requests: [{ addSheet: { properties: {
+                title: ABA_OPERADORES, gridProperties: { frozenRowCount: 1 } } } }] })
+        });
+    }
+    const valores = [['Ponto', 'Nome', 'Ativo']].concat(linhas);
+    await operadoresFetch(token,
+        `https://sheets.googleapis.com/v4/spreadsheets/${CADASTROS_FILE_ID}/values/${ABA_OPERADORES}!A1:C${valores.length}?valueInputOption=RAW`,
+        { method: 'PUT', body: JSON.stringify({ values: valores }) });
+    return { qtd: linhas.length, origem: doAlmox ? 'aba antiga do almoxarifado' : 'lista reserva do sistema' };
 }
 
 // Cria a aba OPERADORES já preenchida com a lista reserva

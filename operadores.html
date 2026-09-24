@@ -232,7 +232,8 @@
     })();
 
     const CLIENT_ID = '286050228811-cv6vsd075480anb1i6auuc421enuaf8q.apps.googleusercontent.com';
-    const FILE_ID   = '1q9RCwJ4P--QIH4kkMszffrN8ZwzkSsNoZtPH-Usk4Zw';   // planilha do almoxarifado
+    // A lista agora fica na planilha COAUD — Cadastros (antes: planilha do almoxarifado 1q9RCwJ4P--QIH4kkMszffrN8ZwzkSsNoZtPH-Usk4Zw)
+    const FILE_ID   = CADASTROS_FILE_ID;
 
     let tokenClient = null;
     let accessToken = null;
@@ -303,12 +304,13 @@
         setProgress('Lendo operadores...');
         try {
             let lista = await lerOperadoresPlanilha(accessToken, FILE_ID);
-            if (lista === null) {
-                // Primeira vez: cria a aba já com a lista que estava no código
-                setProgress('Criando a aba OPERADORES com a lista atual...');
-                await criarAbaOperadores(accessToken, FILE_ID);
+            if (lista === null || lista.length === 0) {
+                // Primeira vez na planilha Cadastros: copia a lista atual para ela
+                setProgress('Copiando a lista de operadores para a planilha COAUD — Cadastros...');
+                const mig = await migrarOperadoresParaCadastros(accessToken);
                 lista = await lerOperadoresPlanilha(accessToken, FILE_ID);
-                mensagem('✅ Aba OPERADORES criada na planilha do almoxarifado com a lista atual.', 'ok');
+                mensagem(`✅ ${mig.qtd} operador(es) copiados para a planilha COAUD — Cadastros (origem: ${mig.origem}). ` +
+                         'A aba antiga do almoxarifado não foi apagada.', 'ok');
             }
             operadores = lista || [];
             atualizarAvisoFaltando();

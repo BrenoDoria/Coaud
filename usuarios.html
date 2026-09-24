@@ -141,6 +141,18 @@
 
                     <div class="form-grid dois">
                         <div class="field-block">
+                            <label for="uEmail">E-mail Google (conta que a pessoa usa para entrar)</label>
+                            <input type="text" id="uEmail" placeholder="Ex.: maria.souza@gmail.com" autocomplete="off" inputmode="email">
+                            <p class="ajuda">Com o e-mail, o sistema libera sozinho as planilhas que a permissão precisa.</p>
+                        </div>
+                        <div class="field-block">
+                            <label>Planilhas que serão liberadas</label>
+                            <p class="ajuda" id="acessos-previstos" style="margin-top:2px"></p>
+                        </div>
+                    </div>
+
+                    <div class="form-grid dois">
+                        <div class="field-block">
                             <label for="uSenha">Senha inicial</label>
                             <div class="senha-linha">
                                 <input type="text" id="uSenha" placeholder="Mínimo 6 caracteres" autocomplete="off">
@@ -163,8 +175,9 @@
                     <button type="button" id="btnCadastrar" onclick="cadastrarUsuario()">✔ Cadastrar usuário</button>
                     <p class="msg-form" id="msgForm"></p>
                     <p class="ajuda">
-                        ⚠ Para usar o sistema, a <strong>conta Google</strong> da pessoa também precisa ter acesso de edição
-                        às planilhas que ela vai usar (patrimônio e/ou almoxarifado).
+                        ⚠ Para usar o sistema, a <strong>conta Google</strong> da pessoa também precisa ter acesso
+                        às planilhas que ela vai usar. Informando o e-mail, isso é feito automaticamente
+                        (o Google pede uma vez a sua autorização para o <strong>Google Drive</strong>).
                     </p>
                 </div>
 
@@ -183,13 +196,14 @@
                                 <tr>
                                     <th>Ponto</th>
                                     <th>Nome</th>
+                                    <th>E-mail Google</th>
                                     <th>Permissão</th>
                                     <th>Situação</th>
-                                    <th style="width:150px">Ações</th>
+                                    <th style="width:230px">Ações</th>
                                 </tr>
                             </thead>
                             <tbody id="listaUsuarios">
-                                <tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px">Carregando...</td></tr>
+                                <tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px">Carregando...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -212,6 +226,10 @@
                 <label for="edNome">Nome completo</label>
                 <input type="text" id="edNome" autocomplete="off">
             </div>
+            <div class="field-block" style="margin-bottom:10px">
+                <label for="edEmail">E-mail Google</label>
+                <input type="text" id="edEmail" autocomplete="off" inputmode="email" placeholder="Ex.: maria.souza@gmail.com">
+            </div>
             <div class="field-block">
                 <label for="edPerm">Permissão</label>
                 <select id="edPerm">
@@ -221,7 +239,8 @@
                     <option value="dev">Dev</option>
                 </select>
             </div>
-            <p class="ajuda">A pessoa precisa sair e entrar de novo no sistema para a mudança valer. A senha não muda.</p>
+            <p class="ajuda">A pessoa precisa sair e entrar de novo no sistema para a mudança valer. A senha não muda.
+                Se houver e-mail, os acessos às planilhas são ajustados para a nova permissão.</p>
             <div class="rodape">
                 <button type="button" class="cancelButton" onclick="fecharEditar()">Cancelar</button>
                 <button type="button" id="btnSalvarEd" onclick="salvarEdicao()">✔ Salvar</button>
@@ -242,7 +261,27 @@
         dev:          'Tudo do supervisor + cadastro de usuários do sistema (esta tela).'
     };
 
+    // ══ Planilhas e acesso de cada permissão ═════════════
+    //  writer = Editor | reader = Leitor | (ausente) = sem acesso
+    const ARQUIVOS = {
+        patrimonio: { id: '1iNeSf0wakQ6j9Eg_qOCzVNKcIVVIsukeThL0Phpd5LE', nome: 'Patrimônio (SIGMAS, COAUD, inventários)' },
+        almox:      { id: '1q9RCwJ4P--QIH4kkMszffrN8ZwzkSsNoZtPH-Usk4Zw', nome: 'Almoxarifado (retiradas)' },
+        cadastros:  { id: '1enKQptgqclAvOszSNUUob6Lti0UY57TtRVhRfodDNtA', nome: 'COAUD — Cadastros (operadores)' }
+    };
+    const ACESSOS = {
+        operador:     { patrimonio: 'writer' },
+        almoxarifado: { almox: 'writer', cadastros: 'reader' },
+        supervisor:   { patrimonio: 'writer', almox: 'writer', cadastros: 'writer' },
+        dev:          { patrimonio: 'writer', almox: 'writer', cadastros: 'writer' }
+    };
+    const NOME_PAPEL = { writer: 'Editor', reader: 'Leitor', owner: 'Dono' };
+
     let tokenClient = null;
+    let driveClient = null;          // token separado, só com permissão do Google Drive
+    let driveToken  = sessionStorage.getItem('drive_token') || null;
+    let driveExpira = parseInt(sessionStorage.getItem('drive_expira') || '0', 10);
+    let acaoPendenteDrive = null;
+    let temColunaEmail = false;       // a planilha de login já tem o título "email" na coluna F?
     let accessToken = null;
     let abaUsuarios = null;     // nome da aba de login (a primeira da planilha)
     let abaUsuariosId = null;   // sheetId dessa aba (para apagar linhas)
@@ -292,6 +331,8 @@
     window.addEventListener('load', () => {
         atualizarDescricao();
         document.getElementById('uPerm').addEventListener('change', atualizarDescricao);
+        document.getElementById('uPerm').addEventListener('change', atualizarAcessosPrevistos);
+        atualizarAcessosPrevistos();
         document.getElementById('uPonto').addEventListener('blur', e => { e.target.value = formatarPonto(e.target.value); });
         document.getElementById('buscaUsuario').addEventListener('input', renderizarUsuarios);
 
@@ -307,6 +348,28 @@
                     localStorage.setItem('token_expira_em', Date.now() + ((resp.expires_in || 3600) * 1000));
                     esconderReconectar();
                     carregarUsuarios();
+                }
+            });
+            driveClient = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: 'https://www.googleapis.com/auth/drive',
+                callback: (resp) => {
+                    if (resp.error) {
+                        acaoPendenteDrive = null;
+                        mensagem('Autorização do Google Drive não concedida: ' + resp.error, 'erro');
+                        return;
+                    }
+                    driveToken  = resp.access_token;
+                    driveExpira = Date.now() + ((resp.expires_in || 3600) * 1000);
+                    sessionStorage.setItem('drive_token', driveToken);
+                    sessionStorage.setItem('drive_expira', String(driveExpira));
+                    const acao = acaoPendenteDrive;
+                    acaoPendenteDrive = null;
+                    if (acao) acao();
+                },
+                error_callback: () => {
+                    acaoPendenteDrive = null;
+                    mensagem('Autorização do Google Drive cancelada. Nada foi alterado.', 'erro');
                 }
             });
             const salvo = localStorage.getItem('access_token');
@@ -357,7 +420,8 @@
                 abaUsuariosId = aba.sheetId;
             }
             const d = await apiFetch(
-                `https://sheets.googleapis.com/v4/spreadsheets/${USUARIOS_FILE}/values/${rangeUsuarios('A:E')}?valueRenderOption=UNFORMATTED_VALUE`);
+                `https://sheets.googleapis.com/v4/spreadsheets/${USUARIOS_FILE}/values/${rangeUsuarios('A:F')}?valueRenderOption=UNFORMATTED_VALUE`);
+            temColunaEmail = !!(((d.values || [])[0] || [])[5]);
             const linhas = (d.values || []).slice(1)
                 .map((r, i) => Object.assign([...(r || [])], { __linha: i + 2 }))
                 .filter(r => r && (r[0] !== undefined && r[0] !== '' || r[1]));
@@ -375,7 +439,8 @@
                 linha: r.__linha,
                 ponto: r[0], nome: (r[1] || '').toString(),
                 primeiroAcesso: r[3] === true || norm(r[3]) === 'TRUE' || norm(r[3]) === 'VERDADEIRO',
-                permissao: (r[4] || '').toString().trim()
+                permissao: (r[4] || '').toString().trim(),
+                email: (r[5] || '').toString().trim().toLowerCase()
             }));
             renderizarUsuarios();
             setProgress(`✅ ${usuarios.length} usuário(s) na aba "${abaUsuarios}".`);
@@ -390,7 +455,7 @@
     function renderizarUsuarios() {
         const busca = norm(document.getElementById('buscaUsuario').value);
         const lista = usuarios
-            .filter(u => !busca || norm(`${u.nome} ${u.ponto} ${formatarPonto(u.ponto)} ${u.permissao}`).includes(busca))
+            .filter(u => !busca || norm(`${u.nome} ${u.ponto} ${formatarPonto(u.ponto)} ${u.permissao} ${u.email}`).includes(busca))
             .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
         const classe = p => ['dev', 'supervisor', 'almoxarifado', 'operador'].includes(p) ? 'perm-' + p : 'perm-outra';
         document.getElementById('listaUsuarios').innerHTML = lista.length
@@ -398,16 +463,140 @@
                 <tr>
                     <td style="font-family:monospace;white-space:nowrap">${esc(formatarPonto(u.ponto))}</td>
                     <td>${esc(u.nome)}</td>
+                    <td style="font-size:11px">${u.email ? esc(u.email) : '<span style="color:var(--text-muted)">—</span>'}</td>
                     <td><span class="badge-perm ${classe(u.permissao)}">${esc(u.permissao || '—')}</span></td>
                     <td style="font-size:12px">${u.primeiroAcesso ? '⏳ Aguardando primeiro acesso' : '✅ Ativo'}</td>
                     <td>
                         <div class="acoes">
                             <button type="button" class="btn-mini backButton" onclick="abrirEditar(${u.linha})">✏ Editar</button>
+                            <button type="button" class="btn-mini backButton" onclick="conferirAcessos(${u.linha})" title="Conferir e ajustar o acesso às planilhas">🔑 Acessos</button>
                             <button type="button" class="btn-mini btn-apagar" onclick="apagarUsuario(${u.linha})">🗑 Apagar</button>
                         </div>
                     </td>
                 </tr>`).join('')
-            : `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px">Nenhum usuário encontrado.</td></tr>`;
+            : `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px">Nenhum usuário encontrado.</td></tr>`;
+    }
+
+    // ══ ACESSO ÀS PLANILHAS (Google Drive) ═══════════════
+    function emailValido(e) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e || ''); }
+
+    function atualizarAcessosPrevistos() {
+        const el = document.getElementById('acessos-previstos');
+        if (!el) return;
+        const mapa = ACESSOS[document.getElementById('uPerm').value] || {};
+        el.innerHTML = Object.keys(ARQUIVOS).map(k => mapa[k]
+            ? `✅ ${esc(ARQUIVOS[k].nome)} — <strong>${NOME_PAPEL[mapa[k]]}</strong>`
+            : `<span style="opacity:.6">— ${esc(ARQUIVOS[k].nome)}: sem acesso</span>`).join('<br>');
+    }
+
+    function driveValido() { return !!driveToken && Date.now() < driveExpira - 60000; }
+
+    // Garante a autorização do Drive. Se ainda não tiver, abre a janela do Google
+    // (precisa ser chamada direto do clique) e repete a ação depois.
+    function comDrive(acao) {
+        if (driveValido()) return true;
+        if (!driveClient) { mensagem('Aguarde o Google carregar e tente de novo.', 'erro'); return false; }
+        acaoPendenteDrive = acao;
+        mensagem('Autorize o Google Drive na janela do Google para liberar as planilhas...', '');
+        driveClient.requestAccessToken({ prompt: '' });
+        return false;
+    }
+
+    async function driveFetch(url, opcoes = {}) {
+        const headers = { 'Authorization': `Bearer ${driveToken}` };
+        if (opcoes.body) headers['Content-Type'] = 'application/json';
+        const r = await fetch(url, { ...opcoes, headers });
+        if (r.status === 401) {
+            driveToken = null; sessionStorage.removeItem('drive_token');
+            throw new Error('A autorização do Google Drive expirou. Clique de novo para autorizar.');
+        }
+        if (r.status === 204) return {};
+        if (!r.ok) {
+            const e = await r.json().catch(() => ({}));
+            throw new Error(e.error?.message || ('HTTP ' + r.status));
+        }
+        return r.json();
+    }
+
+    // Compara o que a pessoa TEM com o que a permissão PRECISA.
+    // perm = null → retirar todos os acessos
+    async function calcularMudancas(email, perm) {
+        const mapa = perm ? (ACESSOS[perm] || {}) : {};
+        const lista = [];
+        for (const [chave, arq] of Object.entries(ARQUIVOS)) {
+            const d = await driveFetch(`https://www.googleapis.com/drive/v3/files/${arq.id}/permissions` +
+                `?fields=permissions(id,emailAddress,role,type)&supportsAllDrives=true`);
+            const atual = (d.permissions || []).find(p => p.type === 'user' &&
+                (p.emailAddress || '').toLowerCase() === email.toLowerCase());
+            const quer = mapa[chave] || null;
+            let acao = 'manter';
+            if (atual && atual.role === 'owner') acao = 'dono';
+            else if (quer && !atual) acao = 'criar';
+            else if (quer && atual && atual.role !== quer) acao = 'mudar';
+            else if (!quer && atual) acao = 'remover';
+            lista.push({ chave, arq, atual, quer, acao });
+        }
+        return lista;
+    }
+
+    function descreverMudancas(lista) {
+        const txt = { criar: q => `dar acesso de ${NOME_PAPEL[q]}`, mudar: q => `mudar para ${NOME_PAPEL[q]}`,
+                      remover: () => 'retirar o acesso' };
+        const linhas = lista.filter(m => txt[m.acao]).map(m => `• ${m.arq.nome}: ${txt[m.acao](m.quer)}`);
+        return linhas.length ? linhas.join('\n') : '';
+    }
+
+    async function aplicarMudancas(email, lista) {
+        const feitos = [];
+        for (const m of lista) {
+            const base = `https://www.googleapis.com/drive/v3/files/${m.arq.id}/permissions`;
+            if (m.acao === 'criar') {
+                await driveFetch(`${base}?sendNotificationEmail=false&supportsAllDrives=true`, {
+                    method: 'POST', body: JSON.stringify({ type: 'user', role: m.quer, emailAddress: email }) });
+                feitos.push(`${m.arq.nome}: ${NOME_PAPEL[m.quer]}`);
+            } else if (m.acao === 'mudar') {
+                await driveFetch(`${base}/${m.atual.id}?supportsAllDrives=true`, {
+                    method: 'PATCH', body: JSON.stringify({ role: m.quer }) });
+                feitos.push(`${m.arq.nome}: agora ${NOME_PAPEL[m.quer]}`);
+            } else if (m.acao === 'remover') {
+                await driveFetch(`${base}/${m.atual.id}?supportsAllDrives=true`, { method: 'DELETE' });
+                feitos.push(`${m.arq.nome}: acesso retirado`);
+            }
+        }
+        return feitos;
+    }
+
+    // Botão "🔑 Acessos": confere e ajusta o acesso de um usuário às planilhas
+    function conferirAcessos(linha) {
+        const u = usuarios.find(x => x.linha === linha);
+        if (!u) return;
+        if (!u.email) { alert(`${u.nome} ainda não tem e-mail cadastrado. Use "✏ Editar" para informar o e-mail Google.`); return; }
+        if (!ACESSOS[u.permissao]) { alert(`Permissão "${u.permissao}" desconhecida.`); return; }
+        if (!comDrive(() => conferirAcessos(linha))) return;
+        (async () => {
+            spinner(true);
+            try {
+                const lista = await calcularMudancas(u.email, u.permissao);
+                const desc = descreverMudancas(lista);
+                if (!desc) {
+                    mensagem(`✅ ${u.nome}: acessos já estão corretos para "${u.permissao}".`, 'ok');
+                    return;
+                }
+                if (!confirm(`Ajustar os acessos de ${u.nome} (${u.email}) para a permissão "${u.permissao}"?\n\n${desc}`)) return;
+                const feitos = await aplicarMudancas(u.email, lista);
+                mensagem(`✅ ${u.nome}: ${feitos.join(' | ')}`, 'ok');
+            } catch (e) {
+                mensagem('Erro ao ajustar acessos: ' + e.message, 'erro');
+            } finally { spinner(false); }
+        })();
+    }
+
+    // Grava o título "email" na coluna F da planilha de login (uma vez)
+    async function garantirColunaEmail() {
+        if (temColunaEmail) return;
+        await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${USUARIOS_FILE}/values/${rangeUsuarios('F1')}?valueInputOption=RAW`,
+            { method: 'PUT', body: JSON.stringify({ values: [['email']] }) });
+        temColunaEmail = true;
     }
 
     // ══ Editar / Apagar ══════════════════════════════════
@@ -431,6 +620,7 @@
         if (!editando) return;
         document.getElementById('edPontoTxt').textContent = 'Ponto: ' + formatarPonto(editando.ponto);
         document.getElementById('edNome').value = editando.nome;
+        document.getElementById('edEmail').value = editando.email || '';
         const sel = document.getElementById('edPerm');
         sel.value = DESCRICOES[editando.permissao] ? editando.permissao : 'operador';
         document.getElementById('modalEditar').classList.add('aberto');
@@ -446,7 +636,12 @@
         if (!u) return;
         const nome = document.getElementById('edNome').value.replace(/\s+/g, ' ').trim();
         const perm = document.getElementById('edPerm').value;
+        const email = document.getElementById('edEmail').value.trim().toLowerCase();
         if (nome.length < 5) { alert('Informe o nome completo.'); return; }
+        if (email && !emailValido(email)) { alert('E-mail inválido.'); return; }
+        // Se há acessos a ajustar, garante a autorização do Drive primeiro (direto do clique)
+        const mexeAcesso = (email && (email !== u.email || perm !== u.permissao)) || (u.email && email !== u.email);
+        if (mexeAcesso && !comDrive(() => salvarEdicao())) return;
         if (u.permissao.toLowerCase() === 'dev' && perm !== 'dev' && totalDevs() <= 1) {
             alert('Este é o único usuário DEV. Cadastre outro dev antes de mudar esta permissão.');
             return;
@@ -466,16 +661,31 @@
                 await carregarUsuarios();
                 return;
             }
-            // Grava só o nome (B) e a permissão (E); ponto, senha e primeiro acesso não mudam
+            // Acessos: calcula antes e pede confirmação se alguma coisa for retirada ou alterada
+            let mudEmailAntigo = [], mudEmailNovo = [];
+            if (mexeAcesso) {
+                if (u.email && u.email !== email) mudEmailAntigo = await calcularMudancas(u.email, null);
+                if (email) mudEmailNovo = await calcularMudancas(email, perm);
+                const desc = [descreverMudancas(mudEmailAntigo) && `${u.email} (e-mail antigo):\n${descreverMudancas(mudEmailAntigo)}`,
+                              descreverMudancas(mudEmailNovo) && `${email}:\n${descreverMudancas(mudEmailNovo)}`]
+                              .filter(Boolean).join('\n\n');
+                if (desc && !confirm(`Acessos às planilhas que serão ajustados:\n\n${desc}\n\nContinuar?`)) return;
+            }
+            // Grava nome (B), permissão (E) e e-mail (F); ponto, senha e primeiro acesso não mudam
+            await garantirColunaEmail();
             await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${USUARIOS_FILE}/values:batchUpdate`, {
                 method: 'POST',
                 body: JSON.stringify({ valueInputOption: 'RAW', data: [
                     { range: `'${abaUsuarios.replace(/'/g, "''")}'!B${u.linha}`, values: [[nome]] },
-                    { range: `'${abaUsuarios.replace(/'/g, "''")}'!E${u.linha}`, values: [[perm]] }
+                    { range: `'${abaUsuarios.replace(/'/g, "''")}'!E${u.linha}`, values: [[perm]] },
+                    { range: `'${abaUsuarios.replace(/'/g, "''")}'!F${u.linha}`, values: [[email]] }
                 ] })
             });
+            let feitos = [];
+            if (mudEmailAntigo.length) feitos = feitos.concat(await aplicarMudancas(u.email, mudEmailAntigo));
+            if (mudEmailNovo.length)   feitos = feitos.concat(await aplicarMudancas(email, mudEmailNovo));
             fecharEditar();
-            mensagem(`✅ ${nome} atualizado (${perm}).`, 'ok');
+            mensagem(`✅ ${nome} atualizado (${perm}).` + (feitos.length ? ' Acessos: ' + feitos.join(' | ') : ''), 'ok');
             await carregarUsuarios();
         } catch (e) {
             if (e.message === 'SESSAO_EXPIRADA') sessaoExpirou();
@@ -491,8 +701,10 @@
         if (!u) return;
         if (euMesmo(u)) { alert('Você não pode apagar o seu próprio usuário.'); return; }
         if (u.permissao.toLowerCase() === 'dev' && totalDevs() <= 1) { alert('Não é possível apagar o único usuário DEV.'); return; }
+        if (u.email && !comDrive(() => apagarUsuario(linha))) return;
         if (!confirm(`APAGAR o usuário "${u.nome}" (ponto ${formatarPonto(u.ponto)})?\n\n` +
-            'Ele não conseguirá mais entrar no sistema. A linha é removida da planilha de login.')) return;
+            'Ele não conseguirá mais entrar no sistema. A linha é removida da planilha de login.' +
+            (u.email ? `\nO acesso de ${u.email} às planilhas do sistema também será retirado.` : ''))) return;
         if (!accessToken || tokenExpirado()) { mostrarReconectar('Reconecte para continuar.'); return; }
         if (abaUsuariosId === null || abaUsuariosId === undefined) { mensagem('Aguarde a lista carregar.', 'erro'); return; }
 
@@ -509,7 +721,12 @@
                     sheetId: abaUsuariosId, dimension: 'ROWS', startIndex: u.linha - 1, endIndex: u.linha
                 } } }] })
             });
-            mensagem(`🗑 ${u.nome} apagado.`, 'ok');
+            let feitos = [];
+            if (u.email) {
+                try { feitos = await aplicarMudancas(u.email, await calcularMudancas(u.email, null)); }
+                catch (e) { feitos = ['⚠ não foi possível retirar os acessos: ' + e.message]; }
+            }
+            mensagem(`🗑 ${u.nome} apagado.` + (feitos.length ? ' Acessos: ' + feitos.join(' | ') : ''), 'ok');
             await carregarUsuarios();
         } catch (e) {
             if (e.message === 'SESSAO_EXPIRADA') sessaoExpirou();
@@ -529,8 +746,10 @@
         const nome    = document.getElementById('uNome').value.replace(/\s+/g, ' ').trim();
         const senha   = document.getElementById('uSenha').value.trim();
         const perm    = document.getElementById('uPerm').value;
+        const email   = document.getElementById('uEmail').value.trim().toLowerCase();
 
         if (!digitos)          { mensagem('Informe o número de ponto.', 'erro'); return; }
+        if (email && !emailValido(email)) { mensagem('E-mail inválido.', 'erro'); return; }
         if (nome.length < 5)   { mensagem('Informe o nome completo.', 'erro'); return; }
         if (senha.length < 6)  { mensagem('A senha inicial precisa ter pelo menos 6 caracteres.', 'erro'); return; }
         if (!DESCRICOES[perm]) { mensagem('Escolha a permissão.', 'erro'); return; }
@@ -541,6 +760,14 @@
             mensagem(`Já existe um usuário com o ponto ${formatarPonto(digitos)}.`, 'erro');
             return;
         }
+        if (email && usuarios.some(u => u.email === email)) {
+            mensagem(`O e-mail ${email} já está em outro usuário.`, 'erro');
+            return;
+        }
+        if (!email && !confirm('Sem o e-mail Google, as planilhas NÃO serão liberadas automaticamente ' +
+            '(você terá que compartilhar à mão). Cadastrar assim mesmo?')) return;
+        // Com e-mail: garante a autorização do Drive antes (direto do clique)
+        if (email && !comDrive(() => cadastrarUsuario())) return;
         if (usuarios.some(u => norm(u.nome) === norm(nome)) &&
             !confirm(`Já existe um usuário chamado "${nome}". Cadastrar mesmo assim?`)) return;
         if (perm === 'dev' && !confirm('A permissão DEV dá acesso ao cadastro de usuários. Confirmar?')) return;
@@ -554,12 +781,22 @@
             const ponto = pontoEhNumero ? Number(digitos) : (pontoComPonto ? formatarPonto(digitos) : digitos);
             const primeiro = primeiroAcessoBooleano ? true : 'TRUE';
 
+            if (email) await garantirColunaEmail();
             await apiFetch(
-                `https://sheets.googleapis.com/v4/spreadsheets/${USUARIOS_FILE}/values/${rangeUsuarios('A:E')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
-                { method: 'POST', body: JSON.stringify({ values: [[ponto, nome, hash, primeiro, perm]] }) });
+                `https://sheets.googleapis.com/v4/spreadsheets/${USUARIOS_FILE}/values/${rangeUsuarios('A:F')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+                { method: 'POST', body: JSON.stringify({ values: [[ponto, nome, hash, primeiro, perm, email]] }) });
 
-            mensagem(`✅ ${nome} cadastrado como ${perm}. Senha inicial: ${senha}`, 'ok');
-            ['uPonto', 'uNome', 'uSenha'].forEach(id => { document.getElementById(id).value = ''; });
+            let acessos = '';
+            if (email) {
+                try {
+                    const feitos = await aplicarMudancas(email, await calcularMudancas(email, perm));
+                    acessos = feitos.length ? ` Planilhas liberadas: ${feitos.join(' | ')}.` : ' Ele já tinha os acessos necessários.';
+                } catch (e) {
+                    acessos = ` ⚠ Usuário criado, mas não consegui liberar as planilhas (${e.message}). Use o botão 🔑 Acessos.`;
+                }
+            }
+            mensagem(`✅ ${nome} cadastrado como ${perm}. Senha inicial: ${senha}.` + acessos, 'ok');
+            ['uPonto', 'uNome', 'uSenha', 'uEmail'].forEach(id => { document.getElementById(id).value = ''; });
             await carregarUsuarios();
         } catch (e) {
             if (e.message === 'SESSAO_EXPIRADA') sessaoExpirou();
