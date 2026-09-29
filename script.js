@@ -19,6 +19,15 @@
 //
 //  v5: permissões "dev" (tudo + Usuários do sistema) e
 //      "operador" (só Escaneamento).
+//
+//  v6 (segurança):
+//  • O login é enviado DEPOIS do login do Google, junto com o
+//    token da conta Google — o servidor confere se a conta é a
+//    cadastrada para o ponto (coluna F da planilha de login).
+//  • A troca de senha envia a senha ATUAL (no primeiro acesso,
+//    a senha inicial); sem ela o servidor recusa.
+//  • Cada clique em "Entrar" tem um id: as tentativas paralelas
+//    do mesmo clique contam como UM erro no limite de tentativas.
 // ══════════════════════════════════════════════════════
 
 const AUTH_URL = 'https://script.google.com/macros/s/AKfycbwAIg5XQiQQPDcfWYUgI-sRX51qlVpcSD6X7uE3z6-PjTDrdpE2MB7mTIfsPFFKsBed/exec';
@@ -44,6 +53,7 @@ let accessToken      = null;
 let usuarioPendente  = null;
 let authPromise      = null;
 let loginEmAndamento = false;
+let proximoPrompt    = '';   // 'select_account' quando precisar escolher outra conta Google
 
 // ══ localStorage seguro ════════════════════════════════
 function lerJSON(chave) {
@@ -146,7 +156,8 @@ function chamarAuth(acao, dados, opcoes = HEDGE_LEITURA) {
 async function verificarTrocaAplicada(ponto, novaSenha) {
     console.log('🔎 trocarSenha sem resposta — verificando se foi aplicada...');
     try {
-        const check = await chamarAuth('login', { ponto, senha: novaSenha }, HEDGE_LEITURA);
+        const check = await chamarAuth('login',
+            { ponto, senha: novaSenha, googleToken: accessToken, idTentativa: novoIdTentativa() }, HEDGE_LEITURA);
         if (check.ok && !check.primeiroAcesso) {
             console.log('✓ Verificação confirmou: senha nova já está valendo.');
             return { ok: true, mensagem: 'Confirmado por verificação.' };
@@ -155,6 +166,11 @@ async function verificarTrocaAplicada(ponto, novaSenha) {
     } catch (e) {
         return { ok: false, erro: 'Sem resposta do servidor: ' + e.message };
     }
+}
+
+// Um id por clique: as tentativas paralelas do mesmo clique contam como UM erro
+function novoIdTentativa() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
 // ══ Feedback progressivo ═══════════════════════════════
@@ -229,7 +245,7 @@ function entrarNoSistema(nome, permissao) {
 }
 
 // ══ Modal de primeira senha ════════════════════════════
-function pedirNovaSenha() {
+function pedirNovaSenha(senhaInicial) {
     return new Promise(resolve => {
         document.getElementById('modal-nova-senha')?.remove();
         const modal = document.createElement('div');
@@ -255,6 +271,7 @@ function pedirNovaSenha() {
             const err = document.getElementById('msg-nova-senha');
             if (s1.length < 6) { err.textContent = 'Mínimo 6 caracteres.'; return; }
             if (s1 !== s2)     { err.textContent = 'As senhas não coincidem.'; return; }
+            if (senhaInicial && s1 === senhaInicial) { err.textContent = 'A nova senha precisa ser diferente da senha inicial.'; return; }
             modal.remove(); resolve(s1);
         };
         document.getElementById('nova-senha-2').addEventListener('keydown', e => {
@@ -272,27 +289,36 @@ async function aposOAuth() {
         return;
     }
 
-    const { ponto, senha } = usuarioPendente;
+    const { ponto, senha, idTentativa } = usuarioPendente;
     let pararStatus = () => {};
 
     try {
         pararStatus = iniciarStatusProgressivo(msg, 'Verificando credenciais...');
 
-        const resultado = authPromise
-            ? await authPromise
-            : await chamarAuth('login', { ponto, senha }, HEDGE_LEITURA);
+        // v6: o login vai junto com o token do Google (o servidor confere a conta)
+        const resultado = await chamarAuth('login',
+            { ponto, senha, googleToken: accessToken, idTentativa }, HEDGE_LEITURA)
+            .catch(err => ({ ok: false, erro: err.message }));
 
         pararStatus();
         console.log('◀ Resposta login:', JSON.stringify(resultado));
 
         if (!resultado.ok) {
+            // Conta Google errada: no próximo clique, deixa escolher a conta
+            if (resultado.codigo === 'CONTA_GOOGLE') {
+                proximoPrompt = 'select_account';
+                if (msg) msg.textContent = (resultado.erro || 'Conta Google não confere.') +
+                    ' Clique em Entrar de novo e escolha a conta certa.';
+                return;
+            }
             if (msg) msg.textContent = resultado.erro || 'Falha ao autenticar.';
             return;
         }
+        proximoPrompt = '';
 
         if (resultado.primeiroAcesso) {
             console.log('▶ Primeiro acesso: pedindo nova senha');
-            const novaSenha = await pedirNovaSenha();
+            const novaSenha = await pedirNovaSenha(senha);
             if (!novaSenha) return;
 
             pararStatus = iniciarStatusProgressivo(msg, 'Salvando sua nova senha...');
@@ -301,7 +327,10 @@ async function aposOAuth() {
             // NÃO retenta às cegas — verifica se foi aplicada.
             let troca;
             try {
-                troca = await chamarAuth('trocarSenha', { ponto, novaSenha }, UNICO_ESCRITA);
+                // v6: vai a senha atual (a inicial) e a conta Google
+                troca = await chamarAuth('trocarSenha',
+                    { ponto, senhaAtual: senha, novaSenha, googleToken: accessToken, idTentativa: novoIdTentativa() },
+                    UNICO_ESCRITA);
             } catch (e) {
                 if (msg) msg.textContent = 'Confirmando alteração...';
                 troca = await verificarTrocaAplicada(ponto, novaSenha);
@@ -355,12 +384,13 @@ function iniciarLogin() {
 
     loginEmAndamento = true;
     if (msg) msg.textContent = 'Autenticando...';
-    usuarioPendente = { ponto, senha };
+    usuarioPendente = { ponto, senha, idTentativa: novoIdTentativa() };
 
-    console.log('▶ Login iniciado, disparando OAuth + Auth (hedged) em paralelo');
-    authPromise = chamarAuth('login', { ponto, senha }, HEDGE_LEITURA)
-        .catch(err => ({ ok: false, erro: err.message }));
-    tokenClient.requestAccessToken({ prompt: '' });
+    // v6: primeiro o login do Google; o servidor recebe o token junto com a senha
+    // (antes os dois iam em paralelo, mas o servidor não conferia a conta Google)
+    console.log('▶ Login iniciado: conta Google primeiro, depois o servidor');
+    authPromise = null;
+    tokenClient.requestAccessToken({ prompt: proximoPrompt });
 }
 
 // ══ Logout ═════════════════════════════════════════════
@@ -412,6 +442,13 @@ window.addEventListener('load', () => {
         tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: CLIENT_ID,
             scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.email',
+            error_callback: () => {
+                // Janela do Google fechada ou bloqueada: libera o botão Entrar
+                const msg = document.getElementById('loginMessage');
+                if (msg) msg.textContent = 'Login do Google cancelado. Clique em Entrar de novo.';
+                usuarioPendente = null;
+                loginEmAndamento = false;
+            },
             callback: async (tokenResponse) => {
                 if (tokenResponse.error) {
                     const msg = document.getElementById('loginMessage');
