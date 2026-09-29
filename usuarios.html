@@ -153,12 +153,11 @@
 
                     <div class="form-grid dois">
                         <div class="field-block">
-                            <label for="uSenha">Senha inicial</label>
-                            <div class="senha-linha">
-                                <input type="text" id="uSenha" placeholder="Mínimo 6 caracteres" autocomplete="off">
-                                <button type="button" class="backButton" onclick="gerarSenha()">🎲 Gerar</button>
-                            </div>
-                            <p class="ajuda">Passe essa senha para a pessoa. No primeiro acesso o sistema pede para ela criar a própria senha.</p>
+                            <label>Senha inicial</label>
+                            <p class="ajuda" style="margin-top:2px;font-size:12px">
+                                Padrão: <strong id="senhaPadraoTxt">12345</strong> — não precisa digitar.
+                                No primeiro acesso o sistema pede para a pessoa criar a própria senha.
+                            </p>
                         </div>
                         <div class="field-block">
                             <label for="uPerm">Permissão</label>
@@ -253,6 +252,11 @@
 
     const CLIENT_ID     = '286050228811-cv6vsd075480anb1i6auuc421enuaf8q.apps.googleusercontent.com';
     const USUARIOS_FILE = '1Qny6BzFcU-4Ghll2xTcJGt6ZGmt0O4DqYMUePdMJQ3U';   // planilha de login
+    // Senha do primeiro acesso: o Apps Script compara o que a pessoa digita com o
+    // TEXTO da coluna C (sem hash) enquanto "primeiroAcesso" for TRUE.
+    const SENHA_PADRAO  = '12345';
+    // Servidor de login (Apps Script): avisado para esquecer a lista guardada
+    const AUTH_URL      = 'https://script.google.com/macros/s/AKfycbwAIg5XQiQQPDcfWYUgI-sRX51qlVpcSD6X7uE3z6-PjTDrdpE2MB7mTIfsPFFKsBed/exec';
 
     const DESCRICOES = {
         operador:     'Acessa só o Escaneamento (bipagem). Não cria inventário nem vê Dashboard.',
@@ -599,6 +603,16 @@
         temColunaEmail = true;
     }
 
+    // O servidor de login guarda a lista de usuários na memória; depois de gravar
+    // na planilha, pedimos para ele reler (senão a mudança demora a valer no login)
+    function avisarServidorLogin() {
+        fetch(AUTH_URL, {
+            method: 'POST', mode: 'cors', redirect: 'follow',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ acao: 'invalidarCache' })
+        }).catch(() => { /* se falhar, o servidor relê sozinho em poucos minutos */ });
+    }
+
     // ══ Editar / Apagar ══════════════════════════════════
     function euMesmo(u) {
         const logado = JSON.parse(localStorage.getItem('usuarioLogado')) || {};
@@ -684,6 +698,7 @@
             let feitos = [];
             if (mudEmailAntigo.length) feitos = feitos.concat(await aplicarMudancas(u.email, mudEmailAntigo));
             if (mudEmailNovo.length)   feitos = feitos.concat(await aplicarMudancas(email, mudEmailNovo));
+            avisarServidorLogin();
             fecharEditar();
             mensagem(`✅ ${nome} atualizado (${perm}).` + (feitos.length ? ' Acessos: ' + feitos.join(' | ') : ''), 'ok');
             await carregarUsuarios();
@@ -726,6 +741,7 @@
                 try { feitos = await aplicarMudancas(u.email, await calcularMudancas(u.email, null)); }
                 catch (e) { feitos = ['⚠ não foi possível retirar os acessos: ' + e.message]; }
             }
+            avisarServidorLogin();
             mensagem(`🗑 ${u.nome} apagado.` + (feitos.length ? ' Acessos: ' + feitos.join(' | ') : ''), 'ok');
             await carregarUsuarios();
         } catch (e) {
@@ -744,14 +760,13 @@
     async function cadastrarUsuario() {
         const digitos = soDigitos(document.getElementById('uPonto').value);
         const nome    = document.getElementById('uNome').value.replace(/\s+/g, ' ').trim();
-        const senha   = document.getElementById('uSenha').value.trim();
+        const senha   = SENHA_PADRAO;   // senha do primeiro acesso (texto, sem hash)
         const perm    = document.getElementById('uPerm').value;
         const email   = document.getElementById('uEmail').value.trim().toLowerCase();
 
         if (!digitos)          { mensagem('Informe o número de ponto.', 'erro'); return; }
         if (email && !emailValido(email)) { mensagem('E-mail inválido.', 'erro'); return; }
         if (nome.length < 5)   { mensagem('Informe o nome completo.', 'erro'); return; }
-        if (senha.length < 6)  { mensagem('A senha inicial precisa ter pelo menos 6 caracteres.', 'erro'); return; }
         if (!DESCRICOES[perm]) { mensagem('Escolha a permissão.', 'erro'); return; }
         if (!accessToken || tokenExpirado()) { mostrarReconectar('Reconecte para cadastrar.'); return; }
         if (!abaUsuarios) { mensagem('Aguarde a lista de usuários carregar.', 'erro'); return; }
@@ -777,7 +792,7 @@
         spinner(true);
         mensagem('Cadastrando...', '');
         try {
-            const hash  = await sha256Hex(senha);
+            const hash  = senha;   // no primeiro acesso o Apps Script compara o texto (não o hash)
             const ponto = pontoEhNumero ? Number(digitos) : (pontoComPonto ? formatarPonto(digitos) : digitos);
             const primeiro = primeiroAcessoBooleano ? true : 'TRUE';
 
@@ -795,8 +810,9 @@
                     acessos = ` ⚠ Usuário criado, mas não consegui liberar as planilhas (${e.message}). Use o botão 🔑 Acessos.`;
                 }
             }
-            mensagem(`✅ ${nome} cadastrado como ${perm}. Senha inicial: ${senha}.` + acessos, 'ok');
-            ['uPonto', 'uNome', 'uSenha', 'uEmail'].forEach(id => { document.getElementById(id).value = ''; });
+            avisarServidorLogin();
+            mensagem(`✅ ${nome} cadastrado como ${perm}. Senha do primeiro acesso: ${senha}.` + acessos, 'ok');
+            ['uPonto', 'uNome', 'uEmail'].forEach(id => { document.getElementById(id).value = ''; });
             await carregarUsuarios();
         } catch (e) {
             if (e.message === 'SESSAO_EXPIRADA') sessaoExpirou();
