@@ -28,6 +28,10 @@
 //    a senha inicial); sem ela o servidor recusa.
 //  • Cada clique em "Entrar" tem um id: as tentativas paralelas
 //    do mesmo clique contam como UM erro no limite de tentativas.
+//
+//  v7: o servidor devolve uma SESSÃO ASSINADA ("crachá"), guardada
+//  em 'sessao_coaud' e conferida em todas as páginas pelo
+//  coaud-sessao.js. A permissão vem dela, não do texto editável.
 // ══════════════════════════════════════════════════════
 
 const AUTH_URL = 'https://script.google.com/macros/s/AKfycbwAIg5XQiQQPDcfWYUgI-sRX51qlVpcSD6X7uE3z6-PjTDrdpE2MB7mTIfsPFFKsBed/exec';
@@ -160,7 +164,7 @@ async function verificarTrocaAplicada(ponto, novaSenha) {
             { ponto, senha: novaSenha, googleToken: accessToken, idTentativa: novoIdTentativa() }, HEDGE_LEITURA);
         if (check.ok && !check.primeiroAcesso) {
             console.log('✓ Verificação confirmou: senha nova já está valendo.');
-            return { ok: true, mensagem: 'Confirmado por verificação.' };
+            return { ok: true, mensagem: 'Confirmado por verificação.', sessao: check.sessao };
         }
         return { ok: false, erro: 'Não foi possível salvar a senha. Tente novamente.' };
     } catch (e) {
@@ -227,9 +231,10 @@ function configurarSistemas(permissao) {
 }
 
 // ══ Entrar no sistema ══════════════════════════════════
-function entrarNoSistema(nome, permissao) {
+function entrarNoSistema(nome, permissao, sessao) {
     console.log(`✓ entrarNoSistema: nome="${nome}" permissao="${permissao}"`);
 
+    localStorage.setItem('sessao_coaud', sessao);   // v7: crachá assinado pelo servidor
     localStorage.setItem('usuarioLogado', JSON.stringify({ nome, permissao }));
     localStorage.setItem('access_token', accessToken);
 
@@ -315,6 +320,11 @@ async function aposOAuth() {
             return;
         }
         proximoPrompt = '';
+        let sessao = resultado.sessao;
+        if (!resultado.primeiroAcesso && !sessao) {
+            if (msg) msg.textContent = 'O servidor de login está desatualizado (falta a versão 7). Avise o administrador.';
+            return;
+        }
 
         if (resultado.primeiroAcesso) {
             console.log('▶ Primeiro acesso: pedindo nova senha');
@@ -341,10 +351,15 @@ async function aposOAuth() {
                 if (msg) msg.textContent = 'Erro ao salvar senha: ' + (troca.erro || '');
                 return;
             }
+            sessao = troca.sessao;
+            if (!sessao) {
+                if (msg) msg.textContent = 'Senha salva, mas o servidor não devolveu a sessão. Entre de novo com a senha nova.';
+                return;
+            }
             if (msg) msg.textContent = '✅ Senha definida! Entrando...';
         }
 
-        entrarNoSistema(resultado.nome, resultado.permissao);
+        entrarNoSistema(resultado.nome, resultado.permissao, sessao);
 
     } catch (error) {
         console.error('❌ Erro em aposOAuth:', error);
@@ -395,6 +410,7 @@ function iniciarLogin() {
 
 // ══ Logout ═════════════════════════════════════════════
 function fazerLogout() {
+    localStorage.removeItem('sessao_coaud');
     localStorage.removeItem('usuarioLogado');
     localStorage.removeItem('access_token');
     localStorage.removeItem('token_expira_em');
@@ -473,15 +489,26 @@ window.addEventListener('load', () => {
     const tokenValido   = savedToken && Date.now() < expiraEm - 60000;
 
     if (usuarioLogado && tokenValido) {
-        console.log('✓ Sessão salva encontrada:', usuarioLogado);
+        // v7: só abre o Portal se o crachá assinado conferir (a permissão vem dele)
         accessToken = savedToken;
         const loginEl   = document.getElementById('login-container');
         const systemsEl = document.getElementById('systems-container');
         const nomeEl    = document.getElementById('nome-usuario');
-        if (loginEl)   loginEl.style.display   = 'none';
-        if (systemsEl) systemsEl.style.display = 'block';
-        if (nomeEl)    nomeEl.textContent      = usuarioLogado.nome || '';
-        configurarSistemas(usuarioLogado.permissao);
+        if (loginEl) loginEl.style.display = 'none';
+        verificarSessaoCoaud().then(r => {
+            if (!r.ok) {
+                console.warn('⚠️ Sessão salva inválida:', r.motivo);
+                fazerLogout();
+                const msg = document.getElementById('loginMessage');
+                if (msg) msg.textContent = 'Sua sessão terminou. Entre de novo.';
+                return;
+            }
+            console.log('✓ Sessão assinada conferida:', r.usuario.nome, r.usuario.permissao);
+            USUARIO_SESSAO = r.usuario;
+            if (systemsEl) systemsEl.style.display = 'block';
+            if (nomeEl)    nomeEl.textContent      = r.usuario.nome || '';
+            configurarSistemas(r.usuario.permissao);
+        });
     } else {
         if (usuarioLogado && !tokenValido) {
             console.log('⚠️ Token expirado — exigindo novo login');
