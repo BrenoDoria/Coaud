@@ -13,7 +13,7 @@
 //  Este arquivo precisa ser o PRIMEIRO script de cada página.
 // ══════════════════════════════════════════════════════
 
-const CHAVE_PUBLICA_SESSAO = 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0a_rxIJUQZeNdQvzizlCVN9wDRutRTC_1EhR0PIOoi0cl1w0rATrggwbowauBGFsvd3Gm_mKAe6679wWAJeUEUgXNI2BRvpKaYdgrIVImDBZ26EQIgZ0i9d73Z0sF9LaIroy3I2TMNP-ryIla1GIo5xmri8awFc5EmzM4fP0UqSUN_3tN5ieeY9xljsFHfygFHlzo5XOxAxSLA3brCjXENimkHC9I7l_uiFMdb-j7txTAmKUQhZS6hi2br9SIULaLUuQczFe64d3NP6xxPlsBXehwRStSHQNK47hnmvuZbrIQ3-4VQnGe6xjd9tE4enP5jffn2BsJsoYYbIt0nvppQIDAQAB';
+const CHAVE_PUBLICA_SESSAO = 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApdrA5BB0J_9Ul8sEN3S_RreaCsE3fnweeQGR36FC73S_1a4vN3LhskLfypbKIOYS_e2thfNVvd8JYlTRlYW8vgAjBFTZXBxQ7tNYJQJV8RVYrX6ChhzyDAFYxvSvIl323D5pqDM9S-jx5oyDIycHs-ftN3hEs_u0ix5G20W7VTUKq0py9VImqoLqTFhhLhrEA27L-ICJI1hDVZpr4BzIsdH0UqDGu3sd0TF46L6-VBGricw4U2hcAmCrYOoR4NUJ7cMIGQOMXw76_Ai17zFSBu_DR8kntyZCo2ehN0CEnKnGEUJH8LOe40yiyqdaf89GbwnKWhSGQjOUnpM3n5oQCQIDAQAB';
 const CHAVE_SESSAO = 'sessao_coaud';
 
 let USUARIO_SESSAO = null;   // usuário vindo do crachá (null = ainda não conferido)
