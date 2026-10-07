@@ -59,6 +59,27 @@ let authPromise      = null;
 let loginEmAndamento = false;
 let proximoPrompt    = '';   // 'select_account' quando precisar escolher outra conta Google
 
+// ══ Limpeza ao sair ════════════════════════════════════
+// Ao sair (ou com a sessão terminada), o navegador fica só com as
+// preferências (tema e som). Os dados de impressão, as listas guardadas
+// e a sessão são apagados — cada página busca de novo quando for aberta.
+const PREFERENCIAS_MANTIDAS = ['tema-coaud', 'som-escanear'];
+function limparDadosDoNavegador() {
+    try {
+        const chaves = [];
+        for (let i = 0; i < localStorage.length; i++) chaves.push(localStorage.key(i));
+        chaves.filter(k => !PREFERENCIAS_MANTIDAS.includes(k))
+              .forEach(k => localStorage.removeItem(k));
+        sessionStorage.clear();
+    } catch (e) { /* ignora */ }
+}
+
+// Registro no Console sem mostrar o crachá inteiro
+function semSessao(obj) {
+    if (!obj || !obj.sessao) return JSON.stringify(obj);
+    return JSON.stringify({ ...obj, sessao: obj.sessao.slice(0, 6) + '…(oculta)' });
+}
+
 // ══ localStorage seguro ════════════════════════════════
 function lerJSON(chave) {
     try {
@@ -306,7 +327,7 @@ async function aposOAuth() {
             .catch(err => ({ ok: false, erro: err.message }));
 
         pararStatus();
-        console.log('◀ Resposta login:', JSON.stringify(resultado));
+        console.log('◀ Resposta login:', semSessao(resultado));
 
         if (!resultado.ok) {
             // Conta Google errada: no próximo clique, deixa escolher a conta
@@ -414,6 +435,7 @@ function fazerLogout() {
     localStorage.removeItem('usuarioLogado');
     localStorage.removeItem('access_token');
     localStorage.removeItem('token_expira_em');
+    limparDadosDoNavegador();   // apaga também dados de impressão e listas guardadas
     accessToken      = null;
     usuarioPendente  = null;
     authPromise      = null;
@@ -515,6 +537,9 @@ window.addEventListener('load', () => {
             localStorage.removeItem('access_token');
             localStorage.removeItem('token_expira_em');
         }
+        // Sem sessão ativa no Portal (saiu por outra página ou a sessão terminou):
+        // não deixa dados de trabalho no navegador
+        limparDadosDoNavegador();
         const loginEl = document.getElementById('login-container');
         if (loginEl) loginEl.style.display = 'block';
     }
