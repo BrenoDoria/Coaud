@@ -30,11 +30,27 @@ const PAGINAS_PERMISSAO = {
     'relatorios.html':          'nav-almoxarifado',
 };
 
+// ══ PROTEÇÃO CONTRA LOOP ══════════════════════════════
+// Se esta página já é o Portal (index.html ou "/"), NÃO redireciona para
+// o Portal de novo — senão um arquivo trocado por engano vira loop infinito.
+function estaNoPortal() {
+    const pagina = window.location.pathname.split('/').pop();
+    return pagina === '' || pagina === 'index.html' || pagina === 'index';
+}
+function irParaPortal() {
+    if (estaNoPortal()) {
+        console.error('⚠ Esta página foi aberta como index.html, mas não é o Portal. ' +
+                      'Confira se o arquivo index.html foi substituído por engano.');
+        return;
+    }
+    window.location.href = 'index.html';
+}
+
 // ══ USUÁRIO ═══════════════════════════════════════════
 function preencherUsuarioSidebar() {
     const u = JSON.parse(localStorage.getItem('usuarioLogado'));
     if (!u) {
-        window.location.href = 'index.html';
+        irParaPortal();
         return;
     }
 
@@ -78,8 +94,10 @@ function aplicarPermissoesSidebar() {
     const paginaAtual = window.location.pathname.split('/').pop();
     const permNecessaria = PAGINAS_PERMISSAO[paginaAtual];
     if (permNecessaria && !liberados.includes(permNecessaria)) {
+        // Sem usuário logado, preencherUsuarioSidebar() já mandou para o Portal: sem alerta repetido
+        if (!u.permissao) return;
         alert('Você não tem permissão para acessar esta página.');
-        window.location.href = 'index.html';
+        irParaPortal();
     }
 }
 
@@ -171,6 +189,7 @@ function criarSeletorTema() {
 function fazerLogout() {
     localStorage.removeItem('usuarioLogado');
     localStorage.removeItem('access_token');
+    localStorage.removeItem('token_expira_em');
     window.location.href = 'index.html';
 }
 

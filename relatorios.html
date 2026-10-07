@@ -400,14 +400,33 @@
         if (roleEl)   roleEl.textContent   = u.permissao || '';
     }
 
+    // Mesmas regras do sidebar-init.js (dev, supervisor, almoxarifado, operador).
+    // Esta página tem a própria barra lateral por causa dos gráficos (cores do tema).
+    var PERMS_SIDEBAR_COAUD = {
+        dev:          ['nav-escanear', 'nav-dashboard-inv', 'nav-comparador', 'nav-localizador',
+                       'nav-almoxarifado', 'nav-operadores', 'nav-usuarios'],
+        supervisor:   ['nav-escanear', 'nav-dashboard-inv', 'nav-comparador', 'nav-localizador',
+                       'nav-almoxarifado', 'nav-operadores'],
+        almoxarifado: ['nav-almoxarifado'],
+        operador:     ['nav-escanear']
+    };
+    var PAGINAS_PERMISSAO_COAUD = {
+        'index-escanear.html':       'nav-escanear',
+        'dashboard-inventario.html': 'nav-dashboard-inv',
+        'usuarios.html':             'nav-usuarios',
+        'operadores.html':           'nav-operadores',
+        'index-comparador.html':     'nav-comparador',
+        'index_Local.html':          'nav-localizador',
+        'index-almoxarifado.html':   'nav-almoxarifado',
+        'fichas.html':               'nav-almoxarifado',
+        'fichas-arquivadas.html':    'nav-almoxarifado',
+        'relatorios.html':           'nav-almoxarifado'
+    };
+
     function aplicarPermissoesSidebar() {
         var u = JSON.parse(localStorage.getItem('usuarioLogado')) || {};
         var perm = u.permissao;
-        var PERMS_SIDEBAR = {
-            supervisor:   ['nav-escanear', 'nav-comparador', 'nav-localizador', 'nav-almoxarifado'],
-            almoxarifado: ['nav-almoxarifado']
-        };
-        var liberados = PERMS_SIDEBAR[perm] || [];
+        var liberados = PERMS_SIDEBAR_COAUD[perm] || [];
         ['nav-escanear', 'nav-comparador', 'nav-localizador', 'nav-almoxarifado'].forEach(function(id) {
             var el = document.getElementById(id);
             if (el && liberados.indexOf(id) === -1) el.style.display = 'none';
@@ -416,19 +435,28 @@
         var sub = document.getElementById('nav-almoxarifado-sub');
         if (pai && sub && pai.style.display === 'none') sub.style.display = 'none';
 
+        // Itens extras do menu (iguais às outras páginas)
+        var nav = document.querySelector('.sidebar-nav');
+        if (nav && liberados.indexOf('nav-usuarios') !== -1 && !nav.querySelector('a[href="usuarios.html"]')) {
+            var au = document.createElement('a');
+            au.className = 'nav-item'; au.id = 'nav-usuarios'; au.href = 'usuarios.html';
+            au.innerHTML = '<span class="nav-icon">&#128100;</span> Usuários do sistema';
+            var portal = Array.prototype.find.call(nav.querySelectorAll('a.nav-item'),
+                function(x) { return x.getAttribute('href') === 'index.html'; });
+            nav.insertBefore(au, portal || null);
+        }
+        if (sub && liberados.indexOf('nav-operadores') !== -1 && !sub.querySelector('a[href="operadores.html"]')) {
+            var ao = document.createElement('a');
+            ao.className = 'nav-subitem'; ao.setAttribute('data-page', 'operadores.html'); ao.href = 'operadores.html';
+            ao.innerHTML = '<span class="nav-sub-icon">&#8627;</span> Operadores';
+            sub.appendChild(ao);
+        }
+
         var paginaAtual = window.location.pathname.split('/').pop();
-        var paginasPorPermissao = {
-            'index-escanear.html':     'nav-escanear',
-            'index-comparador.html':   'nav-comparador',
-            'index_Local.html':        'nav-localizador',
-            'index-almoxarifado.html': 'nav-almoxarifado',
-            'fichas.html':             'nav-almoxarifado',
-            'fichas-arquivadas.html':  'nav-almoxarifado',
-            'relatorios.html':         'nav-almoxarifado'
-        };
-        var permNecessaria = paginasPorPermissao[paginaAtual];
+        var permNecessaria = PAGINAS_PERMISSAO_COAUD[paginaAtual];
         if (permNecessaria && liberados.indexOf(permNecessaria) === -1) {
-            alert('Voce nao tem permissao para acessar esta pagina.');
+            if (!perm) return;   // sem usuário: o coaud-sessao.js já manda para o Portal
+            alert('Você não tem permissão para acessar esta página.');
             window.location.href = 'index.html';
         }
     }
