@@ -328,7 +328,7 @@ async function atualizarDashboard() {
             <div id="observacaoModal" class="modal">
                 <div class="modal-content">
                     <button class="modal-close" onclick="fecharObservacao()">×</button>
-                    <h2>📝 Observação</h2>
+                    <h2>📝 Obs.</h2>
                     <div id="observacaoFicha" style="font-size:12px;opacity:.7"></div>
                     <div id="observacaoTexto" class="observacao-texto"></div>
                     <div class="modal-footer">
@@ -526,7 +526,7 @@ if (document.readyState === 'loading') {
                         <button class="btn-reaproveitar" title="Usar os patrimônios desta ficha numa nova retirada"
                             onclick="reaproveitarFicha(${originalIndex})">♻ Reaproveitar</button>
                         <button class="btn-imprimir" title="Imprimir esta ficha"
-                            onclick="imprimirFichaArquivada(${originalIndex})">🖨 Imprimir</button>
+                            onclick="imprimirFichaArquivada(${originalIndex})">🖨</button>
                         ${(row[10] || '').trim() ? `<button class="btn-obs" title="Ver observação" onclick="verObservacao(${originalIndex})">📝 Observação</button>` : ''}
                     </div>
                 </td>
