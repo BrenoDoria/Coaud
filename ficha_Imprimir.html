@@ -314,6 +314,12 @@
                     <span class="dado-valor" id="pontoOperador2"></span>
                 </div>
             </div>
+            <div class="dados-grid full" id="observacaoLinha" style="margin-top:4px;display:none">
+                <div class="dado">
+                    <span class="dado-label">Observação:</span>
+                    <span class="dado-valor" id="observacao" style="white-space:pre-wrap"></span>
+                </div>
+            </div>
         </div>
 
         <!-- ══ CONFIRMAÇÃO DE RECEBIMENTO (servidor solicitante) ══ -->
@@ -558,6 +564,10 @@ function carregarFicha() {
     set('pontoOperador2', pt(f.operador2));
     set('fichaRodape',   f.idFicha);
     set('dataRodape',    data);
+    if ((f.observacao || '').trim()) {
+        set('observacao', f.observacao);
+        document.getElementById('observacaoLinha').style.display = '';
+    }
 
     // Tabela de equipamentos
         // Tabela de equipamentos — agrupa repetidos e mostra "N Unidades"

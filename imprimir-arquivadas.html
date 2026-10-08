@@ -445,6 +445,7 @@ function gerarHTMLFicha(f) {
         ${dado('Operador:', f.operador1, ponto(f.operador1))}
         ${dado('Almoxarifado:', f.operador2, ponto(f.operador2))}
     </div>
+    ${(f.observacao || '').trim() ? `<div class="dados-grid single">${dado('Observação:', f.observacao)}</div>` : ''}
 
     <!-- ══ DEVOLUÇÃO ══ -->
     <div class="section-title verde">DEVOLUÇÃO</div>

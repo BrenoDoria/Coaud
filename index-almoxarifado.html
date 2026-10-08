@@ -44,6 +44,41 @@
             font-size: 13px;
             font-weight: 600;
         }
+        /* Observação da ficha */
+        #observacaoInput {
+            width: 100%;
+            min-height: 64px;
+            resize: vertical;
+            padding: 8px 10px;
+            font: inherit;
+            font-size: 13px;
+            color: inherit;
+            background: rgba(127,127,127,.08);
+            border: 1px solid rgba(127,127,127,.35);
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .label-opcional {
+            font-weight: 400;
+            opacity: .6;
+            font-size: 11px;
+        }
+        /* Aviso de ficha reaproveitada */
+        #aviso-reaproveitar {
+            display: none;
+            background: rgba(59,130,246,.10);
+            border: 1px solid rgba(59,130,246,.35);
+            border-radius: 6px;
+            padding: 10px 14px;
+            margin-bottom: 14px;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        #aviso-reaproveitar .fora {
+            margin-top: 6px;
+            color: #f59e0b;
+            font-size: 12px;
+        }
     </style>
 </head>
 <body>
@@ -187,6 +222,7 @@
                 <!-- ═══ FORMULÁRIO ═══ -->
                 <div class="form-section">
                     <h2 id="form-title">Registrar Retirada de Equipamento</h2>
+                    <div id="aviso-reaproveitar"></div>
 
                     <!-- Operador + Almoxarifado -->
                     <div class="form-row">
@@ -232,6 +268,13 @@
                             <label for="eventoInput">Evento / Reunião</label>
                             <input type="text" id="eventoInput" placeholder="Ex.: Reunião Mensal"  oninput="atualizarEstadoBotaoRegistrar()">
                         </div>
+                    </div>
+
+                    <!-- Observação (opcional) -->
+                    <div class="field-block" style="margin-bottom:14px">
+                        <label for="observacaoInput">Observação <span class="label-opcional">(opcional)</span></label>
+                        <textarea id="observacaoInput" maxlength="1000"
+                            placeholder="Ex.: Microfone com espuma rasgada; devolver até sexta"></textarea>
                     </div>
 
                     <!-- NRP -->
@@ -299,6 +342,8 @@
     let patrimoniosSelecionados = [];
     let fichaEditando           = null;
     let escalaData              = [];
+    let fichaReaproveitando     = null;   // ficha arquivada usada como base (Reaproveitar ficha)
+    let reaproveitamentoFeito   = false;
 
     function setProgress(msg) {
         const el = document.getElementById("progressText");
@@ -699,6 +744,16 @@
     //  INICIALIZAÇÃO
     // ══════════════════════════════════════════════════════
     window.addEventListener('load', () => {
+        // Ficha arquivada reaproveitada (vem do fichas-arquivadas.html).
+        // Lida antes do Google para que a conferência rode assim que houver conexão.
+        if (!localStorage.getItem('fichaParaEditar')) {
+            try { fichaReaproveitando = JSON.parse(localStorage.getItem('fichaParaReaproveitar')); }
+            catch (e) { fichaReaproveitando = null; }
+            if (fichaReaproveitando) prepararTelaReaproveitamento();
+        } else {
+            localStorage.removeItem('fichaParaReaproveitar');
+        }
+
         const inicializarGoogle = () => {
             if (typeof google === 'undefined' || !google.accounts) {
                 setTimeout(inicializarGoogle, 300);
@@ -723,6 +778,7 @@
                     carregarPatrimoniosDoSheets();
                     carregarEscalaDoSheets();
                     setTimeout(() => autoPreencherAlmoxarifado(), 500);
+                    if (fichaReaproveitando) carregarReaproveitamento();
                 }
             });
 
@@ -735,6 +791,7 @@
                 carregarPatrimoniosDoSheets();
                 carregarEscalaDoSheets();
                 autoPreencherAlmoxarifado();
+                if (fichaReaproveitando) carregarReaproveitamento();
             } else {
                 // NÃO chama solicitarToken() aqui: o popup seria bloqueado.
                 accessToken = null;
@@ -752,7 +809,9 @@
             fichaEditando = fichaParaEditar;
             document.getElementById("form-title").textContent     = "Editar Ficha Pendente";
             document.getElementById("submitButton").textContent   = "✔ Salvar Alterações";
+            document.getElementById("cancelButton").textContent   = "✕ Cancelar Edição";
             document.getElementById("cancelButton").style.display = "inline-flex";
+            document.getElementById("observacaoInput").value      = fichaEditando.observacao || '';
 
             document.getElementById("operador1Busca").value  = fichaEditando.operador1;
             document.getElementById("operador1Select").value = fichaEditando.operador1;
@@ -789,8 +848,16 @@
     });
 
     function cancelarEdicao() {
+        const eraReaproveitamento = !!fichaReaproveitando && !fichaEditando;
         fichaEditando = null;
         localStorage.removeItem('fichaParaEditar');
+        fichaReaproveitando   = null;
+        reaproveitamentoFeito = false;
+        localStorage.removeItem('fichaParaReaproveitar');
+        const aviso = document.getElementById("aviso-reaproveitar");
+        aviso.style.display = "none";
+        aviso.textContent   = "";
+        document.getElementById("observacaoInput").value = "";
         document.getElementById("form-title").textContent   = "Registrar Retirada de Equipamento";
         document.getElementById("submitButton").textContent = "✔ Registrar Retirada";
         document.getElementById("cancelButton").style.display = "none";
@@ -804,7 +871,119 @@
         atualizarListaPatrimonios();
         document.getElementById("limparNRPsBtn").style.display = "none";
         autoPreencherAlmoxarifado();
-        setProgress("Edição cancelada.");
+        setProgress(eraReaproveitamento ? "Reaproveitamento cancelado." : "Edição cancelada.");
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  REAPROVEITAR FICHA ARQUIVADA
+    //  Carrega a lista de patrimônios de uma ficha arquivada.
+    //  Operador, Local e Evento são preenchidos normalmente.
+    //  Patrimônio que NÃO pode repetir e já está em outra ficha
+    //  pendente fica de fora (já está sendo usado).
+    // ══════════════════════════════════════════════════════
+    function prepararTelaReaproveitamento() {
+        document.getElementById("form-title").textContent     = "Nova Retirada — Ficha Reaproveitada";
+        document.getElementById("cancelButton").textContent   = "✕ Cancelar Reaproveitamento";
+        document.getElementById("cancelButton").style.display = "inline-flex";
+        mostrarAvisoReaproveitar(`♻ Reaproveitando a ficha ${fichaReaproveitando.idFichaOrigem || ''} — conferindo patrimônios...`);
+        setProgress("♻ Conferindo patrimônios da ficha reaproveitada...");
+    }
+
+    function mostrarAvisoReaproveitar(texto, foraDaFicha) {
+        const aviso = document.getElementById("aviso-reaproveitar");
+        aviso.textContent = '';
+        const linha = document.createElement('div');
+        linha.textContent = texto;
+        aviso.appendChild(linha);
+        if (foraDaFicha && foraDaFicha.length) {
+            const fora = document.createElement('div');
+            fora.className = 'fora';
+            fora.textContent = `⚠ ${foraDaFicha.length} patrimônio(s) não carregado(s) porque já estão em outra ficha pendente: ` +
+                foraDaFicha.map(f => f.material ? `${f.nrp} - ${f.material}` : f.nrp).join('; ');
+            aviso.appendChild(fora);
+        }
+        aviso.style.display = 'block';
+    }
+
+    async function carregarReaproveitamento() {
+        if (!fichaReaproveitando || reaproveitamentoFeito) return;
+        if (!accessToken || tokenExpirado()) {
+            mostrarReconectar('Conecte-se ao Google para carregar a ficha reaproveitada.');
+            return;
+        }
+        reaproveitamentoFeito = true;   // evita rodar duas vezes ao mesmo tempo
+
+        try {
+            const r = await fetch(
+                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/RETIRADAS_PENDENTES!A:D`,
+                { headers: { 'Authorization': `Bearer ${accessToken}` } }
+            );
+            if (r.status === 401) {
+                reaproveitamentoFeito = false;
+                sessaoExpirou('Sessão expirada. Reconecte para carregar a ficha reaproveitada.');
+                return;
+            }
+            if (!r.ok) {
+                const e = await r.json().catch(() => ({}));
+                throw new Error(e.error?.message || r.statusText);
+            }
+
+            // Todos os NRPs que estão hoje em fichas pendentes
+            const limpar = n => (n || '').toString().replace(/\./g, '').replace(/^0+/, '').trim();
+            const emUso = new Set();
+            ((await r.json()).values || []).slice(1).forEach(row => {
+                (row[3] ? row[3].split('; ') : []).forEach(equip => {
+                    const n = limpar(equip.split(' - ')[0]);
+                    if (n) emUso.add(n);
+                });
+            });
+
+            const foraDaFicha = [];
+            let carregados = 0;
+            (fichaReaproveitando.equipamentos || []).forEach(equip => {
+                const [nrp, ...partes] = equip.split(' - ');
+                const material    = partes.join(' - ');
+                const nrpSemZeros = limpar(nrp);
+                if (!nrpSemZeros) return;
+                const podeRepetir = patrimoniosPermitidosParaRepeticao.includes(nrpSemZeros);
+
+                if (!podeRepetir && emUso.has(nrpSemZeros)) {
+                    if (!foraDaFicha.some(f => limpar(f.nrp) === nrpSemZeros)) foraDaFicha.push({ nrp, material });
+                    return;
+                }
+
+                const existente = patrimoniosSelecionados.find(i => limpar(i.NRP) === nrpSemZeros);
+                if (existente) {
+                    if (podeRepetir) { existente.quantidade = (existente.quantidade || 1) + 1; carregados++; }
+                    return;   // não repetível já na lista: não duplica
+                }
+
+                const info = patrimonioData.find(row => row[0] && limpar(row[0]) === nrpSemZeros);
+                patrimoniosSelecionados.push({
+                    NRP: nrp, Material: material || (info ? info[1] : ''),
+                    Localização: info ? info[2] : undefined,
+                    Responsável: info ? info[3] : undefined,
+                    quantidade: 1,
+                });
+                carregados++;
+            });
+
+            atualizarListaPatrimonios();
+            document.getElementById("limparNRPsBtn").style.display =
+                patrimoniosSelecionados.length > 0 ? "inline-flex" : "none";
+
+            mostrarAvisoReaproveitar(
+                `♻ Ficha ${fichaReaproveitando.idFichaOrigem || ''} reaproveitada: ${carregados} patrimônio(s) carregado(s). ` +
+                `Preencha Operador, Local e Evento.`, foraDaFicha);
+            setProgress(foraDaFicha.length
+                ? `♻ ${carregados} carregado(s), ${foraDaFicha.length} fora (já em ficha pendente).`
+                : `♻ ${carregados} patrimônio(s) carregado(s).`);
+        } catch (error) {
+            reaproveitamentoFeito = false;
+            mostrarAvisoReaproveitar('⚠ Não foi possível conferir a ficha reaproveitada: ' + error.message +
+                ' — clique em 🔄 ou recarregue a página.');
+            setProgress('Erro ao reaproveitar: ' + error.message);
+        }
     }
 
     function atualizarOperador2() {
@@ -1009,6 +1188,7 @@
         const operador2     = document.getElementById("operador2Select").value;
         const localMontagem = document.getElementById("localMontagemInput").value.trim();
         const evento        = document.getElementById("eventoInput").value.trim();
+        const observacao    = document.getElementById("observacaoInput").value.trim();
         const dataRetirada  = fichaEditando
             ? fichaEditando.dataRetirada
             : new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
@@ -1030,7 +1210,8 @@
             .join("; ");
         const novaRetirada = [
             fichaEditando ? fichaEditando.idFicha : Date.now().toString(),
-            operador1, operador2, equipamentos, localMontagem, evento, dataRetirada
+            operador1, operador2, equipamentos, localMontagem, evento, dataRetirada,
+            observacao                                   // coluna H
         ];
 
         document.getElementById("spinner").style.display = "inline-block";
@@ -1060,7 +1241,8 @@
                     for (const equip of equips) {
                         const [nrpP] = equip.split(' - ');
                         const nrpN   = nrpP ? nrpP.replace(/^0+/, '') : '';
-                        if (nrpsSelecionados.includes(nrpN)) { nrpEmUso = nrpP; return; }
+                        if (nrpsSelecionados.includes(nrpN) &&
+                            !patrimoniosPermitidosParaRepeticao.includes(nrpN)) { nrpEmUso = nrpP; return; }
                     }
                 });
             }
@@ -1075,7 +1257,7 @@
             if (fichaEditando) {
                 const rowIndex = fichaEditando.rowIndex;
                 const upd = await fetch(
-                    `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/RETIRADAS_PENDENTES!A${rowIndex+1}:G${rowIndex+1}?valueInputOption=RAW`,
+                    `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/RETIRADAS_PENDENTES!A${rowIndex+1}:H${rowIndex+1}?valueInputOption=RAW`,
                     { method: 'PUT',
                       headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
                       body: JSON.stringify({ values: [novaRetirada] }) }
@@ -1090,7 +1272,7 @@
                 }
             } else {
                 const reg = await fetch(
-                    `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/RETIRADAS_PENDENTES!A:G:append?valueInputOption=RAW`,
+                    `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/RETIRADAS_PENDENTES!A:H:append?valueInputOption=RAW`,
                     { method: 'POST',
                       headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
                       body: JSON.stringify({ values: [novaRetirada] }) }
@@ -1109,7 +1291,9 @@
 
             // Sucesso: limpa a ficha em edição para não bloquear a navegação
             localStorage.removeItem('fichaParaEditar');
+            localStorage.removeItem('fichaParaReaproveitar');
             fichaEditando = null;
+            fichaReaproveitando = null;
 
             setProgress("✅ Retirada registrada!");
             setTimeout(() => { window.location.href = "fichas.html"; }, 1200);
@@ -1150,7 +1334,7 @@
         }
         function reset() {
             // Não recarrega no meio de uma edição — perderia o trabalho
-            if (fichaEditando) { clearTimeout(timerRec); clearTimeout(timerAv); esconder(); return; }
+            if (fichaEditando || fichaReaproveitando) { clearTimeout(timerRec); clearTimeout(timerAv); esconder(); return; }
             const temNRPs = patrimoniosSelecionados.length > 0;
             const TEMPO = temNRPs ? TEMPO_MS_NRPS : TEMPO_MS;
             clearTimeout(timerRec); clearTimeout(timerAv); esconder();

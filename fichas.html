@@ -21,6 +21,25 @@
             line-height: 1.5;
             padding: 1px 0;
         }
+        .btn-obs {
+            background: rgba(245,158,11,.22) !important;
+            color: inherit !important;
+            border: 1px solid rgba(245,158,11,.5) !important;
+        }
+        .btn-obs:hover { background: rgba(245,158,11,.35) !important; }
+        .observacao-texto {
+            white-space: pre-wrap;
+            word-break: break-word;
+            line-height: 1.5;
+            font-size: 14px;
+            padding: 12px 14px;
+            margin: 10px 0 14px;
+            border-radius: 4px;
+            background: rgba(127,127,127,.08);
+            border: 1px solid rgba(127,127,127,.25);
+            max-height: 50vh;
+            overflow: auto;
+        }
     </style>
 </head>
 <body>
@@ -185,7 +204,7 @@
                                         <th>Local</th>
                                         <th>Evento</th>
                                         <th style="width:130px">Data Retirada</th>
-                                        <th style="width:150px">Ações</th>
+                                        <th style="width:190px">Ações</th>
                                     </tr>
                                 </thead>
                                 <tbody id="pendentesList"></tbody>
@@ -200,6 +219,19 @@
             <footer class="site-footer">
                 © 2025 BrenoDoria — Câmara dos Deputados / COAUD
             </footer>
+        </div>
+    </div>
+
+    <!-- ══ MODAL DE OBSERVAÇÃO ══════════════════════════ -->
+    <div id="observacaoModal" class="modal">
+        <div class="modal-content">
+            <button class="modal-close" onclick="fecharObservacao()">×</button>
+            <h2>📝 Observação</h2>
+            <div id="observacaoFicha" style="font-size:12px;opacity:.7"></div>
+            <div id="observacaoTexto" class="observacao-texto"></div>
+            <div class="modal-footer">
+                <button onclick="fecharObservacao()">Fechar</button>
+            </div>
         </div>
     </div>
 
@@ -659,7 +691,7 @@
             await getSheetIds();
 
             const r = await fetch(
-                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/RETIRADAS_PENDENTES!A:G`,
+                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/RETIRADAS_PENDENTES!A:H`,
                 { headers: { 'Authorization': `Bearer ${accessToken}` } }
             );
             if (!r.ok) {
@@ -746,6 +778,7 @@
                         <button class="btn-editar" onclick="editarFicha(${originalIndex})">✏ Editar</button>
                         <button class="btn-devolver" onclick="abrirModalDevolucao('${row[0]}')">📦 Devolução</button>
                         <button class="btn-imprimir" onclick="imprimirFicha(${originalIndex})">🖨</button>
+                        ${(row[7] || '').trim() ? `<button class="btn-obs" title="Ver observação" onclick="verObservacao(${originalIndex})">📝 Obs.</button>` : ''}
                     </div>
                 </td>
             `;
@@ -766,9 +799,24 @@
             local:        ficha[4],
             evento:       ficha[5],
             dataRetirada: ficha[6],
+            observacao:   ficha[7] || '',
             rowIndex
         }));
+        localStorage.removeItem('fichaParaReaproveitar');
         window.location.href = 'index-almoxarifado.html';
+    }
+
+    function verObservacao(rowIndex) {
+        const ficha = pendentesData[rowIndex];
+        if (!ficha) return;
+        document.getElementById("observacaoFicha").textContent =
+            `Ficha ${ficha[0] || '-'} — ${ficha[1] || '-'} — ${ficha[5] || '-'}`;
+        document.getElementById("observacaoTexto").textContent = ficha[7] || '';
+        document.getElementById("observacaoModal").classList.add('aberto');
+    }
+
+    function fecharObservacao() {
+        document.getElementById("observacaoModal").classList.remove('aberto');
     }
 
     async function abrirModalDevolucao(idFicha) {
@@ -796,6 +844,7 @@
     document.addEventListener('click', e => {
         const modal = document.getElementById("devolucaoModal");
         if (e.target === modal) fecharModal();
+        if (e.target === document.getElementById("observacaoModal")) fecharObservacao();
     });
 
     async function confirmarDevolucao() {
@@ -851,12 +900,14 @@
 
             const retirada       = pendentesData[retiradaIndex + 1];
             const dataDevolucao  = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-            const fichaArquivada = [...retirada, dataDevolucao, operadorDev, almoxDev];
+            // A:G = dados da retirada | H:J = devolução | K = observação
+            const dadosRetirada  = [0,1,2,3,4,5,6].map(i => retirada[i] || '');
+            const fichaArquivada = [...dadosRetirada, dataDevolucao, operadorDev, almoxDev, retirada[7] || ''];
 
             setProgress("Arquivando ficha...");
 
             const appendResp = await fetch(
-                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/RETIRADAS_ARQUIVADAS!A:J:append?valueInputOption=RAW`,
+                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/RETIRADAS_ARQUIVADAS!A:K:append?valueInputOption=RAW`,
                 { method: 'POST',
                   headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
                   body: JSON.stringify({ values: [fichaArquivada] }) }
@@ -920,7 +971,8 @@
             equipamentos: ficha[3] ? ficha[3].split('; ') : [],
             local:        ficha[4],
             evento:       ficha[5],
-            dataRetirada: ficha[6]
+            dataRetirada: ficha[6],
+            observacao:   ficha[7] || ''
         }));
         window.location.href = "ficha_Imprimir.html";
     }

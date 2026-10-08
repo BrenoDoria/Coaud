@@ -20,21 +20,51 @@
             line-height: 1.5;
             padding: 1px 0;
         }
-        .btn-imprimir-sel {
-            background: var(--azul);
-            color: #fff;
-        }
-        .btn-imprimir-sel:hover { background: #154e8c; }
-        th:nth-child(1), td:nth-child(1) { width: 40px; text-align: center; }
-        th:nth-child(2), td:nth-child(2) {
+        th:nth-child(1), td:nth-child(1) {
             width: 100px;
             font-size: 11px;
             font-family: monospace;
         }
-        th:nth-child(8), td:nth-child(8),
-        th:nth-child(9), td:nth-child(9) {
+        th:nth-child(7), td:nth-child(7),
+        th:nth-child(8), td:nth-child(8) {
             width: 125px;
             font-size: 11px;
+        }
+        th:nth-child(11) { width: 150px; }
+        .btn-acoes-arq {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .btn-acoes-arq button {
+            padding: 4px 8px;
+            font-size: 11px;
+            white-space: nowrap;
+            margin: 0;
+        }
+        .btn-reaproveitar {
+            background: var(--azul) !important;
+            color: #fff !important;
+        }
+        .btn-reaproveitar:hover { background: #154e8c !important; }
+        .btn-obs {
+            background: rgba(245,158,11,.22) !important;
+            color: inherit !important;
+            border: 1px solid rgba(245,158,11,.5) !important;
+        }
+        .btn-obs:hover { background: rgba(245,158,11,.35) !important; }
+        .observacao-texto {
+            white-space: pre-wrap;
+            word-break: break-word;
+            line-height: 1.5;
+            font-size: 14px;
+            padding: 12px 14px;
+            margin: 10px 0 14px;
+            border-radius: 4px;
+            background: rgba(127,127,127,.08);
+            border: 1px solid rgba(127,127,127,.25);
+            max-height: 50vh;
+            overflow: auto;
         }
     </style>
 </head>
@@ -249,12 +279,6 @@ async function atualizarDashboard() {
                         <button onclick="carregarDadosDoSheets()" class="btn-blue">
                             🔄 Atualizar
                         </button>
-                        <button id="imprimirSelecionadas"
-                            class="btn-imprimir-sel"
-                            onclick="imprimirFichasSelecionadas()"
-                            style="display:none">
-                            🖨 Imprimir Selecionadas
-                        </button>
                     </div>
 
                     <!-- Busca -->
@@ -278,11 +302,6 @@ async function atualizarDashboard() {
                             <table id="arquivadasTable">
                                 <thead>
                                     <tr>
-                                        <th>
-                                            <input type="checkbox" id="selectAll"
-                                                onclick="toggleSelectAll()"
-                                                title="Selecionar todas">
-                                        </th>
                                         <th>ID Ficha</th>
                                         <th>Retirado por</th>
                                         <th>Entregue por</th>
@@ -293,6 +312,7 @@ async function atualizarDashboard() {
                                         <th>Data Devolução</th>
                                         <th>Devolvido por</th>
                                         <th>Recebido por</th>
+                                        <th>Ações</th>
                                     </tr>
                                 </thead>
                                 <tbody id="arquivadasList"></tbody>
@@ -302,6 +322,19 @@ async function atualizarDashboard() {
 
                 </div>
 
+            </div>
+
+            <!-- ══ MODAL DE OBSERVAÇÃO ══════════════════════════ -->
+            <div id="observacaoModal" class="modal">
+                <div class="modal-content">
+                    <button class="modal-close" onclick="fecharObservacao()">×</button>
+                    <h2>📝 Observação</h2>
+                    <div id="observacaoFicha" style="font-size:12px;opacity:.7"></div>
+                    <div id="observacaoTexto" class="observacao-texto"></div>
+                    <div class="modal-footer">
+                        <button onclick="fecharObservacao()">Fechar</button>
+                    </div>
+                </div>
             </div>
 
             <footer class="site-footer">
@@ -406,7 +439,7 @@ if (document.readyState === 'loading') {
 
         try {
             const r = await fetch(
-                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/RETIRADAS_ARQUIVADAS!A:J`,
+                `https://sheets.googleapis.com/v4/spreadsheets/${FILE_ID}/values/RETIRADAS_ARQUIVADAS!A:K`,
                 { headers: { 'Authorization': `Bearer ${accessToken}` } }
             );
             if (!r.ok) {
@@ -446,13 +479,11 @@ if (document.readyState === 'loading') {
     function atualizarTabelaArquivadas() {
         const list = document.getElementById("arquivadasList");
         list.innerHTML = "";
-        document.getElementById("selectAll").checked = false;
 
         if (arquivadasFiltradas.length <= 1) {
             list.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:24px">
                 Nenhuma ficha arquivada encontrada.
             </td></tr>`;
-            document.getElementById("imprimirSelecionadas").style.display = "none";
             return;
         }
 
@@ -480,7 +511,6 @@ if (document.readyState === 'loading') {
 
             const tr = document.createElement("tr");
             tr.innerHTML = `
-                <td><input type="checkbox" class="ficha-checkbox" data-index="${originalIndex}"></td>
                 <td>${row[0] || '-'}</td>
                 <td>${row[1] || '-'}</td>
                 <td>${row[2] || '-'}</td>
@@ -491,46 +521,70 @@ if (document.readyState === 'loading') {
                 <td style="white-space:nowrap">${row[7] || '-'}</td>
                 <td>${row[8] || '-'}</td>
                 <td>${row[9] || '-'}</td>
+                <td>
+                    <div class="btn-acoes-arq">
+                        <button class="btn-reaproveitar" title="Usar os patrimônios desta ficha numa nova retirada"
+                            onclick="reaproveitarFicha(${originalIndex})">♻ Reaproveitar</button>
+                        <button class="btn-imprimir" title="Imprimir esta ficha"
+                            onclick="imprimirFichaArquivada(${originalIndex})">🖨 Imprimir</button>
+                        ${(row[10] || '').trim() ? `<button class="btn-obs" title="Ver observação" onclick="verObservacao(${originalIndex})">📝 Observação</button>` : ''}
+                    </div>
+                </td>
             `;
             list.appendChild(tr);
         });
-
-        document.getElementById("imprimirSelecionadas").style.display = "inline-flex";
     }
 
-    function toggleSelectAll() {
-        const checked = document.getElementById("selectAll").checked;
-        document.querySelectorAll(".ficha-checkbox")
-            .forEach(cb => { cb.checked = checked; });
-    }
-
-    function imprimirFichasSelecionadas() {
-        const selecionadas = document.querySelectorAll(".ficha-checkbox:checked");
-        if (!selecionadas.length) {
-            setProgress("Selecione pelo menos uma ficha para imprimir.");
-            return;
-        }
-
-        const fichas = Array.from(selecionadas).map(cb => {
-            const idx = parseInt(cb.getAttribute("data-index"));
-            const row = arquivadasFiltradas[idx];
-            return {
-                idFicha:               row[0],
-                operador1:             row[1],
-                operador2:             row[2] || '-',
-                equipamentos:          row[3] ? row[3].split('; ') : [],
-                local:                 row[4],
-                evento:                row[5],
-                dataRetirada:          row[6],
-                dataDevolucao:         row[7],
-                operadorDevolucao:     row[8] || '-',
-                almoxarifadoDevolucao: row[9] || '-'
-            };
-        });
-
-        localStorage.setItem('fichasParaImprimir', JSON.stringify(fichas));
+    // ══ IMPRIMIR UMA FICHA (botão da linha) ═══════════════
+    function imprimirFichaArquivada(idx) {
+        const row = arquivadasFiltradas[idx];
+        if (!row) return;
+        const ficha = {
+            idFicha:               row[0],
+            operador1:             row[1],
+            operador2:             row[2] || '-',
+            equipamentos:          row[3] ? row[3].split('; ') : [],
+            local:                 row[4],
+            evento:                row[5],
+            dataRetirada:          row[6],
+            dataDevolucao:         row[7],
+            operadorDevolucao:     row[8] || '-',
+            almoxarifadoDevolucao: row[9] || '-',
+            observacao:            row[10] || ''
+        };
+        localStorage.setItem('fichasParaImprimir', JSON.stringify([ficha]));
         window.location.href = 'imprimir-arquivadas.html';
     }
+
+    // ══ REAPROVEITAR FICHA ════════════════════════════════
+    // Leva a lista de patrimônios para a Nova Retirada.
+    // Operador, Local e Evento são preenchidos lá, como numa ficha nova.
+    function reaproveitarFicha(idx) {
+        const row = arquivadasFiltradas[idx];
+        if (!row) return;
+        localStorage.removeItem('fichaParaEditar');
+        localStorage.setItem('fichaParaReaproveitar', JSON.stringify({
+            idFichaOrigem: row[0] || '',
+            equipamentos:  row[3] ? row[3].split('; ') : []
+        }));
+        window.location.href = 'index-almoxarifado.html';
+    }
+
+    // ══ OBSERVAÇÃO ════════════════════════════════════════
+    function verObservacao(idx) {
+        const row = arquivadasFiltradas[idx];
+        if (!row) return;
+        document.getElementById("observacaoFicha").textContent =
+            `Ficha ${row[0] || '-'} — ${row[1] || '-'} — ${row[5] || '-'}`;
+        document.getElementById("observacaoTexto").textContent = row[10] || '';
+        document.getElementById("observacaoModal").classList.add('aberto');
+    }
+    function fecharObservacao() {
+        document.getElementById("observacaoModal").classList.remove('aberto');
+    }
+    document.addEventListener('click', e => {
+        if (e.target === document.getElementById("observacaoModal")) fecharObservacao();
+    });
 
     function buscarPorNRP() {
         const nrp = document.getElementById("nrpBuscaInput").value.trim();
