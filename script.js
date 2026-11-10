@@ -32,6 +32,12 @@
 //  v7: o servidor devolve uma SESSÃO ASSINADA ("crachá"), guardada
 //  em 'sessao_coaud' e conferida em todas as páginas pelo
 //  coaud-sessao.js. A permissão vem dela, não do texto editável.
+//
+//  v8: "Esqueci minha senha". A pessoa informa ponto + e-mail e
+//  entra no Google com ESSA conta. O servidor (acao 'resetarSenha')
+//  confere ponto, e-mail cadastrado (coluna F) e conta Google;
+//  se tudo bate, volta a senha para a inicial com primeiroAcesso
+//  = TRUE. Em seguida já abre o "Primeiro acesso" para criar outra.
 // ══════════════════════════════════════════════════════
 
 const AUTH_URL = 'https://script.google.com/macros/s/AKfycbwAIg5XQiQQPDcfWYUgI-sRX51qlVpcSD6X7uE3z6-PjTDrdpE2MB7mTIfsPFFKsBed/exec';
@@ -58,6 +64,9 @@ let usuarioPendente  = null;
 let authPromise      = null;
 let loginEmAndamento = false;
 let proximoPrompt    = '';   // 'select_account' quando precisar escolher outra conta Google
+let fluxoGoogle      = 'login';   // 'login' | 'reset' — o que fazer quando o Google responder
+let resetPendente    = null;
+const SENHA_INICIAL  = '12345';   // mesma senha padrão da tela de Usuários
 
 // ══ Limpeza ao sair ════════════════════════════════════
 // Ao sair (ou com a sessão terminada), o navegador fica só com as
@@ -429,6 +438,115 @@ function iniciarLogin() {
     tokenClient.requestAccessToken({ prompt: proximoPrompt });
 }
 
+// ══ Esqueci minha senha ════════════════════════════════
+function mostrarReset() {
+    if (loginEmAndamento) return;
+    document.getElementById('login-container').style.display = 'none';
+    document.getElementById('reset-container').style.display = 'block';
+    const pontoLogin = document.getElementById('username').value;
+    const pontoEl = document.getElementById('resetPonto');
+    if (pontoLogin && !pontoEl.value) pontoEl.value = pontoLogin;
+    document.getElementById('resetMessage').textContent = '';
+    (pontoEl.value ? document.getElementById('resetEmail') : pontoEl).focus();
+}
+
+function voltarLogin() {
+    if (loginEmAndamento) return;
+    document.getElementById('reset-container').style.display = 'none';
+    document.getElementById('login-container').style.display = 'block';
+    document.getElementById('username').focus();
+}
+
+function iniciarReset() {
+    if (loginEmAndamento) return;
+    const msg   = document.getElementById('resetMessage');
+    const ponto = document.getElementById('resetPonto').value.replace(/\D/g, '');
+    const email = document.getElementById('resetEmail').value.trim().toLowerCase();
+
+    if (!ponto || !email) { msg.textContent = 'Informe o número de ponto e o e-mail.'; return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { msg.textContent = 'E-mail inválido.'; return; }
+    if (!tokenClient) { msg.textContent = 'Aguardando Google carregar...'; return; }
+
+    loginEmAndamento = true;
+    fluxoGoogle = 'reset';
+    resetPendente = { ponto, email, idTentativa: novoIdTentativa() };
+    msg.textContent = `Entre no Google com ${email}...`;
+    // Sempre deixa escolher a conta, já sugerindo o e-mail informado
+    tokenClient.requestAccessToken({ prompt: 'select_account', hint: email });
+}
+
+async function aposOAuthReset() {
+    const msg = document.getElementById('resetMessage');
+    const { ponto, email, idTentativa } = resetPendente || {};
+    let pararStatus = () => {};
+    let seguirParaNovaSenha = false;
+
+    try {
+        if (!ponto) return;
+        pararStatus = iniciarStatusProgressivo(msg, 'Conferindo ponto e e-mail...');
+
+        // ★ ESCRITA: single-flight. Sem resposta → verifica se foi aplicada
+        let r;
+        try {
+            r = await chamarAuth('resetarSenha',
+                { ponto, email, googleToken: accessToken, idTentativa }, UNICO_ESCRITA);
+        } catch (e) {
+            msg.textContent = 'Confirmando o reset...';
+            try {
+                const check = await chamarAuth('login',
+                    { ponto, senha: SENHA_INICIAL, googleToken: accessToken, idTentativa: novoIdTentativa() },
+                    HEDGE_LEITURA);
+                r = (check.ok && check.primeiroAcesso)
+                    ? { ok: true }
+                    : { ok: false, erro: 'Não foi possível resetar a senha. Tente novamente.' };
+            } catch (e2) {
+                r = { ok: false, erro: 'Sem resposta do servidor: ' + e2.message };
+            }
+        }
+        pararStatus();
+        console.log('◀ Resposta resetarSenha:', semSessao(r));
+
+        if (!r.ok) {
+            msg.textContent = r.codigo === 'CONTA_GOOGLE'
+                ? (r.erro || 'A conta Google usada não é a cadastrada.') +
+                  ' Clique em Resetar senha de novo e escolha a conta certa.'
+                : (r.erro || 'Ponto ou e-mail não conferem.');
+            return;
+        }
+
+        // Senha voltou para a inicial: segue direto para criar a senha nova
+        msg.textContent = '';
+        document.getElementById('reset-container').style.display = 'none';
+        document.getElementById('login-container').style.display = 'block';
+        document.getElementById('username').value = document.getElementById('resetPonto').value;
+        document.getElementById('password').value = '';
+        const msgLogin = document.getElementById('loginMessage');
+        if (msgLogin) msgLogin.textContent = '✅ Senha resetada. Crie sua senha nova...';
+        usuarioPendente = { ponto, senha: SENHA_INICIAL, idTentativa: novoIdTentativa() };
+        seguirParaNovaSenha = true;
+    } catch (error) {
+        console.error('❌ Erro em aposOAuthReset:', error);
+        msg.textContent = 'Erro: ' + error.message + ' — tente novamente.';
+    } finally {
+        pararStatus();
+        resetPendente = null;
+        fluxoGoogle   = 'login';
+        if (!seguirParaNovaSenha) loginEmAndamento = false;
+    }
+
+    // Mesmo fluxo do primeiro acesso (pede a senha nova e entra).
+    // Se a pessoa cancelar, a senha fica a inicial (12345) até ela entrar de novo.
+    if (seguirParaNovaSenha) {
+        await aposOAuth();
+        const msgLogin = document.getElementById('loginMessage');
+        const aindaNoLogin = document.getElementById('login-container').style.display !== 'none';
+        // Cancelou a senha nova (sem mensagem de erro na tela): explica como continuar
+        if (msgLogin && aindaNoLogin && !/erro|falha|não|confer/i.test(msgLogin.textContent)) {
+            msgLogin.textContent = `Sua senha está como ${SENHA_INICIAL}. Entre com ela para criar a senha nova.`;
+        }
+    }
+}
+
 // ══ Logout ═════════════════════════════════════════════
 function fazerLogout() {
     localStorage.removeItem('sessao_coaud');
@@ -472,6 +590,11 @@ window.addEventListener('load', () => {
     }
     if (logoutBtn) logoutBtn.addEventListener('click', fazerLogout);
 
+    const resetBtn   = document.getElementById('resetButton');
+    const resetEmail = document.getElementById('resetEmail');
+    if (resetBtn)   resetBtn.addEventListener('click', iniciarReset);
+    if (resetEmail) resetEmail.addEventListener('keydown', e => { if (e.key === 'Enter') iniciarReset(); });
+
     const inicializarGoogle = () => {
         if (typeof google === 'undefined' || !google.accounts) {
             setTimeout(inicializarGoogle, 300);
@@ -482,15 +605,22 @@ window.addEventListener('load', () => {
             scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.email',
             error_callback: () => {
                 // Janela do Google fechada ou bloqueada: libera o botão Entrar
-                const msg = document.getElementById('loginMessage');
-                if (msg) msg.textContent = 'Login do Google cancelado. Clique em Entrar de novo.';
+                const emReset = fluxoGoogle === 'reset';
+                const msg = document.getElementById(emReset ? 'resetMessage' : 'loginMessage');
+                if (msg) msg.textContent = emReset
+                    ? 'Login do Google cancelado. Clique em Resetar senha de novo.'
+                    : 'Login do Google cancelado. Clique em Entrar de novo.';
                 usuarioPendente = null;
+                resetPendente = null;
+                fluxoGoogle = 'login';
                 loginEmAndamento = false;
             },
             callback: async (tokenResponse) => {
                 if (tokenResponse.error) {
-                    const msg = document.getElementById('loginMessage');
+                    const msg = document.getElementById(fluxoGoogle === 'reset' ? 'resetMessage' : 'loginMessage');
                     if (msg) msg.textContent = 'Erro Google: ' + tokenResponse.error;
+                    resetPendente = null;
+                    fluxoGoogle = 'login';
                     loginEmAndamento = false;
                     return;
                 }
@@ -498,7 +628,8 @@ window.addEventListener('load', () => {
                 localStorage.setItem('access_token', accessToken);
                 const expiraEm = Date.now() + (Number(tokenResponse.expires_in) || 3600) * 1000;
                 localStorage.setItem('token_expira_em', String(expiraEm));
-                await aposOAuth();
+                if (fluxoGoogle === 'reset') await aposOAuthReset();
+                else await aposOAuth();
             }
         });
     };

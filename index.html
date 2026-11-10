@@ -27,6 +27,22 @@
             width: 100%;
             flex: 1;
         }
+        .link-esqueci {
+            display: block;
+            margin-top: 12px;
+            text-align: center;
+            font-size: 12px;
+            color: var(--text-muted);
+            text-decoration: underline;
+            cursor: pointer;
+        }
+        .link-esqueci:hover { color: var(--verde); }
+        .reset-ajuda {
+            font-size: 11px;
+            color: var(--text-muted);
+            line-height: 1.5;
+            margin: 0 0 12px;
+        }
     </style>
 </head>
 <body>
@@ -54,6 +70,36 @@
 
             <button id="loginButton" class="btn-primary-full">Entrar</button>
             <p id="loginMessage" class="login-msg"></p>
+            <a href="#" class="link-esqueci" onclick="mostrarReset(); return false;">Esqueci minha senha</a>
+        </div>
+
+        <!-- ── ESQUECI A SENHA ── -->
+        <div id="reset-container" class="login-card" style="display:none">
+            <div class="login-brasao">
+                <img src="LOGOCOAUD.png" alt="COAUD"
+                    style="width:64px;height:auto;margin-bottom:6px">
+            </div>
+            <h1 class="login-titulo">Esqueci minha senha</h1>
+            <p class="login-subtitulo">Confirme seu ponto e o e-mail Google cadastrado</p>
+
+            <div class="field-group">
+                <label class="field-label" for="resetPonto">Número de ponto</label>
+                <input type="text" id="resetPonto"
+                    placeholder="Ex.: 922.083" autocomplete="off" inputmode="numeric">
+            </div>
+            <div class="field-group">
+                <label class="field-label" for="resetEmail">E-mail Google cadastrado</label>
+                <input type="text" id="resetEmail"
+                    placeholder="Ex.: maria.souza@gmail.com" autocomplete="off" inputmode="email">
+            </div>
+            <p class="reset-ajuda">
+                Na próxima tela, entre no Google <strong>com esse mesmo e-mail</strong>.
+                A senha volta para a senha inicial e você cria uma senha nova em seguida.
+            </p>
+
+            <button id="resetButton" class="btn-primary-full">Resetar senha</button>
+            <p id="resetMessage" class="login-msg"></p>
+            <a href="#" class="link-esqueci" onclick="voltarLogin(); return false;">← Voltar para o login</a>
         </div>
 
         <!-- ── PORTAL (após login) ── -->
