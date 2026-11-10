@@ -1126,23 +1126,42 @@
             patrimoniosSelecionados.length > 0 ? "inline-flex" : "none";
     }
 
+    function podeRepetirItem(item) {
+        return patrimoniosPermitidosParaRepeticao.includes((item.NRP || '').toString().replace(/^0+/, ''));
+    }
+
     function atualizarListaPatrimonios() {
         const list = document.getElementById("patrimonioList");
         list.innerHTML = "";
-            patrimoniosSelecionados.forEach((item, index) => {
-        const qtd = item.quantidade || 1;
-        const badgeQtd = qtd > 1 ? ` <span class="badge badge-green">${qtd} Unidades</span>` : "";
-        const row = document.createElement("tr");
-        row.innerHTML = `
-            <td>${item.NRP || "N/A"}${badgeQtd}</td>
+        const estiloBtnQtd = "padding:3px 0;width:26px;font-size:13px;font-weight:700;margin:0;" +
+                             "background:rgba(0,176,79,0.15);color:#4ade80;border:1px solid rgba(0,176,79,0.35)";
+        patrimoniosSelecionados.forEach((item, index) => {
+            const qtd = item.quantidade || 1;
+            const repete = podeRepetirItem(item);
+            const badgeQtd = qtd > 1 ? ` <span class="badge badge-green">${qtd} Unidades</span>` : "";
+
+            // Patrimônio que pode repetir: "+" sempre; "−" só quando há mais de 1 unidade.
+            // Com 1 unidade só, tira pelo botão Remover.
+            const botoesQtd = repete ? `
+                ${qtd > 1 ? `<button type="button" onclick="diminuirQuantidade(${index})" title="Tirar 1 unidade"
+                    style="${estiloBtnQtd}">−</button>` : ''}
+                <button type="button" onclick="aumentarQuantidade(${index})" title="Adicionar mais 1 unidade"
+                    style="${estiloBtnQtd}">+</button>` : '';
+
+            const row = document.createElement("tr");
+            row.innerHTML = `
+                <td>${item.NRP || "N/A"}${badgeQtd}</td>
                 <td>${item.Material || "N/A"}</td>
                 <td>${item.Localização || "-"}</td>
                 <td>${item.Responsável || "-"}</td>
                 <td>
-                    <button onclick="removerPatrimonio(${index})"
-                        style="padding:3px 9px;font-size:11px;background:rgba(231,76,60,0.2);color:#f87171;border:1px solid rgba(231,76,60,0.3)">
-                        Remover
-                    </button>
+                    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                        ${botoesQtd}
+                        <button type="button" onclick="removerPatrimonio(${index})"
+                            style="padding:3px 9px;font-size:11px;margin:0;background:rgba(231,76,60,0.2);color:#f87171;border:1px solid rgba(231,76,60,0.3)">
+                            Remover
+                        </button>
+                    </div>
                 </td>
             `;
             list.prepend(row);
@@ -1150,13 +1169,29 @@
         atualizarEstadoBotaoRegistrar();
     }
 
+    function aumentarQuantidade(index) {
+        const item = patrimoniosSelecionados[index];
+        if (!item || !podeRepetirItem(item)) return;
+        item.quantidade = (item.quantidade || 1) + 1;
+        atualizarListaPatrimonios();
+        setProgress(`➕ NRP "${item.NRP}": ${item.quantidade} Unidades.`);
+    }
+
+    function diminuirQuantidade(index) {
+        const item = patrimoniosSelecionados[index];
+        if (!item || (item.quantidade || 1) <= 1) return;   // com 1 só, usa o Remover
+        item.quantidade -= 1;
+        atualizarListaPatrimonios();
+        setProgress(`➖ NRP "${item.NRP}": ${item.quantidade} Unidade${item.quantidade > 1 ? 's' : ''}.`);
+    }
+
+    // Remover tira a LINHA inteira (para tirar só 1 unidade, use o "−")
     function removerPatrimonio(index) {
         const item = patrimoniosSelecionados[index];
-        if (item && (item.quantidade || 1) > 1) {
-            item.quantidade -= 1;                       // tira 1 unidade do grupo
-        } else {
-            patrimoniosSelecionados.splice(index, 1);   // era só 1 → remove a linha
-        }
+        if (!item) return;
+        const qtd = item.quantidade || 1;
+        if (qtd > 1 && !confirm(`Remover as ${qtd} unidades de ${item.NRP} da ficha?\n\nPara tirar só uma, use o botão "−".`)) return;
+        patrimoniosSelecionados.splice(index, 1);
         atualizarListaPatrimonios();
         document.getElementById("limparNRPsBtn").style.display =
             patrimoniosSelecionados.length > 0 ? "inline-flex" : "none";
