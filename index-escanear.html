@@ -865,6 +865,7 @@
             await carregarRegistrosInv();
             await carregarUltimoInvSeNecessario();
             atualizarBloqueioNovoInv();
+            popularSalas();
             setProgress(`📂 Inventário "${nomeInventario()}": ${registrosInv.length} registros.`);
         } catch (e) {
             if (e.message === 'SESSAO_EXPIRADA') sessaoExpirou('Sessão expirada. Reconecte para continuar.');
@@ -1214,21 +1215,8 @@
             await Promise.all([carregarRegistrosInv(), carregarUltimoInvSeNecessario()]);
             atualizarBloqueioNovoInv();
 
-            // Popula salas (apenas da aba COAUD)
-            if (coaudData.length > 1) {
-                const salas = [...new Set(
-                    coaudData.slice(1)
-                        .map(row => row[2] ? row[2].trim() : '')
-                        .filter(s => s !== '')
-                )].sort();
-                const sel = document.getElementById("salaSelect");
-                sel.innerHTML = '<option value="">Selecione a sala...</option>';
-                salas.forEach(sala => {
-                    const opt = document.createElement("option");
-                    opt.value = sala; opt.textContent = sala;
-                    sel.appendChild(opt);
-                });
-            }
+            // Popula salas (apenas da aba COAUD, sem as já 100% levantadas)
+            popularSalas();
             setProgress(invAtual
                 ? `✅ COAUD: ${coaudData.length-1} | ${invAtual.aba}: ${registrosInv.length}` + (sigmasPronto ? '' : ' | SIGMAS carregando...')
                 : `✅ COAUD: ${coaudData.length-1} | Nenhum inventário criado ainda.` + (sigmasPronto ? '' : ' | SIGMAS carregando...'));
@@ -1245,6 +1233,50 @@
             setProgress("Erro: " + error.message);
             document.getElementById("spinner").style.display = "none";
         }
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  LISTA DE SALAS
+    //  Some da lista a sala em que TODOS os itens da COAUD
+    //  já foram registrados no inventário atual (100%).
+    // ══════════════════════════════════════════════════════
+    function salaConcluida(sala) {
+        if (!invAtual) return false;
+        const alvo = normInv(sala);
+        const itensDaSala = coaudData.slice(1)
+            .filter(row => normInv((row[2] || '').toString().trim()) === alvo)
+            .map(row => normalizeNRP(row[0]))
+            .filter(n => n);
+        if (!itensDaSala.length) return false;
+        const registrados = new Set(registrosDoInventario(sala).map(r => normalizeNRP(r.NRP)));
+        return itensDaSala.every(n => registrados.has(n));
+    }
+
+    function popularSalas() {
+        if (coaudData.length <= 1) return;
+        const sel = document.getElementById("salaSelect");
+        if (salaSelecionada) return;   // sala em andamento: não mexe no select travado
+        const anterior = sel.value;
+        const todas = [...new Set(
+            coaudData.slice(1)
+                .map(row => row[2] ? row[2].toString().trim() : '')
+                .filter(s => s !== '')
+        )].sort();
+        const pendentes = todas.filter(s => !salaConcluida(s));
+        const ocultas = todas.length - pendentes.length;
+        sel.innerHTML = '';
+        const primeira = document.createElement("option");
+        primeira.value = '';
+        primeira.textContent = ocultas
+            ? `Selecione a sala... (${ocultas} já concluída(s) oculta(s))`
+            : 'Selecione a sala...';
+        sel.appendChild(primeira);
+        pendentes.forEach(sala => {
+            const opt = document.createElement("option");
+            opt.value = sala; opt.textContent = sala;
+            sel.appendChild(opt);
+        });
+        sel.value = pendentes.includes(anterior) ? anterior : '';
     }
 
     // ══════════════════════════════════════════════════════
@@ -2532,6 +2564,7 @@
         document.getElementById("salaSelect").value = "";
         document.getElementById("confirmarSala").disabled = false;
         salaSelecionada = "";
+        popularSalas();   // sala que acabou de chegar a 100% some da lista
         currentSalaInventario = [];
         nrpsCarregados = new Set();
         travarModo(false);
@@ -2626,6 +2659,7 @@
         document.getElementById("salaSelect").value = "";
         document.getElementById("salaSelect").disabled = false;
         document.getElementById("confirmarSala").disabled = false;
+        popularSalas();
         document.getElementById("patrimonioInput").value = "";
         document.getElementById("inventarioHeader").style.display = "none";
         document.getElementById("patrimonioList").innerHTML = "";
