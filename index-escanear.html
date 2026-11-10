@@ -204,6 +204,20 @@
         }
         .modal-transf-info strong { color: #fff; }
 
+        /* ── Modal de SOBRA (roxo) ── */
+        .modal-sobra .modal-transf-content { border-color: rgba(168,85,247,0.45); }
+        .modal-sobra .modal-transf-content h2 {
+            color: #c084fc;
+            border-bottom-color: rgba(168,85,247,0.3);
+        }
+        .modal-sobra .modal-transf-info {
+            background: rgba(168,85,247,0.12);
+            border-left-color: #a855f7;
+            color: #d8b4fe;
+        }
+        .modal-sobra .btn-sobra { background: #7e22ce; }
+        .modal-sobra .btn-sobra:hover { background: #9333ea; }
+
         .respon-list {
             list-style: none;
             max-height: 180px;
@@ -541,6 +555,20 @@
             <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;padding-top:12px;border-top:1px solid rgba(0,176,79,0.15)">
                 <button class="cancelButton" onclick="fecharModalTransf()">Cancelar</button>
                 <button onclick="confirmarTransferencia()">✔ Confirmar Transferência</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════
+         MODAL DE SOBRA (item de outro responsável/setor)
+    ══════════════════════════════════════════════════ -->
+    <div id="modalSobra" class="modal-transf modal-sobra">
+        <div class="modal-transf-content">
+            <h2>🟣 Patrimônio de Outro Setor — Sobra</h2>
+            <div class="modal-transf-info" id="modalSobraInfo"></div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;padding-top:12px;border-top:1px solid rgba(168,85,247,0.2)">
+                <button class="cancelButton" onclick="fecharModalSobra()">Cancelar</button>
+                <button id="btnConfirmaSobra" class="btn-sobra" onclick="confirmarSobra()">✔ Adicionar à lista de Sobras</button>
             </div>
         </div>
     </div>
@@ -1521,7 +1549,8 @@
             const modalTransfAberto = document.getElementById("modalTransf").classList.contains("aberto");
             const modalNovoAberto   = document.getElementById("modalNovo").classList.contains("aberto");
             const outrosModais = document.getElementById("modalDescons").classList.contains("aberto") ||
-                                 document.getElementById("modalNovoInv").classList.contains("aberto");
+                                 document.getElementById("modalNovoInv").classList.contains("aberto") ||
+                                 document.getElementById("modalSobra").classList.contains("aberto");
             const emCheckbox = document.activeElement && document.activeElement.id === 'mostrarRegistrados';
             if (salaSelecionada && !modalTransfAberto && !modalNovoAberto && !outrosModais && !emCheckbox) {
                 document.getElementById("patrimonioInput").focus();
@@ -1618,7 +1647,7 @@
         // ── Cenário S: item de OUTRO responsável (não é dos 3) → SOBRA ──
         //    registra no inventário sem transferir e sem alterar SIGMAS/COAUD
         if (!rowCoaud && rowSigmas && !ehResponsavelCoaud(rowSigmas[3])) {
-            registrarSobra(rowSigmas, input);
+            abrirModalSobra(rowSigmas, input);
             return;
         }
 
@@ -1643,6 +1672,57 @@
             emSigmas: true, emCoaud: false
         });
     }
+
+    // ══════════════════════════════════════════════════════
+    //  MODAL DE SOBRA — avisa antes de adicionar à lista de sobras
+    // ══════════════════════════════════════════════════════
+    let sobraPendente = null;
+
+    function abrirModalSobra(row, input) {
+        const n = normalizeNRP(row[0]);
+        // Já é sobra registrada? Só avisa, nem abre o modal
+        const jaSobra = registrosInv.find(r =>
+            normalizeNRP(r.NRP) === n && (r.situacao || '').toUpperCase().startsWith('SOBRA'));
+        if (jaSobra) {
+            registrarSobra(row, input);   // mostra o aviso de "já registrado" e limpa o campo
+            return;
+        }
+        sobraPendente = { row, input };
+        const localSigmas = (row[2] || '').toString().trim();
+        document.getElementById("modalSobraInfo").innerHTML = `
+            🟣 O patrimônio <strong>${row[0]}</strong> (${row[1] || 'sem descrição'})
+            é de <strong>outro responsável / outro setor</strong>.<br><br>
+            Responsável: <strong>${row[3] || '(sem responsável)'}</strong><br>
+            Sala na SIGMAS: <strong>${localSigmas || '(não informada)'}</strong><br><br>
+            Ele <strong>não será transferido</strong> e a SIGMAS/COAUD não serão alteradas.<br>
+            Será adicionado à <strong>lista de SOBRAS</strong> encontradas na sala
+            <strong>${salaSelecionada}</strong>.
+        `;
+        document.getElementById("modalSobra").classList.add("aberto");
+        som('aviso');
+        // foco no botão de confirmar (Enter confirma, Esc cancela)
+        setTimeout(() => document.getElementById("btnConfirmaSobra").focus(), 150);
+    }
+
+    function fecharModalSobra() {
+        document.getElementById("modalSobra").classList.remove("aberto");
+        sobraPendente = null;
+        const campo = document.getElementById("patrimonioInput");
+        campo.value = "";
+        campo.focus();
+    }
+
+    function confirmarSobra() {
+        if (!sobraPendente) return;
+        const { row, input } = sobraPendente;
+        document.getElementById("modalSobra").classList.remove("aberto");
+        sobraPendente = null;
+        registrarSobra(row, input);
+    }
+
+    document.getElementById("modalSobra").addEventListener("keydown", e => {
+        if (e.key === "Escape") fecharModalSobra();
+    });
 
     // Item de outro responsável encontrado nesta sala: vira "Sobra"
     function registrarSobra(row, input) {
