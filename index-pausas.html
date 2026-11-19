@@ -828,6 +828,7 @@ const PausasCore = (() => {
             if (!r.local) return;
             if (semPausa.some(t => norm(r.textoLinha || '').includes(t))) {   // ex.: Desligar Equipamento
                 if (!ocupados.has(p.nome)) ocupados.set(p.nome, 0);
+                r.tarefa = semPausa.filter(t => norm(r.textoLinha || '').includes(t)).sort((a, b) => b.length - a.length)[0] || 'tarefa';   // o termo mais longo (desmontagem ≠ montagem)
                 return;
             }
             ocupados.set(p.nome, 0);
@@ -891,6 +892,17 @@ const PausasCore = (() => {
                 livreAte: null, livreEm: 0, ultimoBloco: null, n: 0, rota: [],
                 podeUlysses: estaNaLista(p.nome, ulyAut),
           }));
+
+        // 2b) Já trabalhou hoje (está na lista do dia, mas a reunião não está mais ativa)
+        const dia = (e.escaladosDia || []).filter(d => d.operador);
+        const extraDiag = [];
+        candidatos.forEach(c => {
+            const hs = dia.filter(d => pontuarNome(d.operador, c.nome) > 0);
+            if (!hs.length) return;
+            c.jaEscalado = hs.map(d => `${(d.local || '').replace(/plen[aá]rio\s*/i, 'Pl. ')}${d.hora != null ? ' ' + fmt(d.hora) : ''}`).join(', ');
+            hs.forEach(d => extraDiag.push({ operador: d.operador, local: d.local, hora: d.hora, status: '', data: '', termino: '', intervalo: false,
+                motivo: 'já trabalhou hoje — saiu do painel (reunião encerrada ou cancelada): disponível' }));
+        });
 
         // 3) Distribuição (Ulysses primeiro, depois 30 min, depois por bloco/número)
         const ordemBloco = { ulysses: 0, impar: 1, par: 2, outro: 3 };
@@ -980,6 +992,7 @@ const PausasCore = (() => {
                 if (c.ultimoBloco && c.ultimoBloco !== n.bloco) pts += 15;     // tenta manter par/ímpar
                 if (!n.ulysses && c.podeUlysses) pts += 5;                     // poupa quem pode ir ao Ulysses
                 if (c.periodo !== periodo) pts += 3;                           // prefere gente do próprio turno
+                if (c.jaEscalado) pts += 10;                                   // já trabalhou hoje: por último
                 pts += c.n * 0.5;
                 if (pts < melhorPts) { melhorPts = pts; melhor = c; melhorIni = ini; }
             });
@@ -1004,13 +1017,15 @@ const PausasCore = (() => {
         pausas.sort((a, b) => (a.ini - b.ini) || ((a.numero || 0) - (b.numero || 0)));
 
         // Para a lista de opções no select de cada linha
-        const opcoes = candidatos.filter(c => !c.soIntervalo).map(c => ({ nome: c.nome, podeUlysses: c.podeUlysses, livreAte: c.livreAte, periodo: c.periodo,
+        const opcoes = candidatos.filter(c => !c.soIntervalo).map(c => ({ nome: c.nome, podeUlysses: c.podeUlysses, livreAte: c.livreAte, periodo: c.periodo, jaEscalado: c.jaEscalado || '',
             intervalo: (intervalos.get(c.nome) || []).map(v => `${v.local.replace(/plen[aá]rio\s*/i, 'Pl. ')}${v.hora != null ? ' ' + fmt(v.hora) : ''}`).join(', ') }));
         const intervaloTxt = {};
         intervalos.forEach((v, k) => { intervaloTxt[k] = v.map(x => `${x.local.replace(/plen[aá]rio\s*/i, 'Pl. ')}${x.hora != null ? ' ' + fmt(x.hora) : ''}`).join(', '); });
         const diag = reunioes.map(r => ({ operador: r.operador, local: r.local, hora: r.hora, status: r.status, data: r.data, termino: r.termino,
-            intervalo: r.intervalo, motivo: r.motivo || (r.intervalo ? 'INTERVALO (cobertura)' : r.pausaPropria ? 'em uso (tira a própria pausa)' : 'em uso') }));
-        return { pausas, candidatos, opcoes, avisos, intervaloTxt, diag, ocupados: [...ocupados.keys()] };
+            intervalo: r.intervalo, motivo: r.motivo || (r.intervalo ? 'INTERVALO (cobertura)' : r.tarefa ? `tarefa de equipamento (${r.tarefa}) — não precisa de cobertura; pessoa ocupada`
+                : r.pausaPropria ? 'em uso (tira a própria pausa)' : 'em uso') })).concat(extraDiag);
+        const jaEscaladoTxt = {}; candidatos.forEach(c => { if (c.jaEscalado) jaEscaladoTxt[c.nome] = c.jaEscalado; });
+        return { pausas, candidatos, opcoes, avisos, intervaloTxt, jaEscaladoTxt, diag, ocupados: [...ocupados.keys()] };
     }
 
     return { salaKey, lerReunioesTexto, lerEscalaTexto, juntarEscalas, lerEscalaJson, dataDoTitulo, equipeNorm, mesmaData, hm, fmt, norm, pontuarNome, acharPessoa, estaNaLista, lerEscala, aplicarRegras, tipoDia, infoLocal, lerReunioes, detectarColunas, planejar };
@@ -1411,8 +1426,20 @@ async function carregarReunioesRelay() {
     return d.fonte;
 }
 
+// Lista do dia inteiro (Escala de Áudio ?tipo=audio): quem já trabalhou hoje
+let valoresDia = null;
+function escaladosDoDia() {
+    if (!valoresDia || fonteReunioes === 'painel') return [];   // se a própria lista do dia é a fonte, não há o que comparar
+    return valoresDia.slice(1).map(r => ({ operador: (r[0] || '').trim(), local: (r[1] || '').trim(), hora: hm(r[2]), tipo: r[4] || '' }));
+}
+
 async function carregarReunioes() {
-    // 1º relay (Apps Script próprio), 2º planilha com chave, 3º painel público
+    const pDia = lerPainel().then(v => { valoresDia = v; }).catch(e => console.warn('Escala de Áudio (dia):', e.message));
+    try { await carregarReunioesFontes(); } finally { await pDia; if (valoresReunioes) gerar(); }
+}
+
+async function carregarReunioesFontes() {
+    // 1º relay (Painel de Eventos), 2º planilha com chave, 3º Escala de Áudio pública
     if (urlRelay()) {
         try { fonteReunioes = 'relay-' + await carregarReunioesRelay(); return; }
         catch (e) { console.warn('Relay falhou:', e.message); }
@@ -1548,6 +1575,7 @@ function gerar() {
         pessoas, reunioes, periodo, cfg: { ...cfg, ulyssesModo: ulyModo() },
         horaPausa: horaTxt ? hm(horaTxt) : null, hoje: escala.data || hojeTxt(), agora: escala.data === hojeTxt() ? agoraMin() : null,
         travas: manual.travas, incluir: manual.incluir, excluir: manual.excluir,
+        escaladosDia: escaladosDoDia(),
     });
 
     if (fonteReunioes === 'painel') res.avisos.unshift({ tipo: 'info', txt: coladoHoje()
@@ -1561,12 +1589,12 @@ function gerar() {
     document.getElementById('pz-avisos').innerHTML = res.avisos
         .map(a => `<div class="pz-aviso ${a.tipo}">${a.tipo === 'alerta' ? '⚠' : 'ℹ'} ${esc(a.txt)}</div>`).join('');
 
-    const usadas = res.diag.filter(d => d.motivo.startsWith('em uso') || d.motivo.startsWith('INTERVALO')).length;
+    const usadas = res.diag.filter(d => d.motivo.startsWith('em uso') || d.motivo.startsWith('INTERVALO') || d.motivo.startsWith('tarefa')).length;
     document.getElementById('pz-reun-info').textContent = document.getElementById('pz-reun-info').textContent.replace(/^.*?·/, `${usadas} em uso de ${reunioes.length} linha(s) ·`);
-    const cont = {}; res.diag.forEach(d => { const k = d.motivo.replace(/ \(.*\)$/, ''); cont[k] = (cont[k] || 0) + 1; });
+    const cont = {}; res.diag.forEach(d => { const k = d.motivo.replace(/ \(.*$| —.*$/, ''); cont[k] = (cont[k] || 0) + 1; });
     document.getElementById('pz-col-uso').textContent = 'Linhas: ' + Object.entries(cont).map(([k, v]) => `${v} ${k}`).join(' · ') +
         (document.getElementById('pz-col-uso').dataset.col ? ' — ' + document.getElementById('pz-col-uso').dataset.col : '');
-    const corM = m => m === 'em uso' ? '#4ade80' : m.startsWith('INTERVALO') ? '#93c5fd' : '#fbbf24';
+    const corM = m => m.startsWith('em uso') ? '#4ade80' : m.startsWith('INTERVALO') ? '#93c5fd' : m.startsWith('tarefa') ? '#c4b5fd' : m.startsWith('já trabalhou') ? '#94a3b8' : '#fbbf24';
     document.getElementById('pz-diag').innerHTML = '<tr><th>Operador</th><th>Local</th><th>Hora</th><th>Status</th><th>Data</th><th>Término</th><th>Situação</th></tr>' +
         res.diag.map(d => `<tr><td>${esc(d.operador)}</td><td>${esc(d.local)}</td><td>${fmt(d.hora)}</td><td>${esc(d.status)}</td><td>${esc(d.data)}</td><td>${esc(d.termino)}</td><td style="color:${corM(d.motivo)};font-weight:600">${esc(d.motivo)}</td></tr>`).join('');
     if (problema) document.getElementById('pz-diag-box').open = true;
@@ -1580,8 +1608,9 @@ function gerar() {
         tbody.innerHTML = res.pausas.map(p => {
             const tagEq = `<span class="pz-tag ${p.equipe === 'TQQ' ? 'tqq' : 't36'}">${p.equipe === 'TQQ' ? '18h' : '36h'} · ${p.dur}′</span>` + (p.aConfirmar ? '<span class="pz-tag conf">a confirmar</span>' : '');
             const tagBl = p.bloco === 'ulysses' ? '<span class="pz-tag uly">Ulysses</span>' : p.bloco === 'par' ? '<span class="pz-tag par">par</span>' : p.bloco === 'impar' ? '<span class="pz-tag impar">ímpar</span>' : '';
-            const opts = res.opcoes.filter(o => o.nome !== p.operador && (!p.ulysses || o.podeUlysses)).sort((a, b) => a.nome.localeCompare(b.nome))
-                .map(o => `<option value="${esc(o.nome)}" ${o.nome === p.cobertura ? 'selected' : ''}>${esc(o.nome)}${o.intervalo ? ` (INTERVALO ${esc(o.intervalo)})` : ''}</option>`).join('');
+            const opts = res.opcoes.filter(o => o.nome !== p.operador && (!p.ulysses || o.podeUlysses))
+                .sort((a, b) => (a.jaEscalado ? 1 : 0) - (b.jaEscalado ? 1 : 0) || a.nome.localeCompare(b.nome))
+                .map(o => `<option value="${esc(o.nome)}" ${o.nome === p.cobertura ? 'selected' : ''}>${esc(o.nome)}${o.intervalo ? ` (INTERVALO ${esc(o.intervalo)})` : ''}${o.jaEscalado ? ` (já escalado hoje: ${esc(o.jaEscalado)})` : ''}</option>`).join('');
             const sel = p.planilha
                 ? `<span title="Lançado na planilha com INTERVALO — não pode ser alterado aqui">🔒 <b>${esc(p.cobertura)}</b> <span class="pz-tag t36">📋 lançado na planilha</span></span>`
                 : `<select data-id="${esc(p.id)}" onchange="travar(this.dataset.id, this.value)"><option value="">${p.cobertura ? '— automático —' : '— sem cobertura —'}</option>${opts}</select>`;
@@ -1604,10 +1633,11 @@ function gerar() {
     // Chips
     const doTurno = pessoas.filter(p => p.periodo === periodo);
     const usadosSet = new Set(usados.map(c => c.nome));
-    const livres = res.candidatos.filter(c => !c.soIntervalo && c.periodo === periodo).map(c => c.nome);
+    const livres = res.candidatos.filter(c => !c.soIntervalo && c.periodo === periodo)
+        .sort((a, b) => (a.jaEscalado ? 1 : 0) - (b.jaEscalado ? 1 : 0)).map(c => c.nome);
     const foraManual = doTurno.filter(p => PausasCore.estaNaLista(p.nome, manual.excluir)).map(p => p.nome);
     document.getElementById('pz-livres').innerHTML =
-        livres.map(n => `<span class="pz-chip ${usadosSet.has(n) ? 'usado' : 'livre'}" data-n="${esc(n)}" onclick="alternarExcluir(this.dataset.n)">${esc(curto(n))}${PausasCore.estaNaLista(n, cfg.ulyssesAutorizados[periodo] || []) ? ' ★' : ''}${res.intervaloTxt[n] ? ` <span class="pz-muted">· INTERVALO ${esc(res.intervaloTxt[n])}</span>` : ''}</span>`).join('') +
+        livres.map(n => `<span class="pz-chip ${usadosSet.has(n) ? 'usado' : 'livre'}" data-n="${esc(n)}" onclick="alternarExcluir(this.dataset.n)">${esc(curto(n))}${PausasCore.estaNaLista(n, cfg.ulyssesAutorizados[periodo] || []) ? ' ★' : ''}${res.intervaloTxt[n] ? ` <span class="pz-muted">· INTERVALO ${esc(res.intervaloTxt[n])}</span>` : ''}${res.jaEscaladoTxt[n] ? ` <span class="pz-muted" title="Saiu do Painel de Eventos: reunião encerrada ou cancelada">· já escalado hoje (${esc(res.jaEscaladoTxt[n])})</span>` : ''}</span>`).join('') +
         foraManual.map(n => `<span class="pz-chip fora" title="Clique para devolver" data-n="${esc(n)}" onclick="alternarExcluir(this.dataset.n)">${esc(curto(n))}</span>`).join('') || '<span class="pz-muted">ninguém</span>';
     const ocup = doTurno.filter(p => !livres.includes(p.nome) && !foraManual.includes(p.nome));
     document.getElementById('pz-ocupados').innerHTML = ocup.map(p => {
