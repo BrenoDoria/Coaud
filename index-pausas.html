@@ -1,0 +1,1864 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COAUD — Pausas e Coberturas</title>
+    <script src="coaud-sessao.js"></script>   <!-- sessão assinada: precisa ser o 1º script -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='4' fill='%2300b04f'/><text y='22' x='5' font-size='17' fill='white' font-family='Arial' font-weight='bold'>C</text></svg>">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="sidebar-init.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="coaud-relay.js"></script>   <!-- link do relay de reuniões (opcional) -->
+    <script src="coaud-menu-pausas.js" defer></script>
+    <script>
+    // Acesso: por enquanto só DEV (mesma lista do coaud-menu-pausas.js)
+    (function () {
+        let u = null; try { u = JSON.parse(localStorage.getItem('usuarioLogado')); } catch (e) {}
+        const ok = u && ['dev'].includes(String(u.permissao || '').toLowerCase());
+        if (!ok && location.protocol !== 'file:') { location.replace('index.html'); }
+        else if (!ok) { document.addEventListener('DOMContentLoaded', () => document.body.insertAdjacentHTML('afterbegin',
+            '<div style="background:#7f1d1d;color:#fff;padding:8px 14px;font:13px sans-serif">⚠ Página restrita a DEV (aberta pelo arquivo, só para teste).</div>')); }
+    })();
+    </script>
+    <style>
+        .pz-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin-bottom:14px; }
+        .pz-box { background: rgba(127,127,127,.06); border:1px solid rgba(127,127,127,.25); border-radius:8px; padding:14px 16px; }
+        .pz-box h3 { margin:0 0 10px; font-size:14px; }
+        .pz-muted { color: var(--text-muted, #94a3b8); font-size:12px; }
+        .pz-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+        .pz-row label { font-size:12px; }
+        .pz-seg { display:inline-flex; border:1px solid rgba(127,127,127,.35); border-radius:6px; overflow:hidden; }
+        .pz-seg button { margin:0; border:0; border-radius:0; padding:6px 12px; background:transparent; color:inherit; cursor:pointer; font-size:12.5px; }
+        .pz-seg button.ativo { background: rgba(0,176,79,.25); color:#4ade80; font-weight:700; }
+        .pz-drop { border:2px dashed rgba(127,127,127,.4); border-radius:8px; padding:12px; text-align:center; cursor:pointer; font-size:13px; }
+        .pz-drop.sobre { border-color:#4ade80; background: rgba(0,176,79,.08); }
+        .pz-table { width:100%; border-collapse:collapse; font-size:13px; }
+        .pz-table th, .pz-table td { padding:7px 9px; border-bottom:1px solid rgba(127,127,127,.2); text-align:left; vertical-align:middle; }
+        .pz-table th { font-size:11px; text-transform:uppercase; letter-spacing:.04em; opacity:.75; }
+        .pz-table select { margin:0; padding:4px 6px; font-size:12px; max-width:280px; }
+        .pz-hora { font-weight:700; font-variant-numeric: tabular-nums; white-space:nowrap; }
+        .pz-tag { display:inline-block; font-size:10px; font-weight:700; padding:1px 6px; border-radius:10px; margin-left:4px; vertical-align:middle; }
+        .pz-tag.t36  { background: rgba(59,130,246,.18); color:#93c5fd; }
+        .pz-tag.tqq  { background: rgba(168,85,247,.18); color:#d8b4fe; }
+        .pz-tag.par  { background: rgba(14,165,233,.15); color:#7dd3fc; }
+        .pz-tag.impar{ background: rgba(234,179,8,.15); color:#fde047; }
+        .pz-tag.uly  { background: rgba(239,68,68,.15); color:#fca5a5; }
+        .pz-tag.conf { background: rgba(245,158,11,.18); color:#fbbf24; }
+        .pz-chips { display:flex; flex-wrap:wrap; gap:6px; }
+        .pz-chip { font-size:12px; padding:4px 10px; border-radius:14px; cursor:pointer; border:1px solid rgba(127,127,127,.35); user-select:none; }
+        .pz-chip.livre   { background: rgba(0,176,79,.12); border-color: rgba(0,176,79,.4); }
+        .pz-chip.usado   { background: rgba(0,176,79,.28); border-color:#4ade80; font-weight:600; }
+        .pz-chip.fora    { opacity:.45; text-decoration: line-through; }
+        .pz-chip.ocupado { background: rgba(127,127,127,.10); }
+        .pz-aviso { padding:8px 12px; border-radius:6px; font-size:12.5px; margin-bottom:6px; }
+        .pz-aviso.alerta { background: rgba(245,158,11,.12); border:1px solid rgba(245,158,11,.35); color:#fbbf24; }
+        .pz-aviso.info   { background: rgba(59,130,246,.08); border:1px solid rgba(59,130,246,.25); }
+        .pz-semcob { color:#f87171; font-weight:700; }
+        .pz-rota { font-size:12.5px; margin:3px 0; }
+        details.pz-cfg summary { cursor:pointer; font-weight:700; padding:6px 0; }
+        .pz-cfg textarea { width:100%; min-height:140px; font: 12px/1.45 ui-monospace, monospace; box-sizing:border-box;
+                           background: rgba(127,127,127,.08); color:inherit; border:1px solid rgba(127,127,127,.35); border-radius:4px; padding:8px; }
+        .pz-cfg input[type=text], .pz-cfg input[type=number], .pz-cfg select { margin:0; padding:4px 6px; font-size:12px; }
+        .pz-cfg .pz-table input { width:70px; }
+        #pz-texto { width:100%; min-height:160px; font: 12.5px/1.5 ui-monospace, monospace; box-sizing:border-box;
+                    background: rgba(127,127,127,.08); color:inherit; border:1px solid rgba(127,127,127,.35); border-radius:4px; padding:8px; }
+
+        /* Relógio / alarme */
+        #pz-alarme { display:none; padding:12px 16px; border-radius:8px; margin-bottom:14px; font-size:14px; font-weight:600; }
+        #pz-alarme.futura   { display:block; background: rgba(59,130,246,.10); border:1px solid rgba(59,130,246,.3); }
+        #pz-alarme.preparar { display:block; background: rgba(245,158,11,.16); border:2px solid #f59e0b; color:#fbbf24; font-size:16px; }
+        #pz-alarme.urgente  { display:block; background: rgba(239,68,68,.16); border:2px solid #ef4444; color:#f87171; font-size:16px; animation: pzPulso 1.2s infinite; }
+        #pz-alarme.agora    { display:block; background: rgba(0,176,79,.12); border:1px solid rgba(0,176,79,.45); color:#4ade80; }
+        #pz-alarme.feita    { display:block; background: rgba(127,127,127,.08); border:1px solid rgba(127,127,127,.3); }
+        #pz-alarme .sub { font-weight:400; font-size:12.5px; margin-top:3px; opacity:.9; }
+        @keyframes pzPulso { 50% { box-shadow: 0 0 0 6px rgba(239,68,68,.15); } }
+        tr.est-feita    { opacity:.45; }
+        tr.est-agora    { background: rgba(0,176,79,.10); }
+        tr.est-preparar { background: rgba(245,158,11,.08); }
+        .pz-est { display:block; font-size:10.5px; font-weight:700; margin-top:2px; }
+        .pz-est.feita { color:#94a3b8; } .pz-est.agora { color:#4ade80; } .pz-est.preparar { color:#fbbf24; } .pz-est.futura { color:#93c5fd; }
+
+        /* Planilha / sessão Google */
+        .pz-nuvem { font-size:11px; padding:3px 9px; border-radius:12px; border:1px solid rgba(127,127,127,.35); white-space:nowrap; cursor:pointer; }
+        .pz-nuvem.ok  { color:#4ade80; border-color: rgba(0,176,79,.45); }
+        .pz-nuvem.off { color:#fbbf24; border-color: rgba(245,158,11,.45); }
+        #reconectar-banner { display:none; align-items:center; gap:12px; flex-wrap:wrap; background: rgba(245,158,11,.12);
+                             border:1px solid rgba(245,158,11,.35); border-radius:6px; padding:10px 14px; margin-bottom:14px; }
+        #reconectar-msg { color:#fbbf24; font-size:13px; font-weight:600; }
+        @media print {
+            .sidebar, .topbar, .pz-noprint, details.pz-cfg, .site-footer, #pz-alarme, #reconectar-banner { display:none !important; }
+            .pz-table select { border:0; appearance:none; -webkit-appearance:none; }
+        }
+    </style>
+</head>
+<body>
+<div class="app-layout">
+
+    <!-- ══ SIDEBAR ═══════════════════════════════════════ -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <div class="brand-row">
+                <div class="brand-icon">C</div>
+                <div>
+                    <div class="brand-name">CÂMARA DOS DEPUTADOS</div>
+                    <div class="brand-sub">COAUD</div>
+                </div>
+            </div>
+        </div>
+        <div class="sidebar-user">
+            <div class="user-avatar" id="user-avatar">?</div>
+            <div class="user-info">
+                <div class="user-name" id="user-name">Carregando...</div>
+                <div class="user-role" id="user-role"></div>
+            </div>
+        </div>
+        <nav class="sidebar-nav">
+            <div class="nav-section-title">Sistemas</div>
+            <a class="nav-item" id="nav-escanear" href="index-escanear.html"><span class="nav-icon">📷</span> Sistema de Escaneamento</a>
+            <a class="nav-item" id="nav-comparador" href="index-comparador.html"><span class="nav-icon">🔍</span> Comparador de Patrimônios</a>
+            <a class="nav-item" id="nav-localizador" href="index_Local.html"><span class="nav-icon">📍</span> Localizador e Transferência</a>
+            <a class="nav-item" id="nav-almoxarifado" href="index-almoxarifado.html"><span class="nav-icon">📋</span> Controle de Almoxarifado</a>
+            <a class="nav-item" href="index.html"><span class="nav-icon">🏠</span> Página Inicial</a>
+        </nav>
+        <div class="sidebar-footer">
+            <button class="btn-logout" onclick="fazerLogout()"><span>⎋</span> Sair do sistema</button>
+        </div>
+    </aside>
+
+    <!-- ══ ÁREA PRINCIPAL ═════════════════════════════════ -->
+    <div class="main-area">
+        <div class="topbar">
+            <button class="btn-menu" onclick="toggleSidebar()">☰</button>
+            <div>
+                <div class="topbar-title">Pausas e Coberturas</div>
+                <div class="topbar-sub">Quem precisa de pausa, quanto tempo e quem cobre</div>
+            </div>
+            <div class="topbar-right">
+                <span id="pz-nuvem" class="pz-nuvem off" onclick="solicitarToken()" title="Planilha compartilhada">☁ só neste computador</span>
+                <span id="pz-relogio" class="pz-hora" style="font-size:13px"></span>
+                <p id="progressText" style="font-size:11px;color:var(--text-muted);margin:0"></p>
+            </div>
+        </div>
+
+        <div class="page-content">
+
+            <div id="reconectar-banner" class="pz-noprint">
+                <span id="reconectar-msg"></span>
+                <button onclick="solicitarToken()">🔐 Conectar com Google</button>
+            </div>
+
+            <div id="pz-alarme"></div>
+
+            <!-- ═══ ENTRADAS ═══ -->
+            <div class="pz-grid pz-noprint">
+                <div class="pz-box">
+                    <h3>1 · Escala do dia</h3>
+                    <div id="pz-escala-info" class="pz-muted" style="margin-bottom:8px">Nenhuma escala carregada.</div>
+                    <div class="pz-row" style="margin-bottom:8px" id="pz-linha-chefe">
+                        <button onclick="buscarEscalaChefe(true)" style="margin:0">🔄 Buscar escala do chefe</button>
+                    </div>
+                    <details id="pz-colar-box" style="margin-bottom:8px">
+                        <summary style="cursor:pointer;font-size:13px;font-weight:600">📋 Colar escala do chefe</summary>
+                        <div class="pz-muted" style="margin:6px 0">Abra a página do chefe, <b>Ctrl+A</b>, <b>Ctrl+C</b> e cole aqui. Serve a "Escala de Funcionários" (equipes 36h/18h, horários, observações) e a "Escala Áudio" (tabela do Ulysses). Colando as duas, o sistema junta.</div>
+                        <textarea id="pz-colar" style="width:100%;min-height:90px;box-sizing:border-box;font:12px ui-monospace,monospace;background:rgba(127,127,127,.08);color:inherit;border:1px solid rgba(127,127,127,.35);border-radius:4px;padding:6px" placeholder="Cole aqui..."></textarea>
+                        <button onclick="colarEscala()" style="margin:6px 0 0">✔ Usar texto colado</button>
+                    </details>
+                    <div id="pz-chefe-info" class="pz-muted" style="margin-bottom:6px"></div>
+                    <div class="pz-drop" id="pz-drop" onclick="document.getElementById('pz-pdf').click()">
+                        📄 ou arraste o PDF do WhatsApp aqui
+                    </div>
+                    <input type="file" id="pz-pdf" accept="application/pdf" style="display:none">
+                    <details style="margin-top:8px"><summary class="pz-muted" style="cursor:pointer">Fora da escala hoje</summary>
+                        <div id="pz-fora" class="pz-muted" style="margin-top:6px"></div>
+                    </details>
+                </div>
+
+                <div class="pz-box">
+                    <h3>2 · Reuniões em andamento</h3>
+                    <div class="pz-row">
+                        <button onclick="carregarReunioes()" style="margin:0">🔄 Atualizar reuniões</button>
+                        <span id="pz-reun-info" class="pz-muted">—</span>
+                    </div>
+                    <div class="pz-muted" style="margin-top:8px">Lê a mesma planilha que o almoxarifado usa. Atualiza sozinho a cada 2 min.</div>
+                    <details id="pz-colar-reun-box" style="margin-top:8px">
+                        <summary style="cursor:pointer;font-size:13px;font-weight:600">📋 Colar Painel de Eventos (INTERVALO)</summary>
+                        <div class="pz-muted" style="margin:6px 0">Depois de lançar os INTERVALOS, abra o <b>Painel de Eventos</b>, <b>Ctrl+A</b>, <b>Ctrl+C</b> e cole aqui. O sistema guarda os INTERVALO e "tirar intervalo" de hoje e junta com a leitura automática.</div>
+                        <textarea id="pz-colar-reun" style="width:100%;min-height:80px;box-sizing:border-box;font:12px ui-monospace,monospace;background:rgba(127,127,127,.08);color:inherit;border:1px solid rgba(127,127,127,.35);border-radius:4px;padding:6px" placeholder="Cole aqui..."></textarea>
+                        <div class="pz-row" style="margin-top:6px">
+                            <button onclick="colarReunioes()" style="margin:0">✔ Usar texto colado</button>
+                            <button class="cancelButton" onclick="limparColadoReun()" style="margin:0">✕ Esquecer colados</button>
+                        </div>
+                    </details>
+                    <div id="pz-colado-reun-info" class="pz-muted" style="margin-top:4px"></div>
+                    <div class="pz-muted" id="pz-col-uso" style="margin-top:4px;font-size:11px"></div>
+                </div>
+
+                <div class="pz-box">
+                    <h3>3 · Pausa</h3>
+                    <div class="pz-row" style="margin-bottom:8px">
+                        <div class="pz-seg" id="pz-periodo">
+                            <button data-p="manha" onclick="definirPeriodo('manha', true)">☀ Manhã</button>
+                            <button data-p="tarde" onclick="definirPeriodo('tarde', true)">🌙 Tarde</button>
+                        </div>
+                    </div>
+                    <div class="pz-row" style="margin-bottom:8px">
+                        <label>Ulysses</label>
+                        <div class="pz-seg" id="pz-uly-modo">
+                            <button data-m="juntos" onclick="definirUlyModo('juntos')" title="Um cobridor para cada operador do Ulysses, ao mesmo tempo">Juntos</button>
+                            <button data-m="sequencial" onclick="definirUlyModo('sequencial')" title="Um cobridor faz os dois: um depois do outro">Um de cada vez</button>
+                        </div>
+                    </div>
+                    <div class="pz-row">
+                        <label for="pz-hora">Início</label>
+                        <input type="time" id="pz-hora" style="margin:0;width:105px" onchange="gerar()">
+                        <button class="cancelButton" style="margin:0" onclick="document.getElementById('pz-hora').value='';gerar()" title="Usar o horário da regra de cada turno">Usar regra</button>
+                        <button class="cancelButton" style="margin:0" id="pz-btn-notif" onclick="pedirNotificacao()" title="Avisar no computador 30 e 10 min antes">🔔 Avisar</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══ RESULTADO ═══ -->
+            <div id="pz-avisos"></div>
+
+            <div class="card" style="padding:0;overflow:hidden;margin-bottom:14px">
+                <div class="table-wrapper">
+                    <table class="pz-table" id="pz-plano">
+                        <thead><tr><th>Horário</th><th>Sala</th><th>Operador em pausa</th><th>Cobertura</th><th class="pz-noprint"></th></tr></thead>
+                        <tbody><tr><td colspan="5" class="pz-muted" style="padding:18px">Carregue a escala e atualize as reuniões.</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <details class="pz-box pz-noprint" id="pz-diag-box" style="margin-bottom:14px">
+                <summary style="cursor:pointer;font-weight:700">🧪 Diagnóstico: o que o sistema leu de cada linha da planilha</summary>
+                <div class="table-wrapper" style="max-height:360px;overflow:auto;margin-top:8px"><table class="pz-table" id="pz-diag"></table></div>
+            </details>
+
+            <div class="pz-grid">
+                <div class="pz-box">
+                    <h3>Roteiro de quem cobre</h3>
+                    <div id="pz-rotas" class="pz-muted">—</div>
+                </div>
+                <div class="pz-box pz-noprint">
+                    <h3>Disponíveis <span class="pz-muted">(clique para tirar/colocar)</span></h3>
+                    <div id="pz-livres" class="pz-chips"></div>
+                    <h3 style="margin-top:14px">Em reunião / indisponíveis <span class="pz-muted">(quem está em reunião não pode ser liberado)</span></h3>
+                    <div id="pz-ocupados" class="pz-chips"></div>
+                </div>
+            </div>
+
+            <div class="pz-box pz-noprint" style="margin-bottom:14px">
+                <h3>Texto para copiar</h3>
+                <textarea id="pz-texto" readonly></textarea>
+                <div class="pz-row" style="margin-top:8px">
+                    <button onclick="copiarTexto()">📋 Copiar</button>
+                    <button class="cancelButton" onclick="window.print()">🖨 Imprimir</button>
+                    <button class="cancelButton" onclick="registrarPausas(true)" title="Grava as pausas deste período na aba PAUSAS_REGISTRO da planilha">📝 Registrar no histórico</button>
+                    <span id="pz-reg-info" class="pz-muted"></span>
+                </div>
+            </div>
+
+            <!-- ═══ CONFIGURAÇÕES ═══ -->
+            <div class="pz-box pz-cfg" style="margin-bottom:14px">
+                <details class="pz-cfg">
+                    <summary>⚙ Configurações (listas, equipes, regras de turno, colunas)</summary>
+                    <div class="pz-muted" id="cfg-origem" style="margin:6px 0 10px"></div>
+                    <div class="pz-grid" style="margin-top:6px">
+                        <div>
+                            <h3>Autorizados no Ulysses — Tarde</h3>
+                            <textarea id="cfg-uly-tarde"></textarea>
+                            <div class="pz-muted">Um nome por linha. Pode ser nome curto (ex.: "Leandro Calixto").</div>
+                        </div>
+                        <div>
+                            <h3>Autorizados no Ulysses — Manhã</h3>
+                            <textarea id="cfg-uly-manha"></textarea>
+                        </div>
+                        <div>
+                            <h3>Nunca disponíveis para cobrir</h3>
+                            <textarea id="cfg-nunca"></textarea>
+                        </div>
+                        <div>
+                            <h3>Equipes (36h / 18h)</h3>
+                            <textarea id="cfg-equipe" placeholder="Nome = 36h&#10;Outro Nome = 18h"></textarea>
+                            <div class="pz-row" style="margin-top:4px">
+                                <button class="cancelButton" style="margin:0;padding:3px 8px;font-size:11px" onclick="preencherEquipes()">+ Completar com a escala do dia</button>
+                            </div>
+                            <div class="pz-muted">Vale mais que o horário do PDF. A escala do chefe atualiza esta lista sozinha.</div>
+                        </div>
+                    </div>
+
+                    <h3 style="margin-top:6px">Regras de turno</h3>
+                    <div class="pz-muted" style="margin-bottom:6px">A regra é escolhida pela equipe, período, dia e entrada. Se a pessoa entra em outro horário, o turno é deslocado. Linhas "a confirmar" são palpites.</div>
+                    <div class="table-wrapper">
+                        <table class="pz-table" id="cfg-regras">
+                            <thead><tr><th>Período</th><th>Dias</th><th>Entrada</th><th>Saída</th><th>Pausa (min)</th><th>Pausa às</th><th>Equipe</th><th>A confirmar</th><th></th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                    <button class="cancelButton" style="margin-top:6px" onclick="addRegra()">+ Regra</button>
+
+                    <h3 style="margin-top:16px">Colunas da planilha de reuniões</h3>
+                    <div class="pz-row" id="cfg-colunas"></div>
+                    <div class="pz-row" style="margin-top:6px">
+                        <label><input type="checkbox" id="cfg-travar-col"> Fixar estas colunas (desmarcado = o sistema detecta sozinho a cada leitura)</label>
+                    </div>
+                    <div class="pz-muted" id="cfg-cab" style="margin-top:6px"></div>
+                    <details style="margin-top:8px"><summary class="pz-muted">🔎 Ver dados brutos da planilha (primeiras linhas)</summary>
+                        <div id="cfg-brutos" class="table-wrapper" style="max-height:320px;overflow:auto"></div>
+                    </details>
+
+                    <h3 style="margin-top:16px">Outros</h3>
+                    <div class="pz-row">
+                        <label>Tarefas que não são reunião (ocupa, mas sem pausa)</label>
+                        <input type="text" id="cfg-sempausa" style="width:220px">
+                        <label>Ignorar status que contêm</label>
+                        <input type="text" id="cfg-status" style="width:240px">
+                    </div>
+                    <div class="pz-row" style="margin-top:8px">
+                        <label>Tudo pronto até (min antes da pausa)</label>
+                        <input type="number" id="cfg-aviso" style="width:60px">
+                        <label>Margem antes da próxima reunião de quem cobre (min)</label>
+                        <input type="number" id="cfg-margem" style="width:60px">
+                        <label>Atraso máximo de uma pausa (min)</label>
+                        <input type="number" id="cfg-atraso" style="width:60px">
+                        <label>Deslocamento entre salas (min)</label>
+                        <input type="number" id="cfg-desloc" style="width:60px">
+                    </div>
+                    <div class="pz-row" style="margin-top:8px">
+                        <label><input type="checkbox" id="cfg-ulyesc"> Escalados do Ulysses podem cobrir outras salas</label>
+                        <label><input type="checkbox" id="cfg-principal"> Na escala do chefe, a coluna "Plenário" marcada = Ulysses</label>
+                    </div>
+                    <div class="pz-row" style="margin-top:8px">
+                        <label>Link do relay de reuniões (Apps Script /exec)</label>
+                        <input type="text" id="cfg-url-relay" style="width:560px" placeholder="vazio = usa o do arquivo coaud-relay.js">
+                    </div>
+                    <div class="pz-row" style="margin-top:8px">
+                        <label>Link da escala do chefe (JSON)</label>
+                        <input type="text" id="cfg-url-chefe" style="width:560px">
+                    </div>
+
+                    <div class="pz-row" style="margin-top:14px">
+                        <button onclick="salvarCfgDaTela()">💾 Salvar configurações</button>
+                        <button class="cancelButton" onclick="exportarCfg()">⬇ Exportar</button>
+                        <button class="cancelButton" onclick="document.getElementById('cfg-import').click()">⬆ Importar</button>
+                        <input type="file" id="cfg-import" accept="application/json" style="display:none">
+                        <button class="cancelButton" onclick="restaurarPadrao()">↺ Restaurar padrão</button>
+                    </div>
+                </details>
+            </div>
+
+        </div>
+        <footer class="site-footer">© 2025 BrenoDoria — Câmara dos Deputados / COAUD</footer>
+    </div>
+</div>
+
+<script>
+const CFG_PADRAO = {
+    regras: [
+        { periodo:'tarde', dias:'segsex', inicio:'14:00', fim:'20:15', pausaMin:15, pausaInicio:'17:00', equipe:'36h' },
+        { periodo:'tarde', dias:'terqui', inicio:'13:30', fim:'22:00', pausaMin:30, pausaInicio:'17:00', equipe:'36h' },
+        { periodo:'tarde', dias:'terqui', inicio:'14:00', fim:'20:15', pausaMin:15, pausaInicio:'17:00', equipe:'TQQ' },
+        { periodo:'manha', dias:'segsex', inicio:'07:00', fim:'13:15', pausaMin:15, pausaInicio:'10:00', equipe:'36h', aConfirmar:true },
+        { periodo:'manha', dias:'segsex', inicio:'08:00', fim:'14:15', pausaMin:15, pausaInicio:'11:00', equipe:'36h', aConfirmar:true },
+        { periodo:'manha', dias:'terqui', inicio:'07:00', fim:'15:30', pausaMin:30, pausaInicio:'10:00', equipe:'36h', aConfirmar:true },
+        { periodo:'manha', dias:'terqui', inicio:'08:00', fim:'16:30', pausaMin:15, pausaInicio:'11:00', equipe:'TQQ', aConfirmar:true },
+    ],
+    ulyssesAutorizados: {
+        tarde: ['Antonio Rodrigues Siqueira Filho','Eromilson Monteiro Dutra Chaves','Emmanuel do Amaral Ildefonso',
+                'Isaias Pereira Soares','Bruno Fernandes Braga','Bruno Rodrigues do Prado','Arley Carvalho Alves','Leandro Calixto da Silva'],
+        manha: [],
+    },
+    nuncaDisponiveis: ['Breno Doria Felicio','Antonio Batista Ângelo'],
+    equipeManual: [],
+    tiposSemPausa: ['desligar equipamento', 'ligar equipamento', 'montagem de equipamento', 'desmontagem de equipamento'],
+    statusIgnorar: ['encerrad','cancelad','adiad','realizad'],
+    margemMin: 10, maxAtrasoMin: 60, deslocamentoMin: 0,
+    ulyssesEscaladosCobrem: true,
+    ulyssesModo: 'juntos',            // 'juntos' | 'sequencial'
+    avisoMin: 30,                     // tudo pronto até X min antes da pausa
+    principalEhUlysses: true,         // coluna "Plenário" da escala do chefe = Ulysses
+    urlEscalaChefe: '',               // só se um dia o doGet do chefe entregar JSON
+    colunasPadrao: { operador:9, status:-1, local:2, hora:-1, evento:6 },
+};
+
+// ══════════════════════════════════════════════════════════════
+//  PAUSAS-CORE — lógica pura (sem DOM) do planejador de pausas
+// ══════════════════════════════════════════════════════════════
+const PausasCore = (() => {
+
+    // ── Utilidades de tempo ────────────────────────────────────
+    const hm  = s => { const m = /(\d{1,2})[:h](\d{2})/.exec(s || ''); return m ? (+m[1]) * 60 + (+m[2]) : null; };
+    const fmt = n => n == null ? '--:--' : `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
+
+    // ── Nomes: normalização + comparação tolerante ─────────────
+    const STOP = new Set(['de', 'da', 'do', 'dos', 'das', 'e']);
+    const norm = s => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .toLowerCase().replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    // chave de sala: mantém os números ("Plenário 01" ≠ "Plenário 13"; "Plenário 1" = "Plenário 01")
+    const salaKey = s => /ulyss|ulisses/i.test((s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')) ? 'ulysses' : (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+        .replace(/\b0+(\d)/g, '$1').replace(/[^a-z0-9]+/g, ' ').trim();
+    const limpa = s => (s == null ? '' : String(s)).replace(/[\s\u00a0\u200b\ufeff]+/g, ' ').trim();
+    const tokens = s => norm(s).split(' ').filter(t => t && !STOP.has(t));
+
+    // Distância de edição com transposição (Leandro/Lenadro = 1)
+    function dist(a, b) {
+        const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+        for (let j = 1; j <= b.length; j++) d[0][j] = j;
+        for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) {
+            const c = a[i - 1] === b[j - 1] ? 0 : 1;
+            d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + c);
+            if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+        }
+        return d[a.length][b.length];
+    }
+    const tokIgual = (a, b) => {
+        if (a === b) return true;
+        const L = Math.min(a.length, b.length);
+        return L >= 4 && dist(a, b) <= (L >= 8 ? 2 : 1);   // Idelfonso/Ildefonso, Souza/Sousa
+    };
+
+    // Pontua se dois nomes são a mesma pessoa (0 = não; maior = melhor)
+    function pontuarNome(a, b) {
+        const ta = tokens(a), tb = tokens(b);
+        if (!ta.length || !tb.length) return 0;
+        if (!tokIgual(ta[0], tb[0])) return 0;                 // primeiro nome tem de bater
+        const [curto, longo] = ta.length <= tb.length ? [ta, tb] : [tb, ta];
+        const usados = new Set();
+        let m = 0;
+        curto.forEach(t => {
+            const k = longo.findIndex((u, i) => !usados.has(i) && tokIgual(t, u));
+            if (k >= 0) { usados.add(k); m++; }
+        });
+        const ok = m >= 2 && (m === curto.length || (curto.length >= 4 && m >= curto.length - 1));
+        return ok ? m / curto.length + m / longo.length : 0;
+    }
+
+    function acharPessoa(nome, lista, campo = 'nome') {
+        let melhor = null, pts = 0;
+        const nm = p => typeof p === 'string' ? p : p[campo];
+        for (const p of lista) {
+            const s = pontuarNome(nome, nm(p));
+            if (s > pts) { pts = s; melhor = p; }
+        }
+        if (melhor) return melhor;
+        // Nome de uma palavra só ("Eromilson", "Calixto"): aceita se só uma pessoa tiver essa palavra
+        const t = tokens(nome);
+        if (t.length === 1 && t[0].length >= 4) {
+            const achados = lista.filter(p => tokens(nm(p)).some(u => tokIgual(t[0], u)));
+            if (achados.length === 1) return achados[0];
+        }
+        return null;
+    }
+    const estaNaLista = (nome, lista) => !!acharPessoa(nome, lista) || (lista || []).some(x => acharPessoa(x, [nome]));
+
+    // ── Leitura da escala (itens de texto vindos do pdf.js) ────
+    //  paginas: [{ largura, itens: [{ str, x, y }] }]
+    const DIAS = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
+    function lerEscala(paginas) {
+        const res = { titulo: '', data: '', diaSemana: null, pessoas: [] };
+        let ulysses = false;
+        for (const pg of paginas) {
+            const meio = pg.largura / 2;
+            const linhas = new Map();
+            pg.itens.filter(i => i.str.trim()).forEach(i => {
+                const y = Math.round(i.y / 3);
+                let chave = [...linhas.keys()].find(k => Math.abs(k - y) <= 1);
+                if (chave === undefined) { chave = y; linhas.set(chave, []); }
+                linhas.get(chave).push(i);
+            });
+            [...linhas.keys()].sort((a, b) => b - a).forEach(k => {
+                const itens = linhas.get(k).sort((a, b) => a.x - b.x);
+                const texto = itens.map(i => i.str).join(' ').replace(/\s+/g, ' ').trim();
+                const tn = norm(texto);
+                if (/escala de trabalho/.test(tn)) {
+                    res.titulo = texto;
+                    const d = DIAS.find(d => tn.includes(d));
+                    if (d) res.diaSemana = DIAS.indexOf(d);
+                    const md = /(\d{1,2}) de ([a-zç]+) de (\d{4})/i.exec(texto);
+                    if (md) res.data = `${md[1]} de ${md[2]} de ${md[3]}`;
+                    return;
+                }
+                if (/ulyss|ulisses/.test(tn)) { ulysses = true; return; }
+                ['manha', 'tarde'].forEach(per => {
+                    const lado = itens.filter(i => per === 'manha' ? i.x < meio : i.x >= meio);
+                    const txt = lado.map(i => i.str).join(' ').replace(/\s+/g, ' ').trim();
+                    const m = /^(\d{1,2}:\d{2})\s+(.+)$/.exec(txt);
+                    if (m) res.pessoas.push({ nome: m[2].trim(), inicioTxt: m[1], inicio: hm(m[1]), periodo: per, ulysses });
+                });
+            });
+        }
+        return res;
+    }
+
+    // ── Escala vinda da página "Escala de Funcionários" (getUltimaEscala) ──
+    //  { data: 'aaaa-mm-dd', rows: [{ turno, func, nome, principal, horarioEscalado, obs }] }
+    function lerEscalaJson(j, principalEhUlysses = true) {
+        if (!j || !Array.isArray(j.rows)) return null;
+        const pd = partesData(j.data);
+        if (!pd) return null;
+        const [d, m, a] = pd;
+        const dataTxt = `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${a}`;
+        const dow = new Date(a, m - 1, d).getDay();
+        const pessoas = [], fora = [];
+        j.rows.forEach(r => {
+            const h = hm(r.horarioEscalado);
+            if (h == null || !/^\s*\d{1,2}:\d{2}\s*$/.test(r.horarioEscalado || '')) {
+                fora.push({ nome: limpa(r.nome), motivo: limpa(r.horarioEscalado) || 'Não Escalado', obs: limpa(r.obs) });
+                return;
+            }
+            pessoas.push({ nome: limpa(r.nome), inicioTxt: fmt(h), inicio: h, periodo: h < 13 * 60 ? 'manha' : 'tarde',
+                ulysses: principalEhUlysses ? !!r.principal : false, equipeFonte: equipeNorm(r.func), obs: limpa(r.obs) });
+        });
+        return { titulo: `Escala de Trabalho Áudio - ${DIAS_NOME[dow]}, ${dataTxt}`, data: dataTxt, diaSemana: dow, pessoas, fora, fonte: 'planilha do chefe' };
+    }
+    const DIAS_NOME = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+    const MESES = ['janeiro', 'fevereiro', 'marco', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+    // "18 de novembro de 2026" → "18/11/2026"
+    function dataDoTitulo(t) {
+        const x = (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        const m = /(\d{1,2}) de ([a-z]+) de (\d{4})/.exec(x);
+        const d = /(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(x);
+        if (d) return `${d[1].padStart(2, '0')}/${d[2].padStart(2, '0')}/${d[3]}`;
+        if (!m) return '';
+        const mes = MESES.indexOf(m[2]) + 1;
+        return mes ? `${m[1].padStart(2, '0')}/${String(mes).padStart(2, '0')}/${m[3]}` : '';
+    }
+
+    // ── Escala colada (texto copiado das páginas do chefe) ──────
+    //  Formato A — "Escala de Funcionários": Data, FUNÇÃO: ... – 36h/18h, "Turno ⇥ Nome ⇥ ... ⇥ Horário ⇥ Obs"
+    //  Formato B — "Escala Áudio" / PDF: "07:00 ⇥ Nome ⇥ 13:30 ⇥ Nome", seção "Ulysses Guimarães"
+    const SITUACOES = /^(nao escalado|atestado|banco|ferias|licenca)$/;
+    function lerEscalaTexto(txt) {
+        const linhas = (txt || '').replace(/\r/g, '').split('\n');
+        const mData = /(\d{1,2}\/\d{1,2}\/\d{4})/.exec(txt || '') ;
+        const dataTitulo = dataDoTitulo(txt || '');
+        let data = mData ? dataDoTitulo(mData[1]) : dataTitulo;
+        const pessoas = [], fora = [];
+        let funcao = null, ulysses = false, ultimo = null, formato = null;
+        linhas.forEach(bruta => {
+            const l = bruta.replace(/\u00a0/g, ' ');
+            const n = norm(l);
+            if (!l.trim()) return;
+            if (/^funcao/.test(n)) { funcao = equipeNorm(l); formato = 'A'; ultimo = null; return; }
+            if (/ulyss|ulisses/.test(n) && !/\d{1,2}:\d{2}/.test(l)) { ulysses = true; ultimo = null; return; }
+            if (/^escala (audio|de trabalho)/.test(n) && !/\d{1,2}:\d{2}/.test(l)) { if (/audio/.test(n) && !/trabalho/.test(n)) ulysses = false; return; }
+            const partes = l.split('\t').map(limpa);
+            // Cabeçalhos ("Turno Nome Plenário 07:00 ...", "Manhã Tarde", "Horário Nome Horário Nome")
+            if (/^(turno|horario)\b/.test(n) || /horario escalado/.test(n) || partes.every(x => !x || /^(manha|tarde|horario|nome)$/.test(norm(x)))) return;
+            // Formato A
+            if (/^(manha|tarde)$/.test(norm(partes[0])) && partes[1] && /[a-z]{3}/i.test(partes[1]) && !/^(manha|tarde|nome|horario)$/.test(norm(partes[1]))) {
+                formato = 'A';
+                const resto = partes.slice(2).filter(Boolean);
+                const iH = resto.findIndex(x => /^\d{1,2}:\d{2}$/.test(x) || SITUACOES.test(norm(x)));
+                const hor = iH >= 0 ? resto[iH] : 'Não Escalado';
+                const obs = iH >= 0 ? resto.slice(iH + 1).join(' ') : '';
+                const nome = partes[1];
+                if (/^\d{1,2}:\d{2}$/.test(hor)) {
+                    const h = hm(hor);
+                    ultimo = { nome, inicioTxt: fmt(h), inicio: h, periodo: h < 13 * 60 ? 'manha' : 'tarde', ulysses: false, equipeFonte: funcao, obs };
+                    pessoas.push(ultimo);
+                } else { ultimo = { nome, motivo: hor, obs }; fora.push(ultimo); }
+                return;
+            }
+            // Formato B (pares horário + nome; manhã à esquerda, tarde à direita)
+            const pares = [];
+            for (let i = 0; i < partes.length - 1; i++)
+                if (/^\d{1,2}:\d{2}$/.test(partes[i]) && partes[i + 1] && /[a-z]{3}/i.test(partes[i + 1])) { pares.push([partes[i], partes[i + 1]]); i++; }
+            if (!pares.length) {
+                const m = /^(\d{1,2}:\d{2})\s+(.+)$/.exec(l.trim());
+                if (m && !/\t/.test(l)) pares.push([m[1], m[2]]);
+            }
+            if (pares.length) {
+                formato = formato || 'B';
+                pares.forEach(([hor, nome]) => {
+                    const h = hm(hor);
+                    pessoas.push({ nome: limpa(nome), inicioTxt: fmt(h), inicio: h, periodo: h < 13 * 60 ? 'manha' : 'tarde', ulysses, equipeFonte: null, obs: '' });
+                });
+                ultimo = null;
+                return;
+            }
+            // Linha solta logo depois de uma pessoa = observação dela
+            if (ultimo && formato === 'A' && !/^(turno|data)\b/.test(n)) ultimo.obs = [ultimo.obs, limpa(l)].filter(Boolean).join(' ');
+        });
+        if (!pessoas.length && !fora.length) return null;
+        let dow = null;
+        if (data) { const [d, m, a] = data.split('/').map(Number); dow = new Date(a, m - 1, d).getDay(); }
+        return { titulo: data ? `Escala de Trabalho Áudio - ${DIAS_NOME[dow]}, ${data}` : 'Escala colada', data, diaSemana: dow,
+                 pessoas, fora, formato, fonte: formato === 'A' ? 'colada (Escala de Funcionários)' : 'colada (Escala Áudio)' };
+    }
+
+    // Junta duas escalas do mesmo dia: horários/equipes/obs de uma, Ulysses da outra
+    function juntarEscalas(base, nova) {
+        if (!base) return nova;
+        const pessoas = base.pessoas.map(p => ({ ...p }));
+        nova.pessoas.forEach(q => {
+            const p = pessoas.find(x => pontuarNome(x.nome, q.nome) > 0);
+            if (!p) { pessoas.push({ ...q }); return; }
+            if (nova.formato === 'A') { p.inicio = q.inicio; p.inicioTxt = q.inicioTxt; p.periodo = q.periodo; p.equipeFonte = q.equipeFonte || p.equipeFonte; p.obs = q.obs || p.obs; }
+            if (nova.formato !== 'A' && q.ulysses) p.ulysses = true;
+            if (nova.formato === 'A' && base.formato !== 'A') { /* mantém Ulysses da base */ }
+        });
+        // Quem a "Escala de Funcionários" diz que está fora sai da lista
+        (nova.fora || []).forEach(f => { const i = pessoas.findIndex(x => pontuarNome(x.nome, f.nome) > 0); if (i >= 0) pessoas.splice(i, 1); });
+        const fontes = [...new Set([base.fonte, nova.fonte].filter(Boolean).flatMap(f => f.split(' + ')))].join(' + ');
+        return { ...base, pessoas, fora: nova.fora && nova.fora.length ? nova.fora : base.fora, fonte: fontes,
+                 formato: base.formato === 'A' || nova.formato === 'A' ? 'A' : base.formato };
+    }
+
+    // ── Reuniões coladas (texto copiado do "Painel de Eventos") ─────
+    //  Cada registro começa numa linha com "[Nome ⇥] [Status ⇥] Local ⇥ HH:MM"; as linhas seguintes
+    //  (serviço, tipo, evento/observação) pertencem a ele. Linhas sem nome = mesmo colaborador (rowspan).
+    function lerReunioesTexto(txt) {
+        const cab = ['colaboradorAudio', 'Status', 'local', 'horaPrevista', 'servico', 'tipoEvento', 'nomeEvento', 'extra1', 'extra2'];
+        const linhas = (txt || '').replace(/\r/g, '').split('\n');
+        const regs = [];
+        let atual = null, ultimoNome = '';
+        const ehStatus = x => /^(em andamento|aguardando ficha|atencao|atenção|encerrad|cancelad)/i.test(norm(x) || x);
+        linhas.forEach(l => {
+            const cels = l.split('\t').map(limpa);
+            const iH = cels.findIndex(c => /^\d{1,2}:\d{2}$/.test(c));
+            const antes = iH > 0 ? cels.slice(0, iH).filter(Boolean) : [];
+            if (iH > 0 && antes.length >= 1 && !/^(colaborador|status|local|h\.? prevista)$/i.test(antes[0])) {
+                let nome = '', status = '', local = '';
+                local = antes[antes.length - 1];
+                const resto = antes.slice(0, -1);
+                if (resto.length && ehStatus(resto[resto.length - 1])) status = resto.pop();
+                if (resto.length && /[a-z]{3}/i.test(resto[0]) && !ehStatus(resto[0])) nome = resto.join(' ');
+                if (!nome) nome = ultimoNome; else ultimoNome = nome;
+                atual = { nome, status, local, hora: cels[iH], extras: cels.slice(iH + 1).filter(Boolean) };
+                regs.push(atual);
+            } else if (atual && l.trim()) {
+                cels.filter(Boolean).forEach(c => atual.extras.push(c));
+            }
+        });
+        if (!regs.length) return null;
+        return [cab, ...regs.filter(r => r.nome).map(r => {
+            const ex = r.extras;
+            return [r.nome, r.status, r.local, r.hora, ex[0] || '', ex[1] || '', ex.slice(2).join(' ') || ex[ex.length - 1] || '', ...ex.slice(3, 5)];
+        })];
+    }
+
+    // ── Regras de turno ─────────────────────────────────────────
+    const tipoDia = dow => (dow === 1 || dow === 5) ? 'segsex' : 'terqui';
+
+    const equipeNorm = e => /18|tqq/i.test(e || '') ? 'TQQ' : /36/.test(e || '') ? '36h' : null;
+
+    function aplicarRegras(pessoas, diaSemana, cfg) {
+        const td = tipoDia(diaSemana);
+        const doDia = cfg.regras.filter(r => r.dias === td);
+        return pessoas.map(p => {
+            // Equipe: 1º planilha de equipes (cfg.equipeManual), 2º escala do chefe (36h/18h), 3º horário de entrada
+            const ov = (cfg.equipeManual || []).find(o => pontuarNome(o.nome, p.nome) > 0);
+            const porHorario = doDia.find(r => r.periodo === p.periodo && hm(r.inicio) === p.inicio);
+            const equipe = (ov && equipeNorm(ov.equipe)) || equipeNorm(p.equipeFonte) || (porHorario ? porHorario.equipe : null)
+                || (doDia.find(r => r.periodo === p.periodo) || {}).equipe || '?';
+            const r = doDia.find(x => x.periodo === p.periodo && x.equipe === equipe && hm(x.inicio) === p.inicio)
+                   || doDia.find(x => x.periodo === p.periodo && x.equipe === equipe)
+                   || porHorario || doDia.find(x => x.periodo === p.periodo);
+            let fim = null, pausaInicio = null;
+            if (r) {
+                const desloc = p.inicio != null ? p.inicio - hm(r.inicio) : 0;   // entrou em outro horário: desloca o turno
+                fim = hm(r.fim) + desloc;
+                pausaInicio = hm(r.pausaInicio) + (Math.abs(desloc) > 30 ? desloc : 0);
+            }
+            return { ...p, equipe, regraOk: !!r, aConfirmar: !!(r && r.aConfirmar), fim, pausaMin: r ? +r.pausaMin : 15, pausaInicio };
+        });
+    }
+
+    // ── Reuniões (linhas da planilha escalaAudio) ──────────────
+    function infoLocal(local) {
+        const n = (local || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        const ulysses = /ulyss|ulisses/.test(n);
+        const m = /(\d+)/.exec(n);
+        const numero = m ? +m[1] : null;
+        const bloco = ulysses ? 'ulysses' : (numero != null && /plen/.test(n) ? (numero % 2 === 0 ? 'par' : 'impar') : 'outro');
+        return { ulysses, numero, bloco };
+    }
+
+    // "INTERVALO 17:00" em qualquer coluna = a pessoa só está indo cobrir a pausa
+    function lerIntervalo(linha) {
+        const cels = (linha || []).map(c => (c == null ? '' : String(c)).trim());
+        let cob = null, propria = null;
+        cels.forEach(c => {
+            const m = /^intervalo\s*(?:[aà]s\s*)?(\d{1,2}[:h]\d{2})?\s*\.?$/i.exec(c);
+            if (m && !cob) cob = { hora: m[1] ? hm(m[1]) : null };
+            const t = /(tirar|tira|fazer|faz)\s+(o\s+)?intervalo\s*(?:[aà]s\s*)?(\d{1,2}[:h]\d{2})?/i.exec(c);
+            if (t && !propria) propria = { hora: t[3] ? hm(t[3]) : null };
+        });
+        return { intervalo: !!cob, intervaloHora: cob ? cob.hora : null, pausaPropria: !!propria, pausaPropriaHora: propria ? propria.hora : null };
+    }
+
+    function lerReunioes(values, col, pessoas) {
+        return (values || []).slice(1).map(r0 => (r0 || []).map(limpa)).map((r, i) => ({
+            textoLinha: r.join(' | '),
+            outrosNomes: pessoas ? (r || []).map((c, k) => k === col.operador ? null : (c || '').toString().trim())
+                .filter(c => c && c.length >= 8 && c.length <= 60 && /^[A-Za-zÀ-ÿ'. ]+$/.test(c))
+                .map(c => { const p = acharPessoa(c, pessoas); return p && pontuarNome(c, p.nome) >= 1.5 ? p.nome : null; })
+                .filter(Boolean) : [],
+            linha: i + 2,
+            operador: (r[col.operador] || '').trim(),
+            status: col.status >= 0 ? (r[col.status] || '').trim() : '',
+            local: (r[col.local] || '').trim(),
+            hora: col.hora >= 0 ? hm(r[col.hora]) : null,
+            evento: (r[col.evento] || '').trim(),
+            ...lerIntervalo(r),
+            bruto: r,
+            data: col.data >= 0 ? (r[col.data] || '') : '',
+            termino: col.termino >= 0 ? (r[col.termino] || '') : '',
+            cancelado: col.cancelado >= 0 ? (r[col.cancelado] || '') : '',
+        }));
+    }
+
+    // Detecta as colunas olhando o CONTEÚDO (datas, horas, status, plenários, nomes);
+    // o cabeçalho só desempata. O que não achar usa o padrão.
+    function detectarColunas(cab, padrao, linhas, pessoas) {
+        const c = { ...padrao, data: -1, termino: -1, cancelado: -1 };
+        const dados = (linhas || []).slice(1, 200);
+        // Cabeçalhos da aba escalaAudio (conhecidos)
+        const H = (cab || []).map(h => norm(h).replace(/\s/g, ''));
+        const fixo = { operador: 'colaboradoraudio', local: 'local', hora: 'horaprevista', status: 'status', evento: 'nomeevento',
+                       data: 'dataevento', termino: 'horaterminoevento', cancelado: 'indicacaocancelamento' };
+        const achouFixo = Object.entries(fixo).filter(([k, h]) => { const i = H.indexOf(h); if (i >= 0) c[k] = i; return i >= 0; }).length;
+        if (achouFixo >= 4) return c;
+        const nCol = Math.max((cab || []).length, ...dados.map(r => r.length), 0);
+        if (!dados.length) return c;
+        const prop = (k, teste) => {
+            const v = dados.map(r => (r[k] || '').toString().trim()).filter(Boolean);
+            return v.length ? v.filter(teste).length / v.length : 0;
+        };
+        const ehData = x => /\d{1,2}\/\d{1,2}\/\d{2,4}/.test(x);
+        const ehHora = x => /^\d{1,2}:\d{2}(:\d{2})?$/.test(x);
+        const ehStatus = x => /andamento|agendad|encerrad|cancelad|suspens|realizad|adiad|iniciad|prevista|aguard/i.test(x);
+        const ehLocal = x => /plen|ulyss|ulisses|audit|sala|anexo|nereu|salao|salão/i.test(x);
+        const ehNome = x => !!(pessoas && pessoas.length && acharPessoa(x, pessoas));
+        const usados = new Set();
+        // Coluna padrão (a que o almoxarifado usa) tem preferência se tiver o conteúdo certo
+        const melhor = (teste, min, cabRe, padraoK) => {
+            if (padraoK != null && padraoK >= 0 && !usados.has(padraoK) && prop(padraoK, teste) >= 0.5) { usados.add(padraoK); return padraoK; }
+            if (cabRe && cab) {
+                const kc = cab.findIndex((h, k) => !usados.has(k) && h && cabRe.test(norm(h)) && prop(k, teste) >= 0.5);
+                if (kc >= 0) { usados.add(kc); return kc; }
+            }
+            let best = -1, bp = min;
+            for (let k = 0; k < nCol; k++) {
+                if (usados.has(k)) continue;
+                let pr = prop(k, teste);
+                if (cabRe && cab && cab[k] && cabRe.test(norm(cab[k]))) pr += 0.05;
+                if (pr > bp) { bp = pr; best = k; }
+            }
+            if (best >= 0) usados.add(best);
+            return best;
+        };
+        const kOper = pessoas && pessoas.length ? melhor(ehNome, 0.3, /operador|colaborador|tecnico/, padrao.operador) : -1;
+        const kLocal = melhor(ehLocal, 0.5, /local|plenario|sala/, padrao.local);
+        const kData = melhor(ehData, 0.6);                                  // só para não confundir
+        const kHora = melhor(ehHora, 0.5, /hora|inicio|prevista/, padrao.hora);
+        const kStatus = melhor(ehStatus, 0.3, /status|situacao/, padrao.status);
+        if (kHora >= 0) c.hora = kHora;
+        if (kStatus >= 0) c.status = kStatus;
+        if (kLocal >= 0) c.local = kLocal;
+        if (kOper >= 0) c.operador = kOper;
+        // Evento: entre as colunas que sobraram, a de texto mais longo (sem datas/horas)
+        let kEv = -1, maior = 8;
+        for (let k = 0; k < nCol; k++) {
+            if (usados.has(k) || k === kData) continue;
+            const v = dados.map(r => (r[k] || '').toString().trim()).filter(Boolean);
+            if (!v.length || v.some(x => ehData(x) || ehHora(x)) || v.filter(x => /intervalo/i.test(x)).length > v.length * 2 / 3) continue;
+            const media = v.reduce((a, x) => a + x.length, 0) / v.length;
+            const bonus = cab && cab[k] && /evento|comiss|orgao|reuniao/.test(norm(cab[k])) ? 20 : 0;
+            if (media + bonus > maior) { maior = media + bonus; kEv = k; }
+        }
+        if (kEv >= 0) c.evento = kEv;
+        return c;
+    }
+
+    // Compara datas em dd/mm/aaaa, aaaa-mm-dd etc.
+    function partesData(x) {
+        const t = String(x || '');
+        let m = /(\d{4})-(\d{1,2})-(\d{1,2})/.exec(t); if (m) return [+m[3], +m[2], +m[1]];
+        m = /(\d{1,2})\/(\d{1,2})\/(\d{2,4})/.exec(t); if (m) return [+m[1], +m[2], +m[3] < 100 ? 2000 + +m[3] : +m[3]];
+        return null;
+    }
+    function mesmaData(a, b) { const x = partesData(a), y = partesData(b); return !!(x && y && x[0] === y[0] && x[1] === y[1] && x[2] === y[2]); }
+
+    // ── Planejador ──────────────────────────────────────────────
+    //  entrada: { pessoas (com regras), reunioes, periodo, cfg, travas, incluir, excluir, horaPausa }
+    function planejar(e) {
+        const { pessoas, reunioes, periodo, cfg } = e;
+        const travas = e.travas || {}, incluir = e.incluir || [], excluir = e.excluir || [];
+        const statusFora = cfg.statusIgnorar.map(norm);
+        // Dia: se a planilha tem a data do evento, fica só com a data de hoje (quando houver alguma)
+        const hojeTxt = e.hoje || '';
+        const temHoje = hojeTxt && reunioes.some(r => mesmaData(r.data, hojeTxt));
+        const terminou = r => {
+            if (/andamento|aguardando|aten/i.test(r.status || '')) return false;   // ainda rolando
+            const t = hm(r.termino);
+            if (t == null) return /\d/.test(r.termino || '') ? false : !!r.termino;   // texto sem hora (ex.: "sim")
+            return e.agora != null ? t <= e.agora : false;                         // hora prevista no futuro = não terminou
+        };
+        reunioes.forEach(r => {
+            r.motivo = '';
+            if (!r.operador && !(r.outrosNomes || []).length) r.motivo = 'sem operador';
+            else if (r.operador && !acharPessoa(r.operador, pessoas)) r.motivo = 'nome fora da escala do PDF';
+            else if (temHoje && r.data && !mesmaData(r.data, hojeTxt)) r.motivo = 'outro dia';
+            else if (r.cancelado && !/^(nao|não|n|false|0|-)$/i.test(r.cancelado)) r.motivo = 'cancelada';
+            else if (r.termino && terminou(r)) r.motivo = 'já terminou';
+            else if (statusFora.some(s => s && norm(r.status).includes(s))) r.motivo = 'status ignorado';
+        });
+        const ativas = reunioes.filter(r => !r.motivo || r.motivo === 'nome fora da escala do PDF');
+        const avisos = [];
+        const noTurno = (p, ini, fim) => p.inicio <= ini && (p.fim == null || fim <= p.fim);
+
+        // 1) Quem precisa de pausa (operador da reunião que é do período escolhido)
+        const necessidades = [];
+        const ocupados = new Map();   // nome → hora de início da reunião mais cedo
+        const naoEncontrados = new Set();
+        const porSala = new Map();
+        const preCob = [];             // coberturas já lançadas na planilha (INTERVALO)
+        const semPausa = (cfg.tiposSemPausa || []).map(norm).filter(Boolean);
+        ativas.forEach(r => {
+            // nomes que aparecem em outras colunas da mesma linha também estão ocupados
+            if (!r.intervalo) (r.outrosNomes || []).forEach(n => { if (!ocupados.has(n)) ocupados.set(n, 0); });
+            const p = r.operador ? acharPessoa(r.operador, pessoas) : null;
+            if (!p) { if (r.operador) naoEncontrados.add(r.operador); return; }
+            if (r.intervalo) { if (r.local) preCob.push({ r, p }); return; }
+            ocupados.set(p.nome, 0);
+            if (!r.local) return;
+            if (semPausa.some(t => norm(r.textoLinha || '').includes(t))) {   // ex.: Desligar Equipamento
+                if (!ocupados.has(p.nome)) ocupados.set(p.nome, 0);
+                return;
+            }
+            ocupados.set(p.nome, 0);
+            const k = salaKey(r.local);
+            if (!porSala.has(k)) porSala.set(k, []);
+            porSala.get(k).push({ r, p });
+        });
+        naoEncontrados.forEach(n => avisos.push({ tipo: 'info', txt: `"${n}" está na escala das reuniões mas não aparece no PDF do dia (ignorado).` }));
+
+        const vistos = new Set();
+        porSala.forEach(lista => {
+            const doPeriodo = lista.filter(x => x.p.periodo === periodo);
+            // operador do outro turno que sai antes da pausa e não tem ninguém do período na sala
+            lista.filter(x => x.p.periodo !== periodo).forEach(x => {
+                if (!doPeriodo.length && x.p.fim != null && periodo === 'tarde' && (x.r.hora == null || x.r.hora >= 12 * 60))
+                    avisos.push({ tipo: 'alerta', txt: `${x.r.local}: ${x.p.nome} (manhã) sai às ${fmt(x.p.fim)} e não há operador da tarde listado nessa sala.` });
+            });
+            doPeriodo.forEach(({ r, p }) => {
+                const id = p.nome + '|' + salaKey(r.local);
+                if (vistos.has(id)) return;
+                vistos.add(id);
+                const pref = e.horaPausa != null ? e.horaPausa : p.pausaInicio;
+                if (pref == null) { avisos.push({ tipo: 'alerta', txt: `Sem regra de turno para ${p.nome} (entrada ${p.inicioTxt}).` }); return; }
+                if (r.hora != null && r.hora >= pref + p.pausaMin) return;   // reunião começa depois da pausa: ele mesmo tira
+                if (r.pausaPropria && (r.pausaPropriaHora == null || r.pausaPropriaHora < pref + p.pausaMin)) {
+                    avisos.push({ tipo: 'info', txt: `${p.nome} tem na planilha "tirar intervalo${r.pausaPropriaHora != null ? ' ' + fmt(r.pausaPropriaHora) : ''}" — pausa dele já resolvida, não precisa de cobertura.` });
+                    return;
+                }
+                const loc = infoLocal(r.local);
+                necessidades.push({ id, operador: p.nome, equipe: p.equipe, aConfirmar: p.aConfirmar, dur: p.pausaMin, pref, local: r.local, evento: r.evento, ...loc });
+            });
+        });
+
+        // 1b) Escalados do Ulysses no PDF sempre precisam de pausa (a planilha
+        //     de reuniões normalmente não lista o Ulysses)
+        if (cfg.ulyssesSempre !== false) {
+            pessoas.filter(p => p.ulysses && p.periodo === periodo).forEach(p => {
+                if (necessidades.some(n => n.operador === p.nome)) return;
+                const pref = e.horaPausa != null ? e.horaPausa : p.pausaInicio;
+                if (pref == null) return;
+                if (!ocupados.has(p.nome)) ocupados.set(p.nome, 0);   // está no Ulysses: não cobre outros
+                necessidades.push({ id: p.nome + '|ulysses', operador: p.nome, equipe: p.equipe, aConfirmar: p.aConfirmar,
+                    dur: p.pausaMin, pref, local: 'Plenário Ulysses Guimarães', evento: 'Escala do Ulysses (PDF)',
+                    ulysses: true, numero: null, bloco: 'ulysses' });
+            });
+        }
+
+        // 2) Quem pode cobrir
+        const nunca = cfg.nuncaDisponiveis || [];
+        const ulyAut = (cfg.ulyssesAutorizados[periodo] || []);
+        const candidatos = pessoas.filter(p => {
+            if (estaNaLista(p.nome, excluir)) return false;
+            if (estaNaLista(p.nome, incluir)) return true;
+            if (estaNaLista(p.nome, nunca)) return false;
+            if (p.ulysses && !cfg.ulyssesEscaladosCobrem) return false;
+            return true;
+        }).filter(p => p.periodo === periodo)          // manhã só de manhã, tarde só à tarde
+          .filter(p => !ocupados.has(p.nome))           // ligado a reunião = não aparece
+          .map(p => ({
+                nome: p.nome, inicio: p.inicio, fim: p.fim, periodo: p.periodo, equipe: p.equipe,
+                livreAte: null, livreEm: 0, ultimoBloco: null, n: 0, rota: [],
+                podeUlysses: estaNaLista(p.nome, ulyAut),
+          }));
+
+        // 3) Distribuição (Ulysses primeiro, depois 30 min, depois por bloco/número)
+        const ordemBloco = { ulysses: 0, impar: 1, par: 2, outro: 3 };
+        necessidades.sort((a, b) => (ordemBloco[a.bloco] - ordemBloco[b.bloco]) || (a.pref - b.pref) || (b.dur - a.dur) || ((a.numero || 0) - (b.numero || 0)));
+
+        const margem = +cfg.margemMin || 0, maxAtraso = +cfg.maxAtrasoMin || 60;
+        const cabe = (c, ini, dur) => {
+            if (c.inicio > ini) return false;
+            if (c.fim != null && ini + dur > c.fim) return false;
+            if (c.livreAte != null && ini + dur > c.livreAte - margem) return false;
+            return true;
+        };
+        const usar = (c, nec, ini) => {
+            c.livreEm = ini + nec.dur + (+cfg.deslocamentoMin || 0);
+            c.ultimoBloco = nec.bloco; c.n++;
+            c.rota.push({ ini, fim: ini + nec.dur, local: nec.local });
+        };
+
+        const pausas = [];
+        // 3a) travas manuais primeiro
+        Object.keys(travas).forEach(id => {
+            const n = necessidades.find(x => x.id === id);
+            if (n && !candidatos.some(x => x.nome === travas[id])) {
+                avisos.push({ tipo: 'alerta', txt: `${travas[id]} tinha sido escolhido à mão para ${n.local}, mas está em reunião ou fora do turno — escolha desfeita.` });
+                delete travas[id];
+            }
+        });
+        necessidades.filter(n => travas[n.id]).forEach(n => {
+            const c = candidatos.find(x => x.nome === travas[n.id]) || null;
+            const ini = c ? Math.max(n.pref, c.livreEm) : n.pref;
+            if (c) usar(c, n, ini);
+            pausas.push({ ...n, ini, fim: ini + n.dur, cobertura: travas[n.id], manual: true });
+        });
+        // 3b) coberturas já lançadas na planilha (linhas com INTERVALO)
+        const feitas = new Set(necessidades.filter(n => travas[n.id]).map(n => n.id));
+        const intervalos = new Map();   // nome → [{ local, hora }]
+        const porSalaPre = new Map();
+        preCob.forEach(x => {
+            const k = salaKey(x.r.local);
+            if (!porSalaPre.has(k)) porSalaPre.set(k, []);
+            porSalaPre.get(k).push(x);
+            if (!intervalos.has(x.p.nome)) intervalos.set(x.p.nome, []);
+            intervalos.get(x.p.nome).push({ local: x.r.local, hora: x.r.intervaloHora });
+        });
+        const acharCand = p => {
+            let c = candidatos.find(x => x.nome === p.nome);
+            if (!c) {   // estava fora da lista (nunca disponível etc.): entra só para esta cobertura
+                c = { nome: p.nome, inicio: p.inicio, fim: p.fim, periodo: p.periodo, equipe: p.equipe,
+                      livreAte: null, livreEm: 0, ultimoBloco: null, n: 0, rota: [], podeUlysses: true, soIntervalo: true };
+                candidatos.push(c);
+            }
+            return c;
+        };
+        porSalaPre.forEach((lista, k) => {
+            const nomes = new Set(lista.map(x => x.p.nome));
+            const daSala = necessidades.filter(x => !feitas.has(x.id) && salaKey(x.local) === k && !nomes.has(x.operador));
+            if (!daSala.length) {
+                lista.forEach(({ r, p }) => {
+                    const c = acharCand(p), ini = r.intervaloHora != null ? r.intervaloHora : 0;
+                    c.rota.push({ ini, fim: ini + 30, local: r.local });
+                    c.livreEm = Math.max(c.livreEm, ini + 30);
+                });
+                return;
+            }
+            // cada lançado cobre um operador; se sobrar operador, os lançados revezam em sequência
+            const prox = lista.map(({ r, p }) => ({ c: acharCand(p), h: r.intervaloHora }));
+            daSala.forEach((x, i) => {
+                const q = prox[i % prox.length];
+                const ini = q.h != null ? q.h : Math.max(x.pref, q.c.livreEm);
+                usar(q.c, x, ini);
+                q.h = ini + x.dur;
+                feitas.add(x.id);
+                pausas.push({ ...x, ini, fim: ini + x.dur, cobertura: q.c.nome, manual: false, planilha: true });
+            });
+        });
+
+        // 3c) restante automático
+        necessidades.filter(n => !travas[n.id] && !feitas.has(n.id)).forEach(n => {
+            let melhor = null, melhorPts = Infinity, melhorIni = null;
+            candidatos.forEach(c => {
+                if (c.nome === n.operador || c.soIntervalo) return;   // em reunião: só faz o INTERVALO lançado
+                if (n.ulysses && !c.podeUlysses) return;
+                const ini = Math.max(n.pref, c.livreEm);
+                if (ini - n.pref > Math.max(maxAtraso, n.ulysses && cfg.ulyssesModo === 'sequencial' ? 90 : 0) || !cabe(c, ini, n.dur)) return;
+                let pts = (ini - n.pref);
+                if (n.ulysses && cfg.ulyssesModo === 'sequencial' && c.ultimoBloco === 'ulysses') pts -= 1000;  // um cobre os dois
+                if (c.ultimoBloco && c.ultimoBloco !== n.bloco) pts += 15;     // tenta manter par/ímpar
+                if (!n.ulysses && c.podeUlysses) pts += 5;                     // poupa quem pode ir ao Ulysses
+                if (c.periodo !== periodo) pts += 3;                           // prefere gente do próprio turno
+                pts += c.n * 0.5;
+                if (pts < melhorPts) { melhorPts = pts; melhor = c; melhorIni = ini; }
+            });
+            if (melhor) {
+                usar(melhor, n, melhorIni);
+                pausas.push({ ...n, ini: melhorIni, fim: melhorIni + n.dur, cobertura: melhor.nome, manual: false });
+            } else {
+                pausas.push({ ...n, ini: n.pref, fim: n.pref + n.dur, cobertura: null, manual: false });
+                avisos.push({ tipo: 'alerta', txt: `Sem cobertura disponível para ${n.operador} (${n.local})${n.ulysses ? ' — só autorizados do Ulysses' : ''}.` });
+            }
+        });
+
+        pausas.forEach(p => {
+            if (p.planilha || !p.cobertura || !intervalos.has(p.cobertura)) return;
+            const iv = intervalos.get(p.cobertura).filter(v => salaKey(v.local) !== salaKey(p.local));
+            if (!iv.length) return;
+            p.avisoIntervalo = `${p.cobertura} já está fazendo INTERVALO em ` +
+                iv.map(v => `${v.local}${v.hora != null ? ' às ' + fmt(v.hora) : ''}`).join(' e ');
+            avisos.push({ tipo: 'alerta', txt: p.avisoIntervalo + ` — e também está escalado para cobrir ${p.local} às ${fmt(p.ini)}.` });
+        });
+
+        pausas.sort((a, b) => (a.ini - b.ini) || ((a.numero || 0) - (b.numero || 0)));
+
+        // Para a lista de opções no select de cada linha
+        const opcoes = candidatos.filter(c => !c.soIntervalo).map(c => ({ nome: c.nome, podeUlysses: c.podeUlysses, livreAte: c.livreAte, periodo: c.periodo,
+            intervalo: (intervalos.get(c.nome) || []).map(v => `${v.local.replace(/plen[aá]rio\s*/i, 'Pl. ')}${v.hora != null ? ' ' + fmt(v.hora) : ''}`).join(', ') }));
+        const intervaloTxt = {};
+        intervalos.forEach((v, k) => { intervaloTxt[k] = v.map(x => `${x.local.replace(/plen[aá]rio\s*/i, 'Pl. ')}${x.hora != null ? ' ' + fmt(x.hora) : ''}`).join(', '); });
+        const diag = reunioes.map(r => ({ operador: r.operador, local: r.local, hora: r.hora, status: r.status, data: r.data, termino: r.termino,
+            intervalo: r.intervalo, motivo: r.motivo || (r.intervalo ? 'INTERVALO (cobertura)' : r.pausaPropria ? 'em uso (tira a própria pausa)' : 'em uso') }));
+        return { pausas, candidatos, opcoes, avisos, intervaloTxt, diag, ocupados: [...ocupados.keys()] };
+    }
+
+    return { salaKey, lerReunioesTexto, lerEscalaTexto, juntarEscalas, lerEscalaJson, dataDoTitulo, equipeNorm, mesmaData, hm, fmt, norm, pontuarNome, acharPessoa, estaNaLista, lerEscala, aplicarRegras, tipoDia, infoLocal, lerReunioes, detectarColunas, planejar };
+})();
+
+</script>
+<script>
+// ══════════════════════════════════════════════════════
+//  CONSTANTES
+// ══════════════════════════════════════════════════════
+const URL_REUNIOES = 'https://sheets.googleapis.com/v4/spreadsheets/1smzyrRUnPZkfZGY-8EPDGg7Js8_6-nQ2xlpXgl8Orjw/values/escalaAudio!A:Z?key=AIzaSyA8yWyDVkekhaVdxCO7BuP3pjjjKTD-cDE';
+// Painel público de reuniões (Apps Script, sem chave): usado quando a planilha recusa a chave
+const URL_PAINEL   = 'https://script.google.com/macros/s/AKfycbxIOw5_F339s3GOe7whpv8sd0ibDtGZewDu_5DzVXu--8pvGkW65F6pPCdKr9jMuKus/exec?tipo=audio&format=json';
+const CLIENT_ID    = '286050228811-cv6vsd075480anb1i6auuc421enuaf8q.apps.googleusercontent.com';
+// Planilha compartilhada das pausas: a mesma do almoxarifado (abas PAUSAS_* são criadas sozinhas)
+const PLANILHA_ID  = '1q9RCwJ4P--QIH4kkMszffrN8ZwzkSsNoZtPH-Usk4Zw';
+const ABAS = {
+    listas:   { nome: 'PAUSAS_LISTAS',   cab: ['lista', 'nome / chave', 'valor'] },
+    equipes:  { nome: 'PAUSAS_EQUIPES',  cab: ['nome', 'equipe (36h/18h)', 'atualizado em', 'origem'] },
+    regras:   { nome: 'PAUSAS_REGRAS',   cab: ['periodo', 'dias', 'inicio', 'fim', 'pausaMin', 'pausaInicio', 'equipe', 'aConfirmar'] },
+    escala:   { nome: 'PAUSAS_ESCALA',   cab: ['data', 'nome', 'periodo', 'inicio', 'equipe', 'ulysses', 'obs', 'fonte', 'salvo em'] },
+    registro: { nome: 'PAUSAS_REGISTRO', cab: ['data', 'periodo', 'inicio', 'fim', 'sala', 'operador', 'equipe', 'minutos', 'cobertura', 'origem', 'registrado em', 'por'] },
+};
+const LS = { cfg: 'pausas_cfg_v1', escalas: 'pausas_escalas_v2', manual: 'pausas_manual_v1', registrado: 'pausas_registrado_v1' };
+const { fmt, hm } = PausasCore;
+
+const lerLS = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? d; } catch (e) { return d; } };
+const gravarLS = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const curto = n => { const t = (n || '').split(' ').filter(w => !/^(de|da|do|dos|das|e)$/i.test(w)); return t.slice(0, 2).join(' '); };
+function setProgress(m) { const el = document.getElementById('progressText'); if (el) el.textContent = m; }
+
+// Relógio (window.__agoraTeste permite simular o horário)
+const agora = () => window.__agoraTeste ? new Date(window.__agoraTeste) : new Date();
+const hojeTxt = () => agora().toLocaleDateString('pt-BR');
+const agoraMin = () => { const d = agora(); return d.getHours() * 60 + d.getMinutes(); };
+
+// ══════════════════════════════════════════════════════
+//  ESTADO
+// ══════════════════════════════════════════════════════
+let cfg = Object.assign(JSON.parse(JSON.stringify(CFG_PADRAO)), lerLS(LS.cfg, {}));
+if (!cfg.colunasTravadas) delete cfg.colunasFixas;
+if (/AKfycbwTx0kO/.test(cfg.urlEscalaChefe || '')) cfg.urlEscalaChefe = '';
+CFG_PADRAO.tiposSemPausa.forEach(x => { if (cfg.tiposSemPausa && !cfg.tiposSemPausa.includes(x)) cfg.tiposSemPausa.push(x); });
+['tiposSemPausa', 'ulyssesModo', 'avisoMin', 'urlEscalaChefe', 'principalEhUlysses'].forEach(k => { if (cfg[k] == null) cfg[k] = CFG_PADRAO[k]; });
+
+let escalas = lerLS(LS.escalas, {});            // { 'dd/mm/aaaa': escala }
+let escala = escalas[hojeTxt()] || null;
+let valoresReunioes = null, colunas = null;
+let periodo = agoraMin() < 13 * 60 ? 'manha' : 'tarde';
+let periodoManual = false;
+let manual = lerLS(LS.manual, { chave: '', travas: {}, incluir: [], excluir: [], ulyModo: null });
+let ultimo = null;
+let tokenClient = null, accessToken = null;
+
+// ══ SIDEBAR / USUÁRIO ════════════════════════════════
+function preencherUsuarioSidebar() {
+    const u = lerLS('usuarioLogado', null);
+    if (!u) return;
+    const ini = (u.nome || '?').split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase();
+    document.getElementById('user-avatar').textContent = ini;
+    document.getElementById('user-name').textContent = u.nome || 'Usuário';
+    document.getElementById('user-role').textContent = u.permissao || '';
+}
+function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
+function fazerLogout() {
+    localStorage.removeItem('usuarioLogado'); localStorage.removeItem('access_token'); localStorage.removeItem('token_expira_em');
+    window.location.href = 'index.html';
+}
+
+// ══════════════════════════════════════════════════════
+//  SESSÃO GOOGLE (mesma do almoxarifado; popup só com clique)
+// ══════════════════════════════════════════════════════
+function tokenExpirado() {
+    const exp = parseInt(localStorage.getItem('token_expira_em') || '0', 10);
+    return !exp || exp < (Date.now() + 60000);
+}
+const conectado = () => !!accessToken && !tokenExpirado();
+function mostrarNuvem() {
+    const el = document.getElementById('pz-nuvem');
+    if (conectado()) { el.className = 'pz-nuvem ok'; el.textContent = '☁ planilha conectada'; el.title = 'Listas, equipes, escalas e histórico ficam na planilha compartilhada'; }
+    else { el.className = 'pz-nuvem off'; el.textContent = '☁ só neste computador — conectar'; el.title = 'Clique para conectar com o Google'; }
+}
+function mostrarReconectar(msg) {
+    document.getElementById('reconectar-msg').textContent = msg;
+    document.getElementById('reconectar-banner').style.display = 'flex';
+}
+function esconderReconectar() { document.getElementById('reconectar-banner').style.display = 'none'; }
+function sessaoExpirou(msg) {
+    localStorage.removeItem('access_token'); localStorage.removeItem('token_expira_em');
+    accessToken = null; mostrarNuvem();
+    mostrarReconectar(msg || 'Sessão do Google expirada. Reconecte para usar a planilha compartilhada.');
+}
+function solicitarToken() {
+    if (location.protocol === 'file:') {
+        alert('O Google não deixa conectar com a página aberta direto do arquivo (endereço file://).\n\nAbra o Pausas pelo site do sistema, no mesmo endereço do Almoxarifado (ex.: .../index-pausas.html).');
+        return;
+    }
+    if (tokenClient) tokenClient.requestAccessToken({ prompt: conectado() ? '' : 'select_account' });
+}
+
+function iniciarGoogle() {
+    if (typeof google === 'undefined' || !google.accounts) { setTimeout(iniciarGoogle, 300); return; }
+    tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.email',
+        callback: r => {
+            if (r.error) { setProgress('Erro Google: ' + r.error); return; }
+            accessToken = r.access_token;
+            localStorage.setItem('access_token', accessToken);
+            localStorage.setItem('token_expira_em', Date.now() + ((r.expires_in || 3600) * 1000));
+            esconderReconectar(); mostrarNuvem(); aoConectar();
+        }
+    });
+}
+
+// ══════════════════════════════════════════════════════
+//  PLANILHA COMPARTILHADA (abas PAUSAS_*)
+// ══════════════════════════════════════════════════════
+async function api(caminho, opt = {}) {
+    if (!conectado()) throw new Error('sem conexão com o Google');
+    const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${PLANILHA_ID}${caminho}`, {
+        ...opt, headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' } });
+    if (r.status === 401) { sessaoExpirou(); throw new Error('sessão expirada'); }
+    if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error?.message || r.statusText); }
+    return r.json();
+}
+let abasProntas = false;
+async function garantirAbas() {
+    if (abasProntas) return;
+    const info = await api('?fields=sheets.properties.title');
+    const existentes = (info.sheets || []).map(s => s.properties.title);
+    const faltam = Object.values(ABAS).filter(a => !existentes.includes(a.nome));
+    if (faltam.length) {
+        await api(':batchUpdate', { method: 'POST', body: JSON.stringify({ requests: faltam.map(a => ({ addSheet: { properties: { title: a.nome } } })) }) });
+        for (const a of faltam) await gravarAba(a, []);
+    }
+    abasProntas = true;
+}
+async function lerAba(a) {
+    const d = await api(`/values/${encodeURIComponent(a.nome + '!A:Z')}`);
+    return (d.values || []).slice(1);
+}
+async function gravarAba(a, linhas) {
+    await api(`/values/${encodeURIComponent(a.nome + '!A:Z')}:clear`, { method: 'POST', body: '{}' });
+    await api(`/values/${encodeURIComponent(a.nome + '!A1')}?valueInputOption=RAW`, { method: 'PUT', body: JSON.stringify({ values: [a.cab, ...linhas] }) });
+}
+const carimbo = () => agora().toLocaleString('pt-BR');
+const quem = () => (lerLS('usuarioLogado', {}) || {}).nome || '';
+
+// Planilha → cfg
+async function carregarCfgDaPlanilha() {
+    await garantirAbas();
+    const [listas, equipes, regras] = await Promise.all([lerAba(ABAS.listas), lerAba(ABAS.equipes), lerAba(ABAS.regras)]);
+    if (!listas.length && !equipes.length && !regras.length) {   // planilha vazia: sobe o que temos
+        await salvarCfgNaPlanilha();
+        return 'planilha criada com a configuração deste computador';
+    }
+    const lista = k => listas.filter(r => r[0] === k).map(r => (r[1] || '').trim()).filter(Boolean);
+    cfg.ulyssesAutorizados = { tarde: lista('ulysses_tarde'), manha: lista('ulysses_manha') };
+    cfg.nuncaDisponiveis = lista('nunca_disponiveis');
+    listas.filter(r => r[0] === 'parametro').forEach(([, k, v]) => {
+        if (!k) return;
+        try { cfg[k] = JSON.parse(v); } catch (e) { cfg[k] = v; }
+    });
+    cfg.equipeManual = equipes.filter(r => r[0] && r[1]).map(r => ({ nome: r[0].trim(), equipe: PausasCore.equipeNorm(r[1]) || '36h', em: r[2] || '', origem: r[3] || 'manual' }));
+    if (regras.length) cfg.regras = regras.filter(r => r[0]).map(r => ({
+        periodo: r[0], dias: r[1], inicio: r[2], fim: r[3], pausaMin: +r[4] || 15, pausaInicio: r[5], equipe: PausasCore.equipeNorm(r[6]) || '36h',
+        aConfirmar: /^(true|sim|1|x)$/i.test(r[7] || '') }));
+    gravarLS(LS.cfg, cfg);
+    return 'configuração lida da planilha';
+}
+const PARAMS = ['urlRelay', 'statusIgnorar', 'tiposSemPausa', 'margemMin', 'maxAtrasoMin', 'deslocamentoMin', 'avisoMin', 'ulyssesEscaladosCobrem', 'principalEhUlysses', 'urlEscalaChefe', 'colunasTravadas', 'colunasFixas'];
+async function salvarCfgNaPlanilha() {
+    await garantirAbas();
+    const listas = [
+        ...(cfg.ulyssesAutorizados.tarde || []).map(n => ['ulysses_tarde', n, '']),
+        ...(cfg.ulyssesAutorizados.manha || []).map(n => ['ulysses_manha', n, '']),
+        ...(cfg.nuncaDisponiveis || []).map(n => ['nunca_disponiveis', n, '']),
+        ...PARAMS.filter(k => cfg[k] !== undefined).map(k => ['parametro', k, JSON.stringify(cfg[k])]),
+    ];
+    const rotulo = e => e === 'TQQ' ? '18h' : '36h';
+    await gravarAba(ABAS.listas, listas);
+    await gravarAba(ABAS.equipes, (cfg.equipeManual || []).map(o => [o.nome, rotulo(o.equipe), o.em || carimbo(), o.origem || 'manual']));
+    await gravarAba(ABAS.regras, cfg.regras.map(r => [r.periodo, r.dias, r.inicio, r.fim, r.pausaMin, r.pausaInicio, rotulo(r.equipe), r.aConfirmar ? 'sim' : '']));
+}
+
+// Equipes aprendidas da escala do chefe (36h/18h)
+async function aprenderEquipes(e) {
+    let mudou = 0;
+    e.pessoas.concat(e.foraComEquipe || []).forEach(p => {
+        if (!p.equipeFonte) return;
+        const o = (cfg.equipeManual || []).find(x => PausasCore.pontuarNome(x.nome, p.nome) > 0);
+        if (!o) { cfg.equipeManual.push({ nome: p.nome, equipe: p.equipeFonte, origem: 'escala do chefe', em: carimbo() }); mudou++; }
+        else if (o.equipe !== p.equipeFonte && o.origem !== 'manual') { o.equipe = p.equipeFonte; o.origem = 'escala do chefe'; o.em = carimbo(); mudou++; }
+    });
+    if (!mudou) return 0;
+    gravarLS(LS.cfg, cfg);
+    if (conectado()) await salvarCfgNaPlanilha().catch(() => {});
+    return mudou;
+}
+
+// Escala guardada por data
+async function guardarEscalaNaPlanilha(e) {
+    await garantirAbas();
+    const todas = await lerAba(ABAS.escala);
+    const outras = todas.filter(r => r[0] !== e.data);
+    const novas = e.pessoas.map(p => [e.data, p.nome, p.periodo, p.inicioTxt, p.equipeFonte === 'TQQ' ? '18h' : p.equipeFonte === '36h' ? '36h' : '', p.ulysses ? 'sim' : '', p.obs || '', e.fonte || 'PDF', carimbo()]);
+    await gravarAba(ABAS.escala, [...outras, ...novas].slice(-6000));
+}
+async function lerEscalaDaPlanilha(data) {
+    await garantirAbas();
+    const linhas = (await lerAba(ABAS.escala)).filter(r => r[0] === data);
+    if (!linhas.length) return null;
+    const [d, m, a] = data.split('/').map(Number);
+    const dow = new Date(a, m - 1, d).getDay();
+    return {
+        titulo: `Escala de Trabalho Áudio - ${['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'][dow]}, ${data}`,
+        data, diaSemana: dow, fonte: (linhas[0][7] || 'planilha') + ' (guardada)',
+        pessoas: linhas.map(r => ({ nome: r[1], periodo: r[2], inicioTxt: r[3], inicio: hm(r[3]), equipeFonte: PausasCore.equipeNorm(r[4]), ulysses: r[5] === 'sim', obs: r[6] || '' })),
+    };
+}
+
+// Histórico das pausas
+async function registrarPausas(manualmente) {
+    const info = document.getElementById('pz-reg-info');
+    if (!ultimo || !escala) return;
+    if (!conectado()) { if (manualmente) { info.textContent = 'Conecte com o Google para registrar.'; solicitarToken(); } return; }
+    try {
+        await garantirAbas();
+        const todas = await lerAba(ABAS.registro);
+        const outras = todas.filter(r => !(r[0] === escala.data && r[1] === periodo));
+        const origem = p => p.planilha ? 'INTERVALO lançado' : p.manual ? 'escolha manual' : 'automático';
+        const novas = ultimo.res.pausas.map(p => [escala.data, periodo, fmt(p.ini), fmt(p.fim), p.local, p.operador, p.equipe === 'TQQ' ? '18h' : '36h', p.dur, p.cobertura || 'SEM COBERTURA', origem(p), carimbo(), quem()]);
+        await gravarAba(ABAS.registro, [...outras, ...novas]);
+        const reg = lerLS(LS.registrado, {}); reg[escala.data + '|' + periodo] = carimbo(); gravarLS(LS.registrado, reg);
+        info.textContent = `✔ ${novas.length} pausa(s) registradas às ${agora().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.`;
+    } catch (err) { info.textContent = 'Erro ao registrar: ' + err.message; }
+}
+
+async function aoConectar() {
+    try {
+        setProgress('Lendo planilha compartilhada...');
+        const msg = await carregarCfgDaPlanilha();
+        desenharCfg();
+        if (!escala || !/chefe/.test(escala.fonte || '')) {
+            const e = await lerEscalaDaPlanilha(hojeTxt());
+            if (e && (!escala || !escala.pessoas.length)) usarEscala(e, false);
+        }
+        if (escala) guardarEscalaNaPlanilha(escala).catch(() => {});
+        Object.values(escalas).filter(e => e.data !== hojeTxt() && e.pendenteNuvem).forEach(e => guardarEscalaNaPlanilha(e).then(() => { e.pendenteNuvem = false; gravarLS(LS.escalas, escalas); }).catch(() => {}));
+        setProgress('☁ ' + msg);
+        gerar();
+    } catch (err) { setProgress('Planilha: ' + err.message); }
+}
+
+// ══════════════════════════════════════════════════════
+//  ESCALA DO DIA
+// ══════════════════════════════════════════════════════
+function guardarLocal(e) {
+    escalas[e.data] = e;
+    const datas = Object.keys(escalas).sort((a, b) => a.split('/').reverse().join('').localeCompare(b.split('/').reverse().join('')));
+    datas.slice(0, Math.max(0, datas.length - 7)).forEach(d => delete escalas[d]);   // guarda só a última semana
+    gravarLS(LS.escalas, escalas);
+}
+function usarEscala(e, persistir = true) {
+    escala = e;
+    if (persistir) guardarLocal(e);
+    if (manual.chave !== e.titulo) { manual = { chave: e.titulo, travas: {}, incluir: [], excluir: [], ulyModo: null }; gravarLS(LS.manual, manual); }
+    if (valoresReunioes) { colunas = cfg.colunasTravadas ? Object.assign(detectar(), cfg.colunasFixas || {}) : detectar(); desenharColunas(); mostrarColunasEmUso(); }
+    mostrarInfoEscala(); marcarUlyModo(); gerar();
+}
+
+// Página "Escala de Funcionários" do chefe (precisa do ?formato=json no doGet)
+async function buscarEscalaChefe(clicou) {
+    const info = document.getElementById('pz-chefe-info');
+    if (!cfg.urlEscalaChefe) return;
+    try {
+        info.textContent = 'buscando...';
+        const r = await fetch(cfg.urlEscalaChefe);
+        const txt = await r.text();
+        let j; try { j = JSON.parse(txt); } catch (e) { throw new Error('a página do chefe ainda não entrega JSON (falta o ?formato=json no doGet)'); }
+        const e = PausasCore.lerEscalaJson(j.escala || j, cfg.principalEhUlysses);
+        if (!e) throw new Error('formato inesperado');
+        e.formato = 'A';
+        const { e: junta, novas } = await guardarEscalaDoDia(e);
+        if (junta.data === hojeTxt()) { usarEscala(junta); info.textContent = `✔ escala de hoje (${junta.pessoas.length} pessoas)`; }
+        else info.textContent = `✔ escala de ${e.data} guardada para o dia${novas ? ` · ${novas} equipe(s) atualizada(s)` : ''}`;
+    } catch (err) {
+        info.textContent = clicou ? '⚠ ' + err.message : 'escala automática indisponível — use o PDF';
+    }
+}
+
+async function guardarEscalaDoDia(nova) {
+    const base = escalas[nova.data] || null;
+    const e = PausasCore.juntarEscalas(base, nova);
+    e.data = nova.data;
+    if (e.diaSemana == null) e.diaSemana = nova.diaSemana;
+    const novas = await aprenderEquipes(e);
+    guardarLocal(e);
+    if (conectado()) await guardarEscalaNaPlanilha(e).catch(() => { e.pendenteNuvem = true; });
+    else e.pendenteNuvem = true;
+    gravarLS(LS.escalas, escalas);
+    return { e, novas, juntou: !!base };
+}
+
+async function colarEscala() {
+    const info = document.getElementById('pz-chefe-info');
+    const nova = PausasCore.lerEscalaTexto(document.getElementById('pz-colar').value);
+    if (!nova) { info.textContent = '⚠ Não reconheci nenhuma escala no texto colado.'; return; }
+    if (!nova.data) {
+        const d = prompt('Não achei a data no texto. De que dia é esta escala? (dd/mm/aaaa)', hojeTxt());
+        if (!d || !/^\d{2}\/\d{2}\/\d{4}$/.test(d.trim())) return;
+        nova.data = d.trim();
+        const [dd, mm, aa] = nova.data.split('/').map(Number);
+        nova.diaSemana = new Date(aa, mm - 1, dd).getDay();
+        nova.titulo = `Escala de Trabalho Áudio - ${['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'][nova.diaSemana]}, ${nova.data}`;
+    }
+    const { e, novas, juntou } = await guardarEscalaDoDia(nova);
+    document.getElementById('pz-colar').value = '';
+    document.getElementById('pz-colar-box').open = false;
+    const resumo = `${nova.pessoas.length} escalado(s)${nova.fora.length ? `, ${nova.fora.length} fora` : ''}${juntou ? ' — juntado com o que já havia' : ''}${novas ? ` · ${novas} equipe(s) atualizada(s)` : ''}`;
+    if (e.data === hojeTxt()) { usarEscala(e); info.textContent = `✔ Escala de hoje: ${resumo}.`; }
+    else info.textContent = `✔ Escala de ${e.data} guardada para o dia: ${resumo}.`;
+}
+
+async function lerPdf(arquivo) {
+    if (typeof pdfjsLib === 'undefined') { alert('Leitor de PDF não carregou (sem internet?).'); return; }
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    setProgress('Lendo PDF...');
+    try {
+        const doc = await pdfjsLib.getDocument({ data: new Uint8Array(await arquivo.arrayBuffer()) }).promise;
+        const paginas = [];
+        for (let i = 1; i <= doc.numPages; i++) {
+            const pg = await doc.getPage(i);
+            const tc = await pg.getTextContent();
+            paginas.push({ largura: pg.getViewport({ scale: 1 }).width, itens: tc.items.map(t => ({ str: t.str, x: t.transform[4], y: t.transform[5] })) });
+        }
+        const e = PausasCore.lerEscala(paginas);
+        if (!e.pessoas.length) throw new Error('Não encontrei nomes nesse PDF. É a escala do Áudio?');
+        if (e.diaSemana == null) throw new Error('Não consegui ler o dia da semana no título do PDF.');
+        e.data = PausasCore.dataDoTitulo(e.titulo) || hojeTxt();
+        e.fonte = 'PDF';
+        const { e: junta } = await guardarEscalaDoDia(e);
+        if (junta.data === hojeTxt() || confirm(`Esse PDF é de ${junta.data}, não de hoje. Usar mesmo assim agora?\n\n(Cancelar = só guardar para o dia ${junta.data})`)) usarEscala(junta);
+        else setProgress(`PDF de ${e.data} guardado para o dia.`);
+    } catch (err) { setProgress('Erro no PDF: ' + err.message); alert('Erro ao ler o PDF:\n\n' + err.message); }
+}
+
+function mostrarLinhaChefe() { document.getElementById('pz-linha-chefe').style.display = cfg.urlEscalaChefe ? 'flex' : 'none'; }
+
+function mostrarInfoEscala() {
+    const el = document.getElementById('pz-escala-info');
+    if (!escala) { el.innerHTML = '⚠ Nenhuma escala de hoje. Busque a do chefe ou arraste o PDF.'; return; }
+    const ps = PausasCore.aplicarRegras(escala.pessoas, escala.diaSemana, cfg);
+    const cont = per => ps.filter(p => p.periodo === per).length;
+    const alerta = escala.data && escala.data !== hojeTxt() ? ' <b style="color:#fbbf24">⚠ não é a escala de hoje</b>' : '';
+    el.innerHTML = `✅ <b>${esc(escala.titulo.replace(/^.*?-\s*/, ''))}</b>${alerta}<br>` +
+        `Fonte: ${esc(escala.fonte || 'PDF')} · Manhã: ${cont('manha')} · Tarde: ${cont('tarde')} · 18h: ${ps.filter(p => p.equipe === 'TQQ').length} · Ulysses: ${ps.filter(p => p.ulysses).length}`;
+    const fora = escala.fora || [];
+    document.getElementById('pz-fora').innerHTML = fora.length
+        ? fora.map(f => `${esc(f.nome)} — <i>${esc(f.motivo)}</i>${f.obs ? ' · ' + esc(f.obs) : ''}`).join('<br>')
+        : 'Nada informado (o PDF não traz quem está fora).';
+}
+
+const drop = document.getElementById('pz-drop');
+document.getElementById('pz-pdf').addEventListener('change', e => { if (e.target.files[0]) lerPdf(e.target.files[0]); e.target.value = ''; });
+['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('sobre'); }));
+['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('sobre'); }));
+drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) lerPdf(f); });
+
+// ══════════════════════════════════════════════════════
+//  REUNIÕES
+// ══════════════════════════════════════════════════════
+// Converte o JSON do painel para o formato de linhas da planilha (cabeçalhos conhecidos)
+async function lerPainel() {
+    const r = await fetch(URL_PAINEL);
+    const txt = await r.text();
+    let d; try { d = JSON.parse(txt); } catch (e) { throw new Error('painel não respondeu em JSON'); }
+    const lista = Array.isArray(d) ? d : (d.dados || d.data || d.rows || []);
+    const cab = ['colaboradorAudio', 'local', 'horaPrevista', 'servico', 'tipoEvento', 'nomeEvento', 'observacao', 'Status', 'dataEvento'];
+    return [cab, ...lista.map(x => [x.colaborador || '', x.local || '', x.hora || x.horaPrevista || x.horaPrevistaFormatada || '',
+        x.servico || '', x.tipo || x.tipoEvento || '', x.evento || x.nomeEvento || '', x.observacao || x.obs || '', x.status || '', x.data || ''])];
+}
+
+const urlRelay = () => (cfg.urlRelay || window.COAUD_RELAY_URL || 'https://script.google.com/macros/s/AKfycbyZ5D3Jyx3k-nGdWz7-jZtQ9VbWiNiKxh-V9vPc_YTQpc61Cf3GDjvXHX0b9o7Nvdsb/exec').trim();
+async function carregarReunioesRelay() {
+    const r = await fetch(urlRelay());
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = JSON.parse(await r.text());
+    if (!d.values || d.values.length < 2) throw new Error('relay sem dados' + (d.avisos ? ' (' + d.avisos.join('; ') + ')' : ''));
+    valoresReunioes = d.values;
+    colunas = cfg.colunasTravadas ? Object.assign(detectar(), cfg.colunasFixas || {}) : detectar();
+    const el = document.getElementById('pz-reun-info');
+    el.textContent = `${valoresReunioes.length - 1} linha(s) · ${agora().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · via relay (${d.fonte})`;
+    el.style.color = ''; el.title = d.avisos ? d.avisos.join('\n') : '';
+    desenharColunas(); mostrarColunasEmUso(); gerar();
+    return d.fonte;
+}
+
+async function carregarReunioes() {
+    // 1º relay (Apps Script próprio), 2º planilha com chave, 3º painel público
+    if (urlRelay()) {
+        try { fonteReunioes = 'relay-' + await carregarReunioesRelay(); return; }
+        catch (e) { console.warn('Relay falhou:', e.message); }
+    }
+    try {
+        await carregarReunioesPlanilha();
+        fonteReunioes = 'planilha';
+    } catch (errPlanilha) {
+        // Plano B: painel público de reuniões
+        try {
+            valoresReunioes = await lerPainel();
+            fonteReunioes = 'painel';
+            colunas = detectar();
+            document.getElementById('pz-reun-info').textContent = `${valoresReunioes.length - 1} linha(s) · ${agora().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · via painel`;
+            document.getElementById('pz-reun-info').style.color = '';
+            document.getElementById('pz-reun-info').title = 'A planilha recusou (' + errPlanilha.message + '). Lendo do painel público de reuniões — sem status nem observações (INTERVALO).';
+            desenharColunas(); mostrarColunasEmUso(); gerar();
+        } catch (errPainel) {
+            const el = document.getElementById('pz-reun-info');
+            el.textContent = '⚠ Erro: ' + errPlanilha.message + ' | painel: ' + errPainel.message;
+            el.style.color = '#f87171';
+        }
+    }
+}
+let fonteReunioes = '';
+
+async function carregarReunioesPlanilha() {
+    {
+        let r = await fetch(URL_REUNIOES);
+        let viaLogin = false;
+        if (!r.ok) {
+            const erro = await r.json().catch(() => ({}));
+            const msg = (erro.error && erro.error.message) || r.statusText || '';
+            // Chave recusada (planilha fechada ou chave restrita ao site): tenta com o login Google
+            if ((r.status === 403 || r.status === 400) && conectado()) {
+                r = await fetch(URL_REUNIOES.replace(/[?&]key=[^&]+/, ''), { headers: { 'Authorization': `Bearer ${accessToken}` } });
+                if (r.status === 401) { sessaoExpirou(); throw new Error('sessão Google expirada — reconecte'); }
+                viaLogin = r.ok;
+                if (!r.ok) { const e2 = await r.json().catch(() => ({})); throw new Error(`HTTP ${r.status}: ${(e2.error && e2.error.message) || msg}`); }
+            } else {
+                let dica = '';
+                if (/referer|referrer/i.test(msg)) dica = location.protocol === 'file:' ? ' → abra o Pausas pelo site (não pelo arquivo).' : ' → o endereço deste site não está liberado na chave da API.';
+                else if (/permission|PERMISSION_DENIED/i.test(msg)) dica = ' → a planilha não está mais pública; conecte com o Google (☁) para ler com o seu login.';
+                throw new Error(`HTTP ${r.status}: ${msg}${dica}`);
+            }
+        }
+        valoresReunioes = (await r.json()).values || [];
+        if (viaLogin) setProgress('Reuniões lidas com o login Google (a chave pública foi recusada).');
+        colunas = cfg.colunasTravadas ? Object.assign(detectar(), cfg.colunasFixas || {}) : detectar();
+        document.getElementById('pz-reun-info').textContent = `${valoresReunioes.length - 1} linha(s) · ${agora().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+        document.getElementById('pz-reun-info').style.color = ''; document.getElementById('pz-reun-info').title = '';
+        desenharColunas(); mostrarColunasEmUso(); gerar();
+    }
+}
+// INTERVALO colados do Painel de Eventos (valem só para o dia)
+const LS_COLREUN = 'pausas_colado_reun_v1';
+function coladoHoje() { const c = lerLS(LS_COLREUN, null); return c && c.data === hojeTxt() ? c : null; }
+function colarReunioes() {
+    const v = PausasCore.lerReunioesTexto(document.getElementById('pz-colar-reun').value);
+    if (!v) { document.getElementById('pz-colado-reun-info').textContent = '⚠ Não reconheci reuniões no texto colado.'; return; }
+    const col = PausasCore.detectarColunas(v[0], { operador: 0, status: 1, local: 2, hora: 3, evento: 6 }, v, escala ? escala.pessoas : []);
+    const regs = PausasCore.lerReunioes(v, col).filter(r => r.intervalo || r.pausaPropria);
+    gravarLS(LS_COLREUN, { data: hojeTxt(), em: agora().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }), valores: v, col });
+    document.getElementById('pz-colar-reun').value = '';
+    document.getElementById('pz-colar-reun-box').open = false;
+    mostrarColadoReun(regs.length);
+    gerar();
+}
+function limparColadoReun() { localStorage.removeItem(LS_COLREUN); mostrarColadoReun(); gerar(); }
+function mostrarColadoReun(n) {
+    const c = coladoHoje(), el = document.getElementById('pz-colado-reun-info');
+    if (!c) { el.textContent = ''; return; }
+    if (n == null) n = PausasCore.lerReunioes(c.valores, c.col).filter(r => r.intervalo || r.pausaPropria).length;
+    el.textContent = `📋 ${n} INTERVALO/"tirar intervalo" colados às ${c.em} — somados à leitura automática.`;
+}
+// Junta: linhas coladas com INTERVALO substituem a mesma pessoa+sala da leitura automática
+function juntarColados(reunioes) {
+    const c = coladoHoje();
+    if (!c) return reunioes;
+    const extras = PausasCore.lerReunioes(c.valores, c.col).filter(r => r.intervalo || r.pausaPropria);
+    if (!extras.length) return reunioes;
+    const mesma = (a, b) => PausasCore.salaKey(a.local) === PausasCore.salaKey(b.local) && PausasCore.pontuarNome(a.operador, b.operador) > 0;
+    const base = reunioes.filter(r => !extras.some(x => mesma(x, r) && !r.intervalo));
+    const novos = extras.filter(x => !base.some(r => mesma(x, r) && (r.intervalo || r.pausaPropria)));
+    return [...base, ...novos.map(x => ({ ...x, colado: true }))];
+}
+
+function detectar() {
+    return PausasCore.detectarColunas(valoresReunioes[0], cfg.colunasPadrao, valoresReunioes, escala ? escala.pessoas : []);
+}
+function mostrarColunasEmUso() {
+    const el = document.getElementById('pz-col-uso');
+    if (!el || !colunas || !valoresReunioes) return;
+    const L = i => i >= 0 ? String.fromCharCode(65 + i) : '—';
+    const cab = valoresReunioes[0] || [];
+    const nomes = { operador: 'Operador', local: 'Local', hora: 'Hora', status: 'Status', evento: 'Evento', data: 'Data', termino: 'Término', cancelado: 'Cancel.' };
+    el.dataset.col = el.textContent = 'Colunas: ' + Object.entries(nomes).map(([k, r]) => `${r}=${L(colunas[k])}${cab[colunas[k]] ? ' (' + cab[colunas[k]] + ')' : ''}`).join(' · ');
+}
+
+// ══════════════════════════════════════════════════════
+//  PLANO
+// ══════════════════════════════════════════════════════
+function definirPeriodo(p, peloUsuario) {
+    periodo = p;
+    if (peloUsuario) periodoManual = true;
+    document.querySelectorAll('#pz-periodo button').forEach(b => b.classList.toggle('ativo', b.dataset.p === p));
+    gerar();
+}
+const ulyModo = () => manual.ulyModo || cfg.ulyssesModo || 'juntos';
+function marcarUlyModo() { document.querySelectorAll('#pz-uly-modo button').forEach(b => b.classList.toggle('ativo', b.dataset.m === ulyModo())); }
+function definirUlyModo(m) { manual.ulyModo = m; salvarManual(); marcarUlyModo(); gerar(); }
+
+function estadoPausa(p) {
+    if (!escala || escala.data !== hojeTxt()) return null;     // relógio só vale para a escala de hoje
+    const t = agoraMin(), aviso = +cfg.avisoMin || 30;
+    if (t >= p.fim) return 'feita';
+    if (t >= p.ini) return 'agora';
+    if (t >= p.ini - aviso) return 'preparar';
+    return 'futura';
+}
+const ROTULO_EST = { feita: '✔ feita', agora: '⏳ agora', preparar: '⏰ preparar', futura: '🕐 em breve' };
+
+function gerar() {
+    const tbody = document.querySelector('#pz-plano tbody');
+    if (!escala || !valoresReunioes) {
+        tbody.innerHTML = `<tr><td colspan="5" class="pz-muted" style="padding:18px">${!escala ? `⚠ Sem escala de hoje (${hojeTxt()}): cole a escala do chefe ou carregue o PDF de hoje.${valoresReunioes ? ` As reuniões já foram lidas (${valoresReunioes.length - 1} linhas).` : ''}` : 'Clique em 🔄 Atualizar reuniões.'}</td></tr>`;
+        atualizarRelogio(); return;
+    }
+    const pessoas = PausasCore.aplicarRegras(escala.pessoas, escala.diaSemana, cfg);
+    const reunioes = juntarColados(PausasCore.lerReunioes(valoresReunioes, colunas, escala.pessoas));
+    const horaTxt = document.getElementById('pz-hora').value;
+    const res = PausasCore.planejar({
+        pessoas, reunioes, periodo, cfg: { ...cfg, ulyssesModo: ulyModo() },
+        horaPausa: horaTxt ? hm(horaTxt) : null, hoje: escala.data || hojeTxt(), agora: escala.data === hojeTxt() ? agoraMin() : null,
+        travas: manual.travas, incluir: manual.incluir, excluir: manual.excluir,
+    });
+
+    if (fonteReunioes === 'painel') res.avisos.unshift({ tipo: 'info', txt: coladoHoje()
+        ? `Reuniões lidas do painel público; INTERVALO vindos do Painel de Eventos colado às ${coladoHoje().em}. Cole de novo depois de lançar novos INTERVALO.`
+        : 'Reuniões lidas do painel público (a planilha recusou a chave). Ele não traz a observação INTERVALO: depois de lançar, cole o Painel de Eventos na caixa 2 (📋).' });
+    const qtdIntervalo = reunioes.filter(r => r.intervalo && !r.motivo).length;
+    const problema = qtdIntervalo && !res.pausas.some(p => p.planilha);
+    if (problema) res.avisos.push({ tipo: 'alerta', txt: `A planilha tem ${qtdIntervalo} linha(s) com INTERVALO, mas não consegui ligar nenhuma ao operador da sala. Veja o 🧪 Diagnóstico abaixo da tabela.` });
+    if (periodo === 'manha' && pessoas.some(p => p.periodo === 'manha' && p.aConfirmar))
+        res.avisos.unshift({ tipo: 'alerta', txt: 'As regras da MANHÃ ainda são palpites (horários e pausas "a confirmar"). Ajuste em ⚙ Configurações.' });
+    document.getElementById('pz-avisos').innerHTML = res.avisos
+        .map(a => `<div class="pz-aviso ${a.tipo}">${a.tipo === 'alerta' ? '⚠' : 'ℹ'} ${esc(a.txt)}</div>`).join('');
+
+    const usadas = res.diag.filter(d => d.motivo.startsWith('em uso') || d.motivo.startsWith('INTERVALO')).length;
+    document.getElementById('pz-reun-info').textContent = document.getElementById('pz-reun-info').textContent.replace(/^.*?·/, `${usadas} em uso de ${reunioes.length} linha(s) ·`);
+    const cont = {}; res.diag.forEach(d => { const k = d.motivo.replace(/ \(.*\)$/, ''); cont[k] = (cont[k] || 0) + 1; });
+    document.getElementById('pz-col-uso').textContent = 'Linhas: ' + Object.entries(cont).map(([k, v]) => `${v} ${k}`).join(' · ') +
+        (document.getElementById('pz-col-uso').dataset.col ? ' — ' + document.getElementById('pz-col-uso').dataset.col : '');
+    const corM = m => m === 'em uso' ? '#4ade80' : m.startsWith('INTERVALO') ? '#93c5fd' : '#fbbf24';
+    document.getElementById('pz-diag').innerHTML = '<tr><th>Operador</th><th>Local</th><th>Hora</th><th>Status</th><th>Data</th><th>Término</th><th>Situação</th></tr>' +
+        res.diag.map(d => `<tr><td>${esc(d.operador)}</td><td>${esc(d.local)}</td><td>${fmt(d.hora)}</td><td>${esc(d.status)}</td><td>${esc(d.data)}</td><td>${esc(d.termino)}</td><td style="color:${corM(d.motivo)};font-weight:600">${esc(d.motivo)}</td></tr>`).join('');
+    if (problema) document.getElementById('pz-diag-box').open = true;
+    ultimo = { res, pessoas };
+    salvarManual();
+
+    // Tabela
+    if (!res.pausas.length) {
+        tbody.innerHTML = `<tr><td colspan="5" class="pz-muted" style="padding:18px">Ninguém do turno da ${periodo === 'manha' ? 'manhã' : 'tarde'} em reunião precisando de pausa agora.</td></tr>`;
+    } else {
+        tbody.innerHTML = res.pausas.map(p => {
+            const tagEq = `<span class="pz-tag ${p.equipe === 'TQQ' ? 'tqq' : 't36'}">${p.equipe === 'TQQ' ? '18h' : '36h'} · ${p.dur}′</span>` + (p.aConfirmar ? '<span class="pz-tag conf">a confirmar</span>' : '');
+            const tagBl = p.bloco === 'ulysses' ? '<span class="pz-tag uly">Ulysses</span>' : p.bloco === 'par' ? '<span class="pz-tag par">par</span>' : p.bloco === 'impar' ? '<span class="pz-tag impar">ímpar</span>' : '';
+            const opts = res.opcoes.filter(o => o.nome !== p.operador && (!p.ulysses || o.podeUlysses)).sort((a, b) => a.nome.localeCompare(b.nome))
+                .map(o => `<option value="${esc(o.nome)}" ${o.nome === p.cobertura ? 'selected' : ''}>${esc(o.nome)}${o.intervalo ? ` (INTERVALO ${esc(o.intervalo)})` : ''}</option>`).join('');
+            const sel = p.planilha
+                ? `<span title="Lançado na planilha com INTERVALO — não pode ser alterado aqui">🔒 <b>${esc(p.cobertura)}</b> <span class="pz-tag t36">📋 lançado na planilha</span></span>`
+                : `<select data-id="${esc(p.id)}" onchange="travar(this.dataset.id, this.value)"><option value="">${p.cobertura ? '— automático —' : '— sem cobertura —'}</option>${opts}</select>`;
+            return `<tr data-ini="${p.ini}" data-fim="${p.fim}" data-cob="${p.cobertura ? 1 : 0}"${p.planilha ? ' data-lancado="1"' : ''}>
+                <td class="pz-hora">${fmt(p.ini)}–${fmt(p.fim)}<span class="pz-est"></span></td>
+                <td>${esc(p.local)} ${tagBl}<div class="pz-muted">${esc(p.evento).slice(0, 70)}</div></td>
+                <td>${esc(p.operador)} ${tagEq}</td>
+                <td>${p.cobertura ? '' : '<span class="pz-semcob">SEM COBERTURA</span><br>'}${sel}${p.manual ? ' <span class="pz-muted">✋</span>' : ''}${p.avisoIntervalo ? `<div style="color:#fbbf24;font-size:11.5px;margin-top:3px">⚠ ${esc(p.avisoIntervalo)}</div>` : ''}</td>
+                <td class="pz-noprint">${p.manual ? `<button class="cancelButton" style="margin:0;padding:3px 8px;font-size:11px" data-id="${esc(p.id)}" onclick="travar(this.dataset.id,'')">↺ auto</button>` : ''}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    // Roteiros
+    const usados = res.candidatos.filter(c => c.rota.length);
+    document.getElementById('pz-rotas').innerHTML = usados.length
+        ? usados.sort((a, b) => a.rota[0].ini - b.rota[0].ini).map(c =>
+            `<div class="pz-rota"><b>${esc(curto(c.nome))}</b>: ${c.rota.map(r => `${fmt(r.ini)} ${esc(r.local.replace(/plen[aá]rio/i, 'Pl.'))}`).join(' → ')}</div>`).join('') : '—';
+
+    // Chips
+    const doTurno = pessoas.filter(p => p.periodo === periodo);
+    const usadosSet = new Set(usados.map(c => c.nome));
+    const livres = res.candidatos.filter(c => !c.soIntervalo && c.periodo === periodo).map(c => c.nome);
+    const foraManual = doTurno.filter(p => PausasCore.estaNaLista(p.nome, manual.excluir)).map(p => p.nome);
+    document.getElementById('pz-livres').innerHTML =
+        livres.map(n => `<span class="pz-chip ${usadosSet.has(n) ? 'usado' : 'livre'}" data-n="${esc(n)}" onclick="alternarExcluir(this.dataset.n)">${esc(curto(n))}${PausasCore.estaNaLista(n, cfg.ulyssesAutorizados[periodo] || []) ? ' ★' : ''}${res.intervaloTxt[n] ? ` <span class="pz-muted">· INTERVALO ${esc(res.intervaloTxt[n])}</span>` : ''}</span>`).join('') +
+        foraManual.map(n => `<span class="pz-chip fora" title="Clique para devolver" data-n="${esc(n)}" onclick="alternarExcluir(this.dataset.n)">${esc(curto(n))}</span>`).join('') || '<span class="pz-muted">ninguém</span>';
+    const ocup = doTurno.filter(p => !livres.includes(p.nome) && !foraManual.includes(p.nome));
+    document.getElementById('pz-ocupados').innerHTML = ocup.map(p => {
+        const nunca = PausasCore.estaNaLista(p.nome, cfg.nuncaDisponiveis);
+        const motivo = nunca ? 'nunca disponível' : res.ocupados.includes(p.nome) ? 'em reunião' : p.ulysses ? 'escalado no Ulysses' : 'indisponível';
+        if (motivo === 'em reunião') return `<span class="pz-chip ocupado" style="cursor:default">${esc(curto(p.nome))} <span class="pz-muted">· ${motivo}</span></span>`;
+        return `<span class="pz-chip ocupado" title="${motivo} — clique para liberar" data-n="${esc(p.nome)}" onclick="alternarIncluir(this.dataset.n)">${esc(curto(p.nome))} <span class="pz-muted">· ${motivo}</span></span>`;
+    }).join('') || '<span class="pz-muted">ninguém</span>';
+
+    document.getElementById('pz-texto').value = montarTexto(res);
+    atualizarRelogio();
+}
+
+function montarTexto(res) {
+    const dia = escala ? escala.titulo.replace(/^.*?-\s*/, '') : '';
+    const linhas = [`*Pausas — ${periodo === 'manha' ? 'Manhã' : 'Tarde'}* (${dia})`, ''];
+    res.pausas.forEach(p => linhas.push(`${fmt(p.ini)}–${fmt(p.fim)} | ${p.local} | ${curto(p.operador)} (${p.dur}′) → ${p.cobertura ? curto(p.cobertura) : '❗SEM COBERTURA'}${p.planilha ? ' ✔ (já lançado)' : ''}`));
+    return linhas.join('\n');
+}
+
+// ══════════════════════════════════════════════════════
+//  RELÓGIO E ALERTA
+// ══════════════════════════════════════════════════════
+const jaNotificado = new Set();
+function pedirNotificacao() {
+    if (!('Notification' in window)) { alert('Este navegador não mostra notificações.'); return; }
+    Notification.requestPermission().then(p => { document.getElementById('pz-btn-notif').textContent = p === 'granted' ? '🔔 Avisos ligados' : '🔕 Bloqueado'; });
+}
+function notificar(chave, titulo, corpo) {
+    if (jaNotificado.has(chave)) return;
+    jaNotificado.add(chave);
+    try { if ('Notification' in window && Notification.permission === 'granted') new Notification(titulo, { body: corpo }); } catch (e) {}
+}
+const dur = m => m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}` : `${m} min`;
+
+function atualizarRelogio() {
+    const t = agoraMin();
+    document.getElementById('pz-relogio').textContent = '🕐 ' + fmt(t);
+    // Troca de período automática (13:00), se ninguém escolheu à mão
+    const perAgora = t < 13 * 60 ? 'manha' : 'tarde';
+    if (!periodoManual && perAgora !== periodo) { definirPeriodo(perAgora, false); return; }
+
+    const al = document.getElementById('pz-alarme');
+    const linhas = [...document.querySelectorAll('#pz-plano tbody tr[data-ini]')];
+    const ehHoje = escala && escala.data === hojeTxt();
+    let titulo = 'COAUD — Pausas e Coberturas';
+    if (!ehHoje || !linhas.length || !ultimo) { al.className = ''; al.innerHTML = ''; document.title = titulo; return; }
+
+    linhas.forEach(tr => {
+        const p = { ini: +tr.dataset.ini, fim: +tr.dataset.fim };
+        const est = estadoPausa(p);
+        tr.className = 'est-' + est;
+        const span = tr.querySelector('.pz-est');
+        span.className = 'pz-est ' + est;
+        span.textContent = ROTULO_EST[est] + (est === 'futura' || est === 'preparar' ? ` · em ${dur(p.ini - t)}` : '');
+    });
+
+    const pend = ultimo.res.pausas.filter(p => estadoPausa(p) !== 'feita');
+    const aviso = +cfg.avisoMin || 30;
+    if (!pend.length) {
+        al.className = 'feita';
+        al.innerHTML = `✔ Pausas da ${periodo === 'manha' ? 'manhã' : 'tarde'} concluídas.<div class="sub">${conectado() ? 'Registradas no histórico automaticamente.' : 'Conecte com o Google para guardar no histórico.'}</div>`;
+        const reg = lerLS(LS.registrado, {});
+        if (conectado() && !reg[escala.data + '|' + periodo]) registrarPausas(false);
+    } else {
+        const prox = Math.min(...pend.map(p => p.ini));
+        const doBloco = pend.filter(p => p.ini <= prox + 30);
+        const semCob = pend.filter(p => !p.cobertura);
+        const falta = prox - t;
+        const nomeSala = p => p.local.replace(/plen[aá]rio/i, 'Pl.');
+        if (falta <= 0) {
+            al.className = semCob.length ? 'urgente' : 'agora';
+            al.innerHTML = `⏳ Pausas em andamento — ${pend.filter(p => estadoPausa(p) === 'agora').length} sala(s) agora.` +
+                (semCob.length ? `<div class="sub">❗ ${semCob.length} SEM COBERTURA: ${esc(semCob.map(nomeSala).join(', '))}</div>` : `<div class="sub">Próximas: ${esc(pend.filter(p => p.ini > t).map(p => fmt(p.ini) + ' ' + nomeSala(p)).join(' · ') || 'nenhuma')}</div>`);
+            titulo = (semCob.length ? '❗ ' : '⏳ ') + 'Pausas agora';
+        } else if (falta <= aviso) {
+            al.className = semCob.length ? 'urgente' : 'preparar';
+            al.innerHTML = `⏰ Pausa às ${fmt(prox)} — faltam ${dur(falta)}. ${doBloco.length} sala(s) neste horário.` +
+                `<div class="sub">${semCob.length ? `❗ ${semCob.length} SEM COBERTURA: ${esc(semCob.map(nomeSala).join(', '))} — resolva agora.` : '✔ Todas com cobertura. Confira e avise quem vai cobrir.'}</div>`;
+            titulo = `${semCob.length ? '❗' : '⏰'} ${dur(falta)} — Pausas`;
+            notificar(`${escala.data}|${prox}|30`, `Pausa às ${fmt(prox)} (faltam ${dur(falta)})`, semCob.length ? `${semCob.length} sala(s) sem cobertura!` : `${doBloco.length} sala(s), todas com cobertura.`);
+            if (falta <= 10) notificar(`${escala.data}|${prox}|10`, `Pausa em ${dur(falta)}!`, `${doBloco.length} sala(s) às ${fmt(prox)}.`);
+        } else {
+            al.className = 'futura';
+            al.innerHTML = `🕐 Próxima pausa às ${fmt(prox)} (em ${dur(falta)}).<div class="sub">Deixe tudo pronto até ${fmt(prox - aviso)} — ${aviso} min antes. ${semCob.length ? `${semCob.length} sem cobertura por enquanto.` : 'Todas com cobertura por enquanto.'}</div>`;
+        }
+    }
+    document.title = titulo;
+}
+
+function copiarTexto() {
+    const t = document.getElementById('pz-texto');
+    navigator.clipboard.writeText(t.value).then(() => setProgress('📋 Copiado.'), () => { t.select(); document.execCommand('copy'); });
+}
+function salvarManual() { manual.chave = escala ? escala.titulo : ''; gravarLS(LS.manual, manual); }
+function travar(id, nome) { if (nome) manual.travas[id] = nome; else delete manual.travas[id]; salvarManual(); gerar(); }
+function alternarExcluir(n) {
+    const i = manual.excluir.indexOf(n);
+    if (i >= 0) manual.excluir.splice(i, 1); else { manual.excluir.push(n); manual.incluir = manual.incluir.filter(x => x !== n); }
+    salvarManual(); gerar();
+}
+function alternarIncluir(n) {
+    const i = manual.incluir.indexOf(n);
+    if (i >= 0) manual.incluir.splice(i, 1); else { manual.incluir.push(n); manual.excluir = manual.excluir.filter(x => x !== n); }
+    salvarManual(); gerar();
+}
+
+// ══════════════════════════════════════════════════════
+//  CONFIGURAÇÕES (tela)
+// ══════════════════════════════════════════════════════
+const linhasDe = id => document.getElementById(id).value.split('\n').map(s => s.trim()).filter(Boolean);
+
+function desenharCfg() {
+    document.getElementById('cfg-origem').textContent = conectado()
+        ? '☁ Estas configurações ficam na planilha compartilhada (abas PAUSAS_*). Todos os computadores usam as mesmas.'
+        : '⚠ Sem conexão com o Google: as configurações ficam só neste computador. Clique em "☁ conectar" no topo.';
+    document.getElementById('cfg-uly-tarde').value = (cfg.ulyssesAutorizados.tarde || []).join('\n');
+    document.getElementById('cfg-uly-manha').value = (cfg.ulyssesAutorizados.manha || []).join('\n');
+    document.getElementById('cfg-nunca').value = (cfg.nuncaDisponiveis || []).join('\n');
+    document.getElementById('cfg-equipe').value = (cfg.equipeManual || []).slice().sort((a, b) => a.nome.localeCompare(b.nome))
+        .map(o => `${o.nome} = ${o.equipe === 'TQQ' ? '18h' : '36h'}`).join('\n');
+    document.getElementById('cfg-status').value = cfg.statusIgnorar.join(', ');
+    document.getElementById('cfg-sempausa').value = (cfg.tiposSemPausa || []).join(', ');
+    document.getElementById('cfg-travar-col').checked = !!cfg.colunasTravadas;
+    document.getElementById('cfg-aviso').value = cfg.avisoMin;
+    document.getElementById('cfg-margem').value = cfg.margemMin;
+    document.getElementById('cfg-atraso').value = cfg.maxAtrasoMin;
+    document.getElementById('cfg-desloc').value = cfg.deslocamentoMin;
+    document.getElementById('cfg-ulyesc').checked = !!cfg.ulyssesEscaladosCobrem;
+    document.getElementById('cfg-principal').checked = !!cfg.principalEhUlysses;
+    document.getElementById('cfg-url-chefe').value = cfg.urlEscalaChefe || '';
+    document.getElementById('cfg-url-relay').value = cfg.urlRelay || '';
+    document.querySelector('#cfg-regras tbody').innerHTML = cfg.regras.map((r, i) => `<tr>
+        <td><select data-k="periodo"><option value="manha" ${r.periodo === 'manha' ? 'selected' : ''}>Manhã</option><option value="tarde" ${r.periodo === 'tarde' ? 'selected' : ''}>Tarde</option></select></td>
+        <td><select data-k="dias"><option value="segsex" ${r.dias === 'segsex' ? 'selected' : ''}>Seg e Sex</option><option value="terqui" ${r.dias === 'terqui' ? 'selected' : ''}>Ter, Qua, Qui</option></select></td>
+        <td><input type="text" data-k="inicio" value="${esc(r.inicio)}"></td>
+        <td><input type="text" data-k="fim" value="${esc(r.fim)}"></td>
+        <td><input type="number" data-k="pausaMin" value="${r.pausaMin}"></td>
+        <td><input type="text" data-k="pausaInicio" value="${esc(r.pausaInicio)}"></td>
+        <td><select data-k="equipe"><option value="36h" ${r.equipe === '36h' ? 'selected' : ''}>36h</option><option value="TQQ" ${r.equipe === 'TQQ' ? 'selected' : ''}>18h</option></select></td>
+        <td><input type="checkbox" data-k="aConfirmar" ${r.aConfirmar ? 'checked' : ''}></td>
+        <td><button class="cancelButton" style="margin:0;padding:2px 8px" onclick="cfg.regras.splice(${i},1);desenharCfg()">✕</button></td>
+    </tr>`).join('');
+    desenharColunas();
+}
+
+function desenharColunas() {
+    const cab = valoresReunioes && valoresReunioes[0] ? valoresReunioes[0] : [];
+    const atual = colunas || cfg.colunasPadrao;
+    const nomes = { operador: 'Operador', local: 'Local/Plenário', hora: 'Hora', status: 'Status', evento: 'Evento' };
+    const max = Math.max(cab.length, 12);
+    const letra = i => String.fromCharCode(65 + i);
+    document.getElementById('cfg-colunas').innerHTML = Object.entries(nomes).map(([k, rot]) =>
+        `<label>${rot}</label><select data-col="${k}"><option value="-1">(nenhuma)</option>
+            ${Array.from({ length: max }, (_, i) => `<option value="${i}" ${atual[k] === i ? 'selected' : ''}>${letra(i)}${cab[i] ? ' · ' + esc(cab[i]) : ''}</option>`).join('')}
+        </select>`).join('');
+    const brutos = valoresReunioes ? valoresReunioes.slice(0, 15) : [];
+    document.getElementById('cfg-brutos').innerHTML = brutos.length ? `<table class="pz-table"><tr>${Array.from({ length: max }, (_, i) => `<th>${letra(i)}</th>`).join('')}</tr>` +
+        brutos.map(r => `<tr>${Array.from({ length: max }, (_, i) => `<td>${esc(r[i] || '')}</td>`).join('')}</tr>`).join('') + '</table>' : '';
+    document.getElementById('cfg-cab').textContent = cab.length ? 'Cabeçalho lido: ' + cab.map((c, i) => `${letra(i)}=${c}`).join(' | ') : 'Atualize as reuniões para ver o cabeçalho da planilha.';
+}
+
+async function salvarCfgDaTela() {
+    cfg.ulyssesAutorizados = { tarde: linhasDe('cfg-uly-tarde'), manha: linhasDe('cfg-uly-manha') };
+    cfg.nuncaDisponiveis = linhasDe('cfg-nunca');
+    const antes = cfg.equipeManual || [];
+    cfg.equipeManual = linhasDe('cfg-equipe').map(l => {
+        const [nome, eq] = l.split('=').map(s => (s || '').trim());
+        if (!nome || !eq) return null;
+        const equipe = PausasCore.equipeNorm(eq) || '36h';
+        const old = antes.find(o => o.nome === nome);
+        return old && old.equipe === equipe ? old : { nome, equipe, origem: 'manual', em: carimbo() };
+    }).filter(Boolean);
+    cfg.statusIgnorar = document.getElementById('cfg-status').value.split(',').map(s => s.trim()).filter(Boolean);
+    cfg.tiposSemPausa = document.getElementById('cfg-sempausa').value.split(',').map(s => s.trim()).filter(Boolean);
+    cfg.avisoMin = +document.getElementById('cfg-aviso').value || 30;
+    cfg.margemMin = +document.getElementById('cfg-margem').value || 0;
+    cfg.maxAtrasoMin = +document.getElementById('cfg-atraso').value || 60;
+    cfg.deslocamentoMin = +document.getElementById('cfg-desloc').value || 0;
+    cfg.ulyssesEscaladosCobrem = document.getElementById('cfg-ulyesc').checked;
+    cfg.principalEhUlysses = document.getElementById('cfg-principal').checked;
+    cfg.urlEscalaChefe = document.getElementById('cfg-url-chefe').value.trim();
+    cfg.urlRelay = document.getElementById('cfg-url-relay').value.trim();
+    cfg.regras = [...document.querySelectorAll('#cfg-regras tbody tr')].map(tr => {
+        const r = {};
+        tr.querySelectorAll('[data-k]').forEach(el => { r[el.dataset.k] = el.type === 'checkbox' ? el.checked : el.type === 'number' ? +el.value : el.value.trim(); });
+        return r;
+    });
+    cfg.colunasTravadas = document.getElementById('cfg-travar-col').checked;
+    cfg.colunasFixas = {};
+    if (cfg.colunasTravadas) document.querySelectorAll('#cfg-colunas select').forEach(s => { cfg.colunasFixas[s.dataset.col] = +s.value; });
+    if (valoresReunioes) colunas = cfg.colunasTravadas ? Object.assign(detectar(), cfg.colunasFixas) : detectar();
+    gravarLS(LS.cfg, cfg);
+    desenharCfg(); mostrarInfoEscala(); mostrarLinhaChefe(); gerar();
+    if (conectado()) {
+        setProgress('Salvando na planilha...');
+        try { await salvarCfgNaPlanilha(); setProgress('💾 Salvo na planilha compartilhada.'); }
+        catch (err) { setProgress('Salvo só neste computador — erro na planilha: ' + err.message); }
+    } else setProgress('💾 Salvo só neste computador (conecte com o Google para compartilhar).');
+}
+
+function preencherEquipes() {
+    if (!escala) return;
+    const ps = PausasCore.aplicarRegras(escala.pessoas, escala.diaSemana, cfg);
+    const atuais = linhasDe('cfg-equipe');
+    const novos = ps.filter(p => !atuais.some(l => PausasCore.pontuarNome(l.split('=')[0], p.nome) > 0))
+        .map(p => `${p.nome} = ${p.equipe === 'TQQ' ? '18h' : '36h'}`);
+    document.getElementById('cfg-equipe').value = [...atuais, ...novos].join('\n');
+    setProgress(`${novos.length} nome(s) acrescentados — confira e clique em 💾 Salvar.`);
+}
+
+function addRegra() { cfg.regras.push({ periodo: 'manha', dias: 'terqui', inicio: '07:00', fim: '13:00', pausaMin: 15, pausaInicio: '10:00', equipe: '36h', aConfirmar: true }); desenharCfg(); }
+function exportarCfg() {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(cfg, null, 2)], { type: 'application/json' }));
+    a.download = 'pausas-config.json'; a.click();
+}
+document.getElementById('cfg-import').addEventListener('change', async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try { cfg = Object.assign(JSON.parse(JSON.stringify(CFG_PADRAO)), JSON.parse(await f.text())); gravarLS(LS.cfg, cfg); desenharCfg(); gerar(); setProgress('✅ Importado. Clique em 💾 Salvar para mandar para a planilha.'); }
+    catch (err) { alert('Arquivo inválido: ' + err.message); }
+    e.target.value = '';
+});
+function restaurarPadrao() {
+    if (!confirm('Voltar todas as configurações ao padrão?')) return;
+    cfg = JSON.parse(JSON.stringify(CFG_PADRAO)); gravarLS(LS.cfg, cfg); desenharCfg(); gerar();
+}
+
+// ══════════════════════════════════════════════════════
+//  INÍCIO
+// ══════════════════════════════════════════════════════
+preencherUsuarioSidebar();
+accessToken = !tokenExpirado() ? localStorage.getItem('access_token') : null;
+mostrarNuvem();
+if (!conectado()) mostrarReconectar(location.protocol === 'file:'
+    ? 'Página aberta direto do arquivo: o Google bloqueia o login assim. Abra pelo site do sistema (mesmo endereço do Almoxarifado) para usar a planilha compartilhada.'
+    : 'Conecte com o Google para usar a planilha compartilhada (listas, equipes, escalas guardadas e histórico).');
+desenharCfg();
+if (escala && manual.chave !== escala.titulo) manual = { chave: escala.titulo, travas: {}, incluir: [], excluir: [], ulyModo: null };
+mostrarInfoEscala();
+marcarUlyModo();
+mostrarLinhaChefe();
+mostrarColadoReun();
+definirPeriodo(periodo, false);
+iniciarGoogle();
+if (conectado()) aoConectar();
+buscarEscalaChefe(false);
+carregarReunioes();
+setInterval(carregarReunioes, 2 * 60 * 1000);
+setInterval(atualizarRelogio, 30 * 1000);
+setInterval(() => { if (!escala || escala.data !== hojeTxt()) { const e = escalas[hojeTxt()]; if (e) usarEscala(e, false); } }, 5 * 60 * 1000);   // virada do dia
+</script>
+</body>
+</html>

@@ -10,6 +10,8 @@
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="sidebar-init.js" defer></script>
         <script src="coaud-operadores.js"></script>
+    <script src="coaud-relay.js"></script>          <!-- link do relay de reuniões (opcional: há um padrão abaixo) -->
+    <script src="coaud-menu-pausas.js" defer></script>   <!-- item "Pausas e Coberturas" no menu (só dev) -->
     <style>
         .nrp-row {
             display: flex;
@@ -1050,15 +1052,33 @@
         });
     }
 
-    function carregarEscalaDoSheets() {
-        // Planilha pública — usa API key, não depende do token do usuário
-        fetch('https://sheets.googleapis.com/v4/spreadsheets/1smzyrRUnPZkfZGY-8EPDGg7Js8_6-nQ2xlpXgl8Orjw/values/escalaAudio!A:Z?key=AIzaSyA8yWyDVkekhaVdxCO7BuP3pjjjKTD-cDE')
-        .then(r => { if (!r.ok) throw new Error('Falha'); return r.json(); })
-        .then(data => {
-            escalaData = data.values && data.values.length > 1 ? data.values.slice(1) : [];
-        })
-        .catch(e => console.error("Erro ao carregar escala:", e));
+    // Reuniões do dia (Local/Evento automático):
+    // 1º relay COAUD (Apps Script que lê o Painel de Eventos); 2º planilha pública com API key
+    const URL_RELAY_REUNIOES = (window.COAUD_RELAY_URL || '').trim() ||
+        'https://script.google.com/macros/s/AKfycbyZ5D3Jyx3k-nGdWz7-jZtQ9VbWiNiKxh-V9vPc_YTQpc61Cf3GDjvXHX0b9o7Nvdsb/exec';
+    async function carregarEscalaDoSheets() {
+        const fontes = [
+            URL_RELAY_REUNIOES,
+            'https://sheets.googleapis.com/v4/spreadsheets/1smzyrRUnPZkfZGY-8EPDGg7Js8_6-nQ2xlpXgl8Orjw/values/escalaAudio!A:Z?key=AIzaSyA8yWyDVkekhaVdxCO7BuP3pjjjKTD-cDE',
+        ].filter(Boolean);
+        for (const url of fontes) {
+            try {
+                const r = await fetch(url);
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                const data = await r.json();
+                if (!data.values || data.values.length < 2) throw new Error('sem dados');
+                escalaData = data.values.slice(1);
+                // se o operador já foi escolhido antes da escala chegar, preenche agora
+                if (document.getElementById("operador1Select").value && !document.getElementById("localMontagemInput").value)
+                    autoPreencherLocalEEvento();
+                return;
+            } catch (e) { console.warn('Escala de áudio indisponível em', url.slice(0, 60), '-', e.message); }
+        }
+        console.error('Erro ao carregar escala: nenhuma fonte respondeu.');
     }
+    // A escala não depende do login Google: carrega já ao abrir e atualiza a cada 2 min
+    carregarEscalaDoSheets();
+    setInterval(carregarEscalaDoSheets, 2 * 60 * 1000);
 
     function autoPreencherLocalEEvento() {
         const operador    = document.getElementById("operador1Select").value.trim();
@@ -1067,7 +1087,11 @@
         localInput.value  = "";
         eventoInput.value = "";
         if (!operador || escalaData.length === 0) return;
-        const row = escalaData.find(r => r[9] && r[9].trim() === operador);
+        // prefere a linha da reunião (não a de INTERVALO/observação) e ignora tarefas de equipamento se houver reunião
+        const doOperador = escalaData.filter(r => r[9] && r[9].trim() === operador);
+        const ehReuniao = r => !/intervalo/i.test(r[14] || '') && (r[6] || '').trim();
+        const ehTarefa  = r => /(ligar|desligar|montagem|desmontagem) de equipamento/i.test(r[7] || '');
+        const row = doOperador.find(r => ehReuniao(r) && !ehTarefa(r)) || doOperador.find(ehReuniao) || doOperador[0];
         if (row) {
             localInput.value  = (row[2] || "").trim();
             eventoInput.value = (row[6] || "").trim();
