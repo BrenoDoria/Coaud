@@ -45,7 +45,7 @@ const AUTH_URL = 'https://script.google.com/macros/s/AKfycbwAIg5XQiQQPDcfWYUgI-s
 const CLIENT_ID = '286050228811-cv6vsd075480anb1i6auuc421enuaf8q.apps.googleusercontent.com';
 
 const PERMISSOES = {
-    dev:          ['scanSystem', 'compareSystem', 'locateSystem', 'almoxarifadoSystem', 'usersSystem'],
+    dev:          ['scanSystem', 'compareSystem', 'locateSystem', 'almoxarifadoSystem', 'usersSystem', 'pausasSystem'],
     supervisor:   ['scanSystem', 'compareSystem', 'locateSystem', 'almoxarifadoSystem'],
     almoxarifado: ['almoxarifadoSystem'],
     operador:     ['scanSystem'],
@@ -243,7 +243,7 @@ function aquecerServidor(motivo) {
 // ══ Sistemas visíveis conforme permissão ═══════════════
 function configurarSistemas(permissao) {
     console.log(`✓ configurarSistemas("${permissao}")`);
-    const todos = ['scanSystem', 'compareSystem', 'locateSystem', 'almoxarifadoSystem', 'usersSystem'];
+    const todos = ['scanSystem', 'compareSystem', 'locateSystem', 'almoxarifadoSystem', 'usersSystem', 'pausasSystem'];
     const liberados = PERMISSOES[permissao] || [];
 
     if (liberados.length === 0) {

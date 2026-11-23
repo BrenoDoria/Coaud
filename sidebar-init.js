@@ -213,3 +213,12 @@ if (document.readyState === 'loading') {
 } else {
     initSidebar();
 }
+
+// ══ PAUSAS E COBERTURAS — item do menu (só dev) ══════════
+// Carrega o coaud-menu-pausas.js em todas as páginas que usam este arquivo.
+(function () {
+    if (document.querySelector('script[src*="coaud-menu-pausas.js"]')) return;   // a página já inclui
+    const s = document.createElement('script');
+    s.src = 'coaud-menu-pausas.js';
+    document.head.appendChild(s);
+})();

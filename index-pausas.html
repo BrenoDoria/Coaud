@@ -17,6 +17,11 @@
     (function () {
         let u = null; try { u = JSON.parse(localStorage.getItem('usuarioLogado')); } catch (e) {}
         const ok = u && ['dev'].includes(String(u.permissao || '').toLowerCase());
+        if (ok && typeof verificarSessaoCoaud === 'function') {
+            verificarSessaoCoaud().then(r => {
+                if (!r || !r.ok || !['dev'].includes(String((r.usuario || {}).permissao || '').toLowerCase())) location.replace('index.html');
+            }).catch(() => {});
+        }
         if (!ok && location.protocol !== 'file:') { location.replace('index.html'); }
         else if (!ok) { document.addEventListener('DOMContentLoaded', () => document.body.insertAdjacentHTML('afterbegin',
             '<div style="background:#7f1d1d;color:#fff;padding:8px 14px;font:13px sans-serif">⚠ Página restrita a DEV (aberta pelo arquivo, só para teste).</div>')); }
@@ -786,8 +791,28 @@ const PausasCore = (() => {
     // ── Planejador ──────────────────────────────────────────────
     //  entrada: { pessoas (com regras), reunioes, periodo, cfg, travas, incluir, excluir, horaPausa }
     function planejar(e) {
-        const { pessoas, reunioes, periodo, cfg } = e;
+        const { reunioes, periodo, cfg } = e;
+        const pessoas = [...e.pessoas];
         const travas = e.travas || {}, incluir = e.incluir || [], excluir = e.excluir || [];
+        const dispensadas = e.dispensadas || {};
+        const avisosExtra = [];
+        // Quem está numa reunião mas não está na escala do dia (chamado em cima da hora):
+        // entra como "escalado extra", com equipe da lista de equipes (ou 36h) e turno pela hora da reunião
+        if (e.diaSemana != null) {
+            const td = tipoDia(e.diaSemana);
+            reunioes.forEach(r => {
+                if (!r.operador || tokens(r.operador).length < 2 || acharPessoa(r.operador, pessoas)) return;
+                const per = r.hora != null ? (r.hora < 13 * 60 ? 'manha' : 'tarde') : periodo;
+                const ov = (cfg.equipeManual || []).find(o => pontuarNome(o.nome, r.operador) > 0);
+                const eq = (ov && equipeNorm(ov.equipe)) || '36h';
+                const regra = cfg.regras.find(x => x.periodo === per && x.dias === td && x.equipe === eq) || cfg.regras.find(x => x.periodo === per && x.dias === td);
+                if (!regra) return;
+                const ini = hm(regra.inicio);
+                const [px] = aplicarRegras([{ nome: limpa(r.operador), periodo: per, inicio: ini, inicioTxt: fmt(ini), ulysses: false, equipeFonte: eq, extra: true }], e.diaSemana, cfg);
+                pessoas.push(px);
+                if (per === periodo) avisosExtra.push({ tipo: 'info', txt: `${px.nome} não está na escala do dia, mas está em reunião (${r.local}) — tratado como escalado extra da ${per === 'manha' ? 'manhã' : 'tarde'}, ${eq === 'TQQ' ? '18h' : '36h'}${ov ? '' : ' (equipe não cadastrada: considerado 36h)'}, pausa de ${px.pausaMin} min.` });
+            });
+        }
         const statusFora = cfg.statusIgnorar.map(norm);
         // Dia: se a planilha tem a data do evento, fica só com a data de hoje (quando houver alguma)
         const hojeTxt = e.hoje || '';
@@ -808,7 +833,7 @@ const PausasCore = (() => {
             else if (statusFora.some(s => s && norm(r.status).includes(s))) r.motivo = 'status ignorado';
         });
         const ativas = reunioes.filter(r => !r.motivo || r.motivo === 'nome fora da escala do PDF');
-        const avisos = [];
+        const avisos = [...avisosExtra];
         const noTurno = (p, ini, fim) => p.inicio <= ini && (p.fim == null || fim <= p.fim);
 
         // 1) Quem precisa de pausa (operador da reunião que é do período escolhido)
@@ -930,14 +955,14 @@ const PausasCore = (() => {
                 delete travas[id];
             }
         });
-        necessidades.filter(n => travas[n.id]).forEach(n => {
+        necessidades.filter(n => travas[n.id] && !dispensadas[n.id]).forEach(n => {
             const c = candidatos.find(x => x.nome === travas[n.id]) || null;
             const ini = c ? Math.max(n.pref, c.livreEm) : n.pref;
             if (c) usar(c, n, ini);
             pausas.push({ ...n, ini, fim: ini + n.dur, cobertura: travas[n.id], manual: true });
         });
         // 3b) coberturas já lançadas na planilha (linhas com INTERVALO)
-        const feitas = new Set(necessidades.filter(n => travas[n.id]).map(n => n.id));
+        const feitas = new Set(necessidades.filter(n => travas[n.id] && !dispensadas[n.id]).map(n => n.id));
         const intervalos = new Map();   // nome → [{ local, hora }]
         const porSalaPre = new Map();
         preCob.forEach(x => {
@@ -979,7 +1004,13 @@ const PausasCore = (() => {
             });
         });
 
-        // 3c) restante automático
+        // 3c) cobertura dispensada à mão (ex.: os do Ulysses se revezam sozinhos)
+        necessidades.filter(n => dispensadas[n.id] && !feitas.has(n.id)).forEach(n => {
+            feitas.add(n.id);
+            pausas.push({ ...n, ini: n.pref, fim: n.pref + n.dur, cobertura: null, manual: false, dispensada: true });
+        });
+
+        // 3d) restante automático
         necessidades.filter(n => !travas[n.id] && !feitas.has(n.id)).forEach(n => {
             let melhor = null, melhorPts = Infinity, melhorIni = null;
             candidatos.forEach(c => {
@@ -1023,7 +1054,8 @@ const PausasCore = (() => {
         intervalos.forEach((v, k) => { intervaloTxt[k] = v.map(x => `${x.local.replace(/plen[aá]rio\s*/i, 'Pl. ')}${x.hora != null ? ' ' + fmt(x.hora) : ''}`).join(', '); });
         const diag = reunioes.map(r => ({ operador: r.operador, local: r.local, hora: r.hora, status: r.status, data: r.data, termino: r.termino,
             intervalo: r.intervalo, motivo: r.motivo || (r.intervalo ? 'INTERVALO (cobertura)' : r.tarefa ? `tarefa de equipamento (${r.tarefa}) — não precisa de cobertura; pessoa ocupada`
-                : r.pausaPropria ? 'em uso (tira a própria pausa)' : 'em uso') })).concat(extraDiag);
+                : r.pausaPropria ? 'em uso (tira a própria pausa)'
+                : (r.operador && pessoas.some(x => x.extra && pontuarNome(x.nome, r.operador) > 0)) ? 'em uso (fora da escala do dia — escalado extra)' : 'em uso') })).concat(extraDiag);
         const jaEscaladoTxt = {}; candidatos.forEach(c => { if (c.jaEscalado) jaEscaladoTxt[c.nome] = c.jaEscalado; });
         return { pausas, candidatos, opcoes, avisos, intervaloTxt, jaEscaladoTxt, diag, ocupados: [...ocupados.keys()] };
     }
@@ -1259,7 +1291,7 @@ async function registrarPausas(manualmente) {
         const todas = await lerAba(ABAS.registro);
         const outras = todas.filter(r => !(r[0] === escala.data && r[1] === periodo));
         const origem = p => p.planilha ? 'INTERVALO lançado' : p.manual ? 'escolha manual' : 'automático';
-        const novas = ultimo.res.pausas.map(p => [escala.data, periodo, fmt(p.ini), fmt(p.fim), p.local, p.operador, p.equipe === 'TQQ' ? '18h' : '36h', p.dur, p.cobertura || 'SEM COBERTURA', origem(p), carimbo(), quem()]);
+        const novas = ultimo.res.pausas.map(p => [escala.data, periodo, fmt(p.ini), fmt(p.fim), p.local, p.operador, p.equipe === 'TQQ' ? '18h' : '36h', p.dur, p.dispensada ? 'DISPENSADA' : (p.cobertura || 'SEM COBERTURA'), origem(p), carimbo(), quem()]);
         await gravarAba(ABAS.registro, [...outras, ...novas]);
         const reg = lerLS(LS.registrado, {}); reg[escala.data + '|' + periodo] = carimbo(); gravarLS(LS.registrado, reg);
         info.textContent = `✔ ${novas.length} pausa(s) registradas às ${agora().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.`;
@@ -1576,6 +1608,8 @@ function gerar() {
         horaPausa: horaTxt ? hm(horaTxt) : null, hoje: escala.data || hojeTxt(), agora: escala.data === hojeTxt() ? agoraMin() : null,
         travas: manual.travas, incluir: manual.incluir, excluir: manual.excluir,
         escaladosDia: escaladosDoDia(),
+        diaSemana: escala.diaSemana,
+        dispensadas: manual.dispensadas || {},
     });
 
     if (fonteReunioes === 'painel') res.avisos.unshift({ tipo: 'info', txt: coladoHoje()
@@ -1611,15 +1645,19 @@ function gerar() {
             const opts = res.opcoes.filter(o => o.nome !== p.operador && (!p.ulysses || o.podeUlysses))
                 .sort((a, b) => (a.jaEscalado ? 1 : 0) - (b.jaEscalado ? 1 : 0) || a.nome.localeCompare(b.nome))
                 .map(o => `<option value="${esc(o.nome)}" ${o.nome === p.cobertura ? 'selected' : ''}>${esc(o.nome)}${o.intervalo ? ` (INTERVALO ${esc(o.intervalo)})` : ''}${o.jaEscalado ? ` (já escalado hoje: ${esc(o.jaEscalado)})` : ''}</option>`).join('');
-            const sel = p.planilha
+            const sel = p.dispensada
+                ? `<span class="pz-muted">🚫 <b>cobertura dispensada</b></span>`
+                : p.planilha
                 ? `<span title="Lançado na planilha com INTERVALO — não pode ser alterado aqui">🔒 <b>${esc(p.cobertura)}</b> <span class="pz-tag t36">📋 lançado na planilha</span></span>`
                 : `<select data-id="${esc(p.id)}" onchange="travar(this.dataset.id, this.value)"><option value="">${p.cobertura ? '— automático —' : '— sem cobertura —'}</option>${opts}</select>`;
-            return `<tr data-ini="${p.ini}" data-fim="${p.fim}" data-cob="${p.cobertura ? 1 : 0}"${p.planilha ? ' data-lancado="1"' : ''}>
+            return `<tr data-ini="${p.ini}" data-fim="${p.fim}" data-cob="${p.cobertura || p.dispensada ? 1 : 0}"${p.planilha ? ' data-lancado="1"' : ''}${p.dispensada ? ' data-dispensada="1" style="opacity:.55"' : ''}>
                 <td class="pz-hora">${fmt(p.ini)}–${fmt(p.fim)}<span class="pz-est"></span></td>
                 <td>${esc(p.local)} ${tagBl}<div class="pz-muted">${esc(p.evento).slice(0, 70)}</div></td>
                 <td>${esc(p.operador)} ${tagEq}</td>
-                <td>${p.cobertura ? '' : '<span class="pz-semcob">SEM COBERTURA</span><br>'}${sel}${p.manual ? ' <span class="pz-muted">✋</span>' : ''}${p.avisoIntervalo ? `<div style="color:#fbbf24;font-size:11.5px;margin-top:3px">⚠ ${esc(p.avisoIntervalo)}</div>` : ''}</td>
-                <td class="pz-noprint">${p.manual ? `<button class="cancelButton" style="margin:0;padding:3px 8px;font-size:11px" data-id="${esc(p.id)}" onclick="travar(this.dataset.id,'')">↺ auto</button>` : ''}</td>
+                <td>${p.cobertura || p.dispensada ? '' : '<span class="pz-semcob">SEM COBERTURA</span><br>'}${sel}${p.manual ? ' <span class="pz-muted">✋</span>' : ''}${p.avisoIntervalo ? `<div style="color:#fbbf24;font-size:11.5px;margin-top:3px">⚠ ${esc(p.avisoIntervalo)}</div>` : ''}</td>
+                <td class="pz-noprint" style="white-space:nowrap">${p.manual ? `<button class="cancelButton" style="margin:0 4px 0 0;padding:3px 8px;font-size:11px" data-id="${esc(p.id)}" onclick="travar(this.dataset.id,'')">↺ auto</button>` : ''}${p.planilha ? '' : p.dispensada
+                    ? `<button style="margin:0;padding:3px 8px;font-size:11px" data-id="${esc(p.id)}" onclick="dispensar(this.dataset.id,false)" title="Voltar a precisar de cobertura">↩ voltar a cobrir</button>`
+                    : `<button class="cancelButton" style="margin:0;padding:3px 8px;font-size:11px;color:#f87171" data-id="${esc(p.id)}" onclick="dispensar(this.dataset.id,true)" title="Esta pausa não precisa de cobertura (ex.: os operadores se revezam)">✕ dispensar</button>`}</td>
             </tr>`;
         }).join('');
     }
@@ -1654,7 +1692,7 @@ function gerar() {
 function montarTexto(res) {
     const dia = escala ? escala.titulo.replace(/^.*?-\s*/, '') : '';
     const linhas = [`*Pausas — ${periodo === 'manha' ? 'Manhã' : 'Tarde'}* (${dia})`, ''];
-    res.pausas.forEach(p => linhas.push(`${fmt(p.ini)}–${fmt(p.fim)} | ${p.local} | ${curto(p.operador)} (${p.dur}′) → ${p.cobertura ? curto(p.cobertura) : '❗SEM COBERTURA'}${p.planilha ? ' ✔ (já lançado)' : ''}`));
+    res.pausas.forEach(p => linhas.push(`${fmt(p.ini)}–${fmt(p.fim)} | ${p.local} | ${curto(p.operador)} (${p.dur}′) → ${p.dispensada ? 'cobertura dispensada' : p.cobertura ? curto(p.cobertura) : '❗SEM COBERTURA'}${p.planilha ? ' ✔ (já lançado)' : ''}`));
     return linhas.join('\n');
 }
 
@@ -1688,6 +1726,7 @@ function atualizarRelogio() {
 
     linhas.forEach(tr => {
         const p = { ini: +tr.dataset.ini, fim: +tr.dataset.fim };
+        if (tr.dataset.dispensada) { tr.className = ''; tr.querySelector('.pz-est').textContent = '🚫 dispensada'; tr.querySelector('.pz-est').className = 'pz-est feita'; return; }
         const est = estadoPausa(p);
         tr.className = 'est-' + est;
         const span = tr.querySelector('.pz-est');
@@ -1695,7 +1734,7 @@ function atualizarRelogio() {
         span.textContent = ROTULO_EST[est] + (est === 'futura' || est === 'preparar' ? ` · em ${dur(p.ini - t)}` : '');
     });
 
-    const pend = ultimo.res.pausas.filter(p => estadoPausa(p) !== 'feita');
+    const pend = ultimo.res.pausas.filter(p => !p.dispensada && estadoPausa(p) !== 'feita');
     const aviso = +cfg.avisoMin || 30;
     if (!pend.length) {
         al.className = 'feita';
@@ -1733,6 +1772,11 @@ function copiarTexto() {
     navigator.clipboard.writeText(t.value).then(() => setProgress('📋 Copiado.'), () => { t.select(); document.execCommand('copy'); });
 }
 function salvarManual() { manual.chave = escala ? escala.titulo : ''; gravarLS(LS.manual, manual); }
+function dispensar(id, sim) {
+    manual.dispensadas = manual.dispensadas || {};
+    if (sim) { manual.dispensadas[id] = true; delete manual.travas[id]; } else delete manual.dispensadas[id];
+    salvarManual(); gerar();
+}
 function travar(id, nome) { if (nome) manual.travas[id] = nome; else delete manual.travas[id]; salvarManual(); gerar(); }
 function alternarExcluir(n) {
     const i = manual.excluir.indexOf(n);
