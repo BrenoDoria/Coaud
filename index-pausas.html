@@ -324,7 +324,7 @@
                     <div class="pz-row" style="margin-top:8px">
                         <label>Tudo pronto até (min antes da pausa)</label>
                         <input type="number" id="cfg-aviso" style="width:60px">
-                        <label>Margem antes da próxima reunião de quem cobre (min)</label>
+                        <label>Antecedência: o operador vai para a cabine X min antes da reunião</label>
                         <input type="number" id="cfg-margem" style="width:60px">
                         <label>Atraso máximo de uma pausa (min)</label>
                         <input type="number" id="cfg-atraso" style="width:60px">
@@ -379,7 +379,7 @@ const CFG_PADRAO = {
     equipeManual: [],
     tiposSemPausa: ['desligar equipamento', 'ligar equipamento', 'montagem de equipamento', 'desmontagem de equipamento'],
     statusIgnorar: ['encerrad','cancelad','adiad','realizad'],
-    margemMin: 10, maxAtrasoMin: 60, deslocamentoMin: 0,
+    margemMin: 60, maxAtrasoMin: 60, deslocamentoMin: 0,
     ulyssesEscaladosCobrem: true,
     ulyssesModo: 'juntos',            // 'juntos' | 'sequencial'
     avisoMin: 30,                     // tudo pronto até X min antes da pausa
@@ -843,27 +843,27 @@ const PausasCore = (() => {
         const porSala = new Map();
         const preCob = [];             // coberturas já lançadas na planilha (INTERVALO)
         const semPausa = (cfg.tiposSemPausa || []).map(norm).filter(Boolean);
+        // ocupado a partir de: hora da reunião/tarefa mais cedo (sem hora = ocupado desde já)
+        const marcar = (nome, hora) => { const h = hora == null ? 0 : hora; if (!ocupados.has(nome) || h < ocupados.get(nome)) ocupados.set(nome, h); };
         ativas.forEach(r => {
             // nomes que aparecem em outras colunas da mesma linha também estão ocupados
-            if (!r.intervalo) (r.outrosNomes || []).forEach(n => { if (!ocupados.has(n)) ocupados.set(n, 0); });
+            if (!r.intervalo) (r.outrosNomes || []).forEach(n => marcar(n, r.hora));
             const p = r.operador ? acharPessoa(r.operador, pessoas) : null;
             if (!p) { if (r.operador) naoEncontrados.add(r.operador); return; }
             if (r.intervalo) { if (r.local) preCob.push({ r, p }); return; }
-            ocupados.set(p.nome, 0);
+            marcar(p.nome, r.hora);
             if (!r.local) return;
             if (semPausa.some(t => norm(r.textoLinha || '').includes(t))) {   // ex.: Desligar Equipamento
-                if (!ocupados.has(p.nome)) ocupados.set(p.nome, 0);
                 r.tarefa = semPausa.filter(t => norm(r.textoLinha || '').includes(t)).sort((a, b) => b.length - a.length)[0] || 'tarefa';   // o termo mais longo (desmontagem ≠ montagem)
                 return;
             }
-            ocupados.set(p.nome, 0);
             const k = salaKey(r.local);
             if (!porSala.has(k)) porSala.set(k, []);
             porSala.get(k).push({ r, p });
         });
         naoEncontrados.forEach(n => avisos.push({ tipo: 'info', txt: `"${n}" está na escala das reuniões mas não aparece no PDF do dia (ignorado).` }));
 
-        const vistos = new Set();
+        const porPessoa = new Map();
         porSala.forEach(lista => {
             const doPeriodo = lista.filter(x => x.p.periodo === periodo);
             // operador do outro turno que sai antes da pausa e não tem ninguém do período na sala
@@ -872,18 +872,28 @@ const PausasCore = (() => {
                     avisos.push({ tipo: 'alerta', txt: `${x.r.local}: ${x.p.nome} (manhã) sai às ${fmt(x.p.fim)} e não há operador da tarde listado nessa sala.` });
             });
             doPeriodo.forEach(({ r, p }) => {
-                const id = p.nome + '|' + salaKey(r.local);
-                if (vistos.has(id)) return;
-                vistos.add(id);
                 const pref = e.horaPausa != null ? e.horaPausa : p.pausaInicio;
                 if (pref == null) { avisos.push({ tipo: 'alerta', txt: `Sem regra de turno para ${p.nome} (entrada ${p.inicioTxt}).` }); return; }
-                if (r.hora != null && r.hora >= pref + p.pausaMin) return;   // reunião começa depois da pausa: ele mesmo tira
+                const antecedencia = +cfg.margemMin || 0;                      // vai para a cabine X min antes da reunião
+                if (r.hora != null && r.hora - antecedencia >= pref + p.pausaMin) return;   // entra na cabine depois da pausa: ele mesmo tira
                 if (r.pausaPropria && (r.pausaPropriaHora == null || r.pausaPropriaHora < pref + p.pausaMin)) {
                     avisos.push({ tipo: 'info', txt: `${p.nome} tem na planilha "tirar intervalo${r.pausaPropriaHora != null ? ' ' + fmt(r.pausaPropriaHora) : ''}" — pausa dele já resolvida, não precisa de cobertura.` });
                     return;
                 }
-                const loc = infoLocal(r.local);
-                necessidades.push({ id, operador: p.nome, equipe: p.equipe, aConfirmar: p.aConfirmar, dur: p.pausaMin, pref, local: r.local, evento: r.evento, ...loc });
+                const loc = infoLocal(r.local), k = salaKey(r.local);
+                let n = porPessoa.get(p.nome);
+                if (!n) {
+                    n = { id: p.nome + '|' + k, operador: p.nome, equipe: p.equipe, aConfirmar: p.aConfirmar, dur: p.pausaMin, pref,
+                          local: r.local, evento: r.evento, salas: [k], ...loc };
+                    porPessoa.set(p.nome, n);
+                    necessidades.push(n);
+                } else if (!n.salas.includes(k)) {   // mesma pessoa em outra sala ao mesmo tempo (ex.: Pl. 15 e 16)
+                    n.salas.push(k);
+                    n.local += ' + ' + r.local;
+                    if (r.evento && !String(n.evento).includes(r.evento)) n.evento = [n.evento, r.evento].filter(Boolean).join(' / ');
+                    if (loc.ulysses) { n.ulysses = true; n.bloco = 'ulysses'; }
+                    n.id = p.nome + '|' + n.salas.slice().sort().join('+');
+                }
             });
         });
 
@@ -897,11 +907,14 @@ const PausasCore = (() => {
                 if (!ocupados.has(p.nome)) ocupados.set(p.nome, 0);   // está no Ulysses: não cobre outros
                 necessidades.push({ id: p.nome + '|ulysses', operador: p.nome, equipe: p.equipe, aConfirmar: p.aConfirmar,
                     dur: p.pausaMin, pref, local: 'Plenário Ulysses Guimarães', evento: 'Escala do Ulysses (PDF)',
-                    ulysses: true, numero: null, bloco: 'ulysses' });
+                    ulysses: true, numero: null, bloco: 'ulysses', salas: ['ulysses'] });
             });
         }
 
         // 2) Quem pode cobrir
+        // horário de referência da pausa (o mais cedo entre as pausas pedidas)
+        const refPausa = e.horaPausa != null ? e.horaPausa
+            : (necessidades.length ? Math.min(...necessidades.map(n => n.pref)) : (pessoas.find(p => p.periodo === periodo && p.pausaInicio != null) || {}).pausaInicio ?? 17 * 60);
         const nunca = cfg.nuncaDisponiveis || [];
         const ulyAut = (cfg.ulyssesAutorizados[periodo] || []);
         const candidatos = pessoas.filter(p => {
@@ -911,10 +924,10 @@ const PausasCore = (() => {
             if (p.ulysses && !cfg.ulyssesEscaladosCobrem) return false;
             return true;
         }).filter(p => p.periodo === periodo)          // manhã só de manhã, tarde só à tarde
-          .filter(p => !ocupados.has(p.nome))           // ligado a reunião = não aparece
+          .filter(p => !ocupados.has(p.nome) || ocupados.get(p.nome) - (+cfg.margemMin || 0) > refPausa)   // reunião só depois: livre até ir para a cabine
           .map(p => ({
                 nome: p.nome, inicio: p.inicio, fim: p.fim, periodo: p.periodo, equipe: p.equipe,
-                livreAte: null, livreEm: 0, ultimoBloco: null, n: 0, rota: [],
+                livreAte: ocupados.has(p.nome) ? ocupados.get(p.nome) : null, livreEm: 0, ultimoBloco: null, n: 0, rota: [],
                 podeUlysses: estaNaLista(p.nome, ulyAut),
           }));
 
@@ -983,7 +996,7 @@ const PausasCore = (() => {
         };
         porSalaPre.forEach((lista, k) => {
             const nomes = new Set(lista.map(x => x.p.nome));
-            const daSala = necessidades.filter(x => !feitas.has(x.id) && salaKey(x.local) === k && !nomes.has(x.operador));
+            const daSala = necessidades.filter(x => !feitas.has(x.id) && (x.salas || [salaKey(x.local)]).includes(k) && !nomes.has(x.operador));
             if (!daSala.length) {
                 lista.forEach(({ r, p }) => {
                     const c = acharCand(p), ini = r.intervaloHora != null ? r.intervaloHora : 0;
@@ -1055,9 +1068,10 @@ const PausasCore = (() => {
         const diag = reunioes.map(r => ({ operador: r.operador, local: r.local, hora: r.hora, status: r.status, data: r.data, termino: r.termino,
             intervalo: r.intervalo, motivo: r.motivo || (r.intervalo ? 'INTERVALO (cobertura)' : r.tarefa ? `tarefa de equipamento (${r.tarefa}) — não precisa de cobertura; pessoa ocupada`
                 : r.pausaPropria ? 'em uso (tira a própria pausa)'
-                : (r.operador && pessoas.some(x => x.extra && pontuarNome(x.nome, r.operador) > 0)) ? 'em uso (fora da escala do dia — escalado extra)' : 'em uso') })).concat(extraDiag);
+                : (r.operador && pessoas.some(x => x.extra && pontuarNome(x.nome, r.operador) > 0)) ? 'em uso (fora da escala do dia — escalado extra)'
+                : (r.hora != null && r.hora - (+cfg.margemMin || 0) > refPausa) ? `reunião mais tarde (${fmt(r.hora)}) — livre para cobrir até ${fmt(r.hora - (+cfg.margemMin || 0))}` : 'em uso') })).concat(extraDiag);
         const jaEscaladoTxt = {}; candidatos.forEach(c => { if (c.jaEscalado) jaEscaladoTxt[c.nome] = c.jaEscalado; });
-        return { pausas, candidatos, opcoes, avisos, intervaloTxt, jaEscaladoTxt, diag, ocupados: [...ocupados.keys()] };
+        return { pausas, candidatos, opcoes, avisos, intervaloTxt, jaEscaladoTxt, diag, ocupados: [...ocupados.keys()].filter(n => ocupados.get(n) - (+cfg.margemMin || 0) <= refPausa) };
     }
 
     return { salaKey, lerReunioesTexto, lerEscalaTexto, juntarEscalas, lerEscalaJson, dataDoTitulo, equipeNorm, mesmaData, hm, fmt, norm, pontuarNome, acharPessoa, estaNaLista, lerEscala, aplicarRegras, tipoDia, infoLocal, lerReunioes, detectarColunas, planejar };
@@ -1100,6 +1114,7 @@ const agoraMin = () => { const d = agora(); return d.getHours() * 60 + d.getMinu
 // ══════════════════════════════════════════════════════
 let cfg = Object.assign(JSON.parse(JSON.stringify(CFG_PADRAO)), lerLS(LS.cfg, {}));
 if (!cfg.colunasTravadas) delete cfg.colunasFixas;
+if (cfg.margemMin == null || +cfg.margemMin === 10) cfg.margemMin = 60;   // regra nova: 1 h antes da reunião
 if (/AKfycbwTx0kO/.test(cfg.urlEscalaChefe || '')) cfg.urlEscalaChefe = '';
 CFG_PADRAO.tiposSemPausa.forEach(x => { if (cfg.tiposSemPausa && !cfg.tiposSemPausa.includes(x)) cfg.tiposSemPausa.push(x); });
 ['tiposSemPausa', 'ulyssesModo', 'avisoMin', 'urlEscalaChefe', 'principalEhUlysses'].forEach(k => { if (cfg[k] == null) cfg[k] = CFG_PADRAO[k]; });
@@ -1443,13 +1458,27 @@ async function lerPainel() {
         x.servico || '', x.tipo || x.tipoEvento || '', x.evento || x.nomeEvento || '', x.observacao || x.obs || '', x.status || '', x.data || ''])];
 }
 
+// No Painel de Eventos o nome só aparece na 1ª linha de cada pessoa; as seguintes vêm em branco
+function herdarNomes(values) {
+    const cab = (values[0] || []).map(h => PausasCore.norm(h).replace(/\s/g, ''));
+    const iNome = cab.indexOf('colaboradoraudio') >= 0 ? cab.indexOf('colaboradoraudio') : 9;
+    let ultimo = '';
+    return values.map((r, i) => {
+        if (i === 0) return r;
+        const v = (r[iNome] || '').toString().trim();
+        if (v) { ultimo = v; return r; }
+        const temConteudo = r.some((c, k) => k !== iNome && (c || '').toString().trim());
+        if (!temConteudo || !ultimo) return r;
+        const n = r.slice(); n[iNome] = ultimo; n.nomeHerdado = true; return n;
+    });
+}
 const urlRelay = () => (cfg.urlRelay || window.COAUD_RELAY_URL || 'https://script.google.com/macros/s/AKfycbyZ5D3Jyx3k-nGdWz7-jZtQ9VbWiNiKxh-V9vPc_YTQpc61Cf3GDjvXHX0b9o7Nvdsb/exec').trim();
 async function carregarReunioesRelay() {
     const r = await fetch(urlRelay());
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const d = JSON.parse(await r.text());
     if (!d.values || d.values.length < 2) throw new Error('relay sem dados' + (d.avisos ? ' (' + d.avisos.join('; ') + ')' : ''));
-    valoresReunioes = d.values;
+    valoresReunioes = herdarNomes(d.values);
     colunas = cfg.colunasTravadas ? Object.assign(detectar(), cfg.colunasFixas || {}) : detectar();
     const el = document.getElementById('pz-reun-info');
     el.textContent = `${valoresReunioes.length - 1} linha(s) · ${agora().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · via relay (${d.fonte})`;
@@ -1628,7 +1657,7 @@ function gerar() {
     const cont = {}; res.diag.forEach(d => { const k = d.motivo.replace(/ \(.*$| —.*$/, ''); cont[k] = (cont[k] || 0) + 1; });
     document.getElementById('pz-col-uso').textContent = 'Linhas: ' + Object.entries(cont).map(([k, v]) => `${v} ${k}`).join(' · ') +
         (document.getElementById('pz-col-uso').dataset.col ? ' — ' + document.getElementById('pz-col-uso').dataset.col : '');
-    const corM = m => m.startsWith('em uso') ? '#4ade80' : m.startsWith('INTERVALO') ? '#93c5fd' : m.startsWith('tarefa') ? '#c4b5fd' : m.startsWith('já trabalhou') ? '#94a3b8' : '#fbbf24';
+    const corM = m => m.startsWith('em uso') ? '#4ade80' : m.startsWith('INTERVALO') ? '#93c5fd' : m.startsWith('tarefa') ? '#c4b5fd' : m.startsWith('já trabalhou') ? '#94a3b8' : m.startsWith('reunião mais tarde') ? '#5eead4' : '#fbbf24';
     document.getElementById('pz-diag').innerHTML = '<tr><th>Operador</th><th>Local</th><th>Hora</th><th>Status</th><th>Data</th><th>Término</th><th>Situação</th></tr>' +
         res.diag.map(d => `<tr><td>${esc(d.operador)}</td><td>${esc(d.local)}</td><td>${fmt(d.hora)}</td><td>${esc(d.status)}</td><td>${esc(d.data)}</td><td>${esc(d.termino)}</td><td style="color:${corM(d.motivo)};font-weight:600">${esc(d.motivo)}</td></tr>`).join('');
     if (problema) document.getElementById('pz-diag-box').open = true;
@@ -1644,7 +1673,7 @@ function gerar() {
             const tagBl = p.bloco === 'ulysses' ? '<span class="pz-tag uly">Ulysses</span>' : p.bloco === 'par' ? '<span class="pz-tag par">par</span>' : p.bloco === 'impar' ? '<span class="pz-tag impar">ímpar</span>' : '';
             const opts = res.opcoes.filter(o => o.nome !== p.operador && (!p.ulysses || o.podeUlysses))
                 .sort((a, b) => (a.jaEscalado ? 1 : 0) - (b.jaEscalado ? 1 : 0) || a.nome.localeCompare(b.nome))
-                .map(o => `<option value="${esc(o.nome)}" ${o.nome === p.cobertura ? 'selected' : ''}>${esc(o.nome)}${o.intervalo ? ` (INTERVALO ${esc(o.intervalo)})` : ''}${o.jaEscalado ? ` (já escalado hoje: ${esc(o.jaEscalado)})` : ''}</option>`).join('');
+                .map(o => `<option value="${esc(o.nome)}" ${o.nome === p.cobertura ? 'selected' : ''}>${esc(o.nome)}${o.intervalo ? ` (INTERVALO ${esc(o.intervalo)})` : ''}${o.jaEscalado ? ` (já escalado hoje: ${esc(o.jaEscalado)})` : ''}${o.livreAte != null ? ` (livre até ${fmt(o.livreAte - (+cfg.margemMin || 0))}, reunião ${fmt(o.livreAte)})` : ''}</option>`).join('');
             const sel = p.dispensada
                 ? `<span class="pz-muted">🚫 <b>cobertura dispensada</b></span>`
                 : p.planilha
@@ -1671,11 +1700,12 @@ function gerar() {
     // Chips
     const doTurno = pessoas.filter(p => p.periodo === periodo);
     const usadosSet = new Set(usados.map(c => c.nome));
+    const livreAteTxt = n => { const c = res.candidatos.find(x => x.nome === n); return c && c.livreAte != null ? `${fmt(c.livreAte - (+cfg.margemMin || 0))} (reunião ${fmt(c.livreAte)})` : ''; };
     const livres = res.candidatos.filter(c => !c.soIntervalo && c.periodo === periodo)
         .sort((a, b) => (a.jaEscalado ? 1 : 0) - (b.jaEscalado ? 1 : 0)).map(c => c.nome);
     const foraManual = doTurno.filter(p => PausasCore.estaNaLista(p.nome, manual.excluir)).map(p => p.nome);
     document.getElementById('pz-livres').innerHTML =
-        livres.map(n => `<span class="pz-chip ${usadosSet.has(n) ? 'usado' : 'livre'}" data-n="${esc(n)}" onclick="alternarExcluir(this.dataset.n)">${esc(curto(n))}${PausasCore.estaNaLista(n, cfg.ulyssesAutorizados[periodo] || []) ? ' ★' : ''}${res.intervaloTxt[n] ? ` <span class="pz-muted">· INTERVALO ${esc(res.intervaloTxt[n])}</span>` : ''}${res.jaEscaladoTxt[n] ? ` <span class="pz-muted" title="Saiu do Painel de Eventos: reunião encerrada ou cancelada">· já escalado hoje (${esc(res.jaEscaladoTxt[n])})</span>` : ''}</span>`).join('') +
+        livres.map(n => `<span class="pz-chip ${usadosSet.has(n) ? 'usado' : 'livre'}" data-n="${esc(n)}" onclick="alternarExcluir(this.dataset.n)">${esc(curto(n))}${PausasCore.estaNaLista(n, cfg.ulyssesAutorizados[periodo] || []) ? ' ★' : ''}${res.intervaloTxt[n] ? ` <span class="pz-muted">· INTERVALO ${esc(res.intervaloTxt[n])}</span>` : ''}${res.jaEscaladoTxt[n] ? ` <span class="pz-muted" title="Saiu do Painel de Eventos: reunião encerrada ou cancelada">· já escalado hoje (${esc(res.jaEscaladoTxt[n])})</span>` : ''}${livreAteTxt(n) ? ` <span class="pz-muted" title="Tem reunião/tarefa mais tarde">· livre até ${livreAteTxt(n)}</span>` : ''}</span>`).join('') +
         foraManual.map(n => `<span class="pz-chip fora" title="Clique para devolver" data-n="${esc(n)}" onclick="alternarExcluir(this.dataset.n)">${esc(curto(n))}</span>`).join('') || '<span class="pz-muted">ninguém</span>';
     const ocup = doTurno.filter(p => !livres.includes(p.nome) && !foraManual.includes(p.nome));
     document.getElementById('pz-ocupados').innerHTML = ocup.map(p => {
