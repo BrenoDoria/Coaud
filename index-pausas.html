@@ -230,7 +230,7 @@
             <div class="card" style="padding:0;overflow:hidden;margin-bottom:14px">
                 <div class="table-wrapper">
                     <table class="pz-table" id="pz-plano">
-                        <thead><tr><th>Horário</th><th>Sala</th><th>Operador em pausa</th><th>Cobertura</th><th class="pz-noprint"></th></tr></thead>
+                        <thead><tr><th>Horário</th><th style="cursor:pointer" onclick="inverterOrdemSalas()" title="Clique para inverter a ordem dos plenários">Sala <span id="pz-ordem-ico">↓</span></th><th>Operador em pausa</th><th>Cobertura</th><th class="pz-noprint"></th></tr></thead>
                         <tbody><tr><td colspan="5" class="pz-muted" style="padding:18px">Carregue a escala e atualize as reuniões.</td></tr></tbody>
                     </table>
                 </div>
@@ -1245,7 +1245,7 @@ async function carregarCfgDaPlanilha() {
     gravarLS(LS.cfg, cfg);
     return 'configuração lida da planilha';
 }
-const PARAMS = ['urlRelay', 'statusIgnorar', 'tiposSemPausa', 'margemMin', 'maxAtrasoMin', 'deslocamentoMin', 'avisoMin', 'ulyssesEscaladosCobrem', 'principalEhUlysses', 'urlEscalaChefe', 'colunasTravadas', 'colunasFixas'];
+const PARAMS = ['ordemSalas', 'urlRelay', 'statusIgnorar', 'tiposSemPausa', 'margemMin', 'maxAtrasoMin', 'deslocamentoMin', 'avisoMin', 'ulyssesEscaladosCobrem', 'principalEhUlysses', 'urlEscalaChefe', 'colunasTravadas', 'colunasFixas'];
 async function salvarCfgNaPlanilha() {
     await garantirAbas();
     const listas = [
@@ -1305,7 +1305,7 @@ async function registrarPausas(manualmente) {
         await garantirAbas();
         const todas = await lerAba(ABAS.registro);
         const outras = todas.filter(r => !(r[0] === escala.data && r[1] === periodo));
-        const origem = p => p.planilha ? 'INTERVALO lançado' : p.manual ? 'escolha manual' : 'automático';
+        const origem = p => p.planilha ? 'INTERVALO lançado' : p.confirmada ? 'confirmado' : p.manual ? 'escolha manual' : 'automático';
         const novas = ultimo.res.pausas.map(p => [escala.data, periodo, fmt(p.ini), fmt(p.fim), p.local, p.operador, p.equipe === 'TQQ' ? '18h' : '36h', p.dur, p.dispensada ? 'DISPENSADA' : (p.cobertura || 'SEM COBERTURA'), origem(p), carimbo(), quem()]);
         await gravarAba(ABAS.registro, [...outras, ...novas]);
         const reg = lerLS(LS.registrado, {}); reg[escala.data + '|' + periodo] = carimbo(); gravarLS(LS.registrado, reg);
@@ -1635,7 +1635,7 @@ function gerar() {
     const res = PausasCore.planejar({
         pessoas, reunioes, periodo, cfg: { ...cfg, ulyssesModo: ulyModo() },
         horaPausa: horaTxt ? hm(horaTxt) : null, hoje: escala.data || hojeTxt(), agora: escala.data === hojeTxt() ? agoraMin() : null,
-        travas: manual.travas, incluir: manual.incluir, excluir: manual.excluir,
+        travas: { ...manual.travas, ...(manual.confirmadas || {}) }, incluir: manual.incluir, excluir: manual.excluir,
         escaladosDia: escaladosDoDia(),
         diaSemana: escala.diaSemana,
         dispensadas: manual.dispensadas || {},
@@ -1661,6 +1661,16 @@ function gerar() {
     document.getElementById('pz-diag').innerHTML = '<tr><th>Operador</th><th>Local</th><th>Hora</th><th>Status</th><th>Data</th><th>Término</th><th>Situação</th></tr>' +
         res.diag.map(d => `<tr><td>${esc(d.operador)}</td><td>${esc(d.local)}</td><td>${fmt(d.hora)}</td><td>${esc(d.status)}</td><td>${esc(d.data)}</td><td>${esc(d.termino)}</td><td style="color:${corM(d.motivo)};font-weight:600">${esc(d.motivo)}</td></tr>`).join('');
     if (problema) document.getElementById('pz-diag-box').open = true;
+    manual.confirmadas = manual.confirmadas || {};
+    Object.keys(manual.confirmadas).forEach(id => {
+        const p = res.pausas.find(x => x.id === id);
+        if (p && (p.dispensada || p.cobertura !== manual.confirmadas[id])) {
+            res.avisos.push({ tipo: 'alerta', txt: `A cobertura confirmada de ${p.operador} (${manual.confirmadas[id]}) deixou de valer — confirme de novo.` });
+            delete manual.confirmadas[id];
+        }
+    });
+    res.pausas.forEach(p => { p.confirmada = !!manual.confirmadas[p.id] && !p.planilha; });
+    res.pausas = ordenarPorSala(res.pausas);
     ultimo = { res, pessoas };
     salvarManual();
 
@@ -1678,15 +1688,20 @@ function gerar() {
                 ? `<span class="pz-muted">🚫 <b>cobertura dispensada</b></span>`
                 : p.planilha
                 ? `<span title="Lançado na planilha com INTERVALO — não pode ser alterado aqui">🔒 <b>${esc(p.cobertura)}</b> <span class="pz-tag t36">📋 lançado na planilha</span></span>`
+                : p.confirmada
+                ? `<span title="Cobertura confirmada">✔ <b>${esc(p.cobertura)}</b> <span class="pz-tag t36" style="background:rgba(0,176,79,.25);color:#4ade80">confirmada</span></span>`
                 : `<select data-id="${esc(p.id)}" onchange="travar(this.dataset.id, this.value)"><option value="">${p.cobertura ? '— automático —' : '— sem cobertura —'}</option>${opts}</select>`;
-            return `<tr data-ini="${p.ini}" data-fim="${p.fim}" data-cob="${p.cobertura || p.dispensada ? 1 : 0}"${p.planilha ? ' data-lancado="1"' : ''}${p.dispensada ? ' data-dispensada="1" style="opacity:.55"' : ''}>
+            const estiloLinha = p.dispensada ? ' style="opacity:.55"' : p.confirmada ? ' style="background:rgba(0,0,0,.28);opacity:.72"' : '';
+            return `<tr data-ini="${p.ini}" data-fim="${p.fim}" data-cob="${p.cobertura || p.dispensada ? 1 : 0}"${p.planilha ? ' data-lancado="1"' : ''}${p.dispensada ? ' data-dispensada="1"' : ''}${p.confirmada ? ' data-confirmada="1"' : ''}${estiloLinha}>
                 <td class="pz-hora">${fmt(p.ini)}–${fmt(p.fim)}<span class="pz-est"></span></td>
                 <td>${esc(p.local)} ${tagBl}<div class="pz-muted">${esc(p.evento).slice(0, 70)}</div></td>
                 <td>${esc(p.operador)} ${tagEq}</td>
                 <td>${p.cobertura || p.dispensada ? '' : '<span class="pz-semcob">SEM COBERTURA</span><br>'}${sel}${p.manual ? ' <span class="pz-muted">✋</span>' : ''}${p.avisoIntervalo ? `<div style="color:#fbbf24;font-size:11.5px;margin-top:3px">⚠ ${esc(p.avisoIntervalo)}</div>` : ''}</td>
-                <td class="pz-noprint" style="white-space:nowrap">${p.manual ? `<button class="cancelButton" style="margin:0 4px 0 0;padding:3px 8px;font-size:11px" data-id="${esc(p.id)}" onclick="travar(this.dataset.id,'')">↺ auto</button>` : ''}${p.planilha ? '' : p.dispensada
+                <td class="pz-noprint" style="white-space:nowrap">${p.planilha || p.dispensada ? '' : p.confirmada
+                    ? `<button class="cancelButton" style="margin:0 4px 0 0;padding:3px 8px;font-size:11px" data-id="${esc(p.id)}" onclick="confirmarCob(this.dataset.id,'')" title="Destravar para mudar a cobertura">✏ editar</button>`
+                    : p.cobertura ? `<button style="margin:0 4px 0 0;padding:3px 8px;font-size:11px" data-id="${esc(p.id)}" data-c="${esc(p.cobertura)}" onclick="confirmarCob(this.dataset.id,this.dataset.c)" title="Confirmar esta cobertura">✔ confirmar</button>` : ''}${p.manual && !p.confirmada ? `<button class="cancelButton" style="margin:0 4px 0 0;padding:3px 8px;font-size:11px" data-id="${esc(p.id)}" onclick="travar(this.dataset.id,'')">↺ auto</button>` : ''}${p.planilha ? '' : p.dispensada
                     ? `<button style="margin:0;padding:3px 8px;font-size:11px" data-id="${esc(p.id)}" onclick="dispensar(this.dataset.id,false)" title="Voltar a precisar de cobertura">↩ voltar a cobrir</button>`
-                    : `<button class="cancelButton" style="margin:0;padding:3px 8px;font-size:11px;color:#f87171" data-id="${esc(p.id)}" onclick="dispensar(this.dataset.id,true)" title="Esta pausa não precisa de cobertura (ex.: os operadores se revezam)">✕ dispensar</button>`}</td>
+                    : p.confirmada ? '' : `<button class="cancelButton" style="margin:0;padding:3px 8px;font-size:11px;color:#f87171" data-id="${esc(p.id)}" onclick="dispensar(this.dataset.id,true)" title="Esta pausa não precisa de cobertura (ex.: os operadores se revezam)">✕ dispensar</button>`}</td>
             </tr>`;
         }).join('');
     }
@@ -1722,7 +1737,7 @@ function gerar() {
 function montarTexto(res) {
     const dia = escala ? escala.titulo.replace(/^.*?-\s*/, '') : '';
     const linhas = [`*Pausas — ${periodo === 'manha' ? 'Manhã' : 'Tarde'}* (${dia})`, ''];
-    res.pausas.forEach(p => linhas.push(`${fmt(p.ini)}–${fmt(p.fim)} | ${p.local} | ${curto(p.operador)} (${p.dur}′) → ${p.dispensada ? 'cobertura dispensada' : p.cobertura ? curto(p.cobertura) : '❗SEM COBERTURA'}${p.planilha ? ' ✔ (já lançado)' : ''}`));
+    res.pausas.forEach(p => linhas.push(`${fmt(p.ini)}–${fmt(p.fim)} | ${p.local} | ${curto(p.operador)} (${p.dur}′) → ${p.dispensada ? 'cobertura dispensada' : p.cobertura ? curto(p.cobertura) : '❗SEM COBERTURA'}${p.planilha ? ' ✔ (já lançado)' : p.confirmada ? ' ✔' : ''}`));
     return linhas.join('\n');
 }
 
@@ -1775,6 +1790,7 @@ function atualizarRelogio() {
         const prox = Math.min(...pend.map(p => p.ini));
         const doBloco = pend.filter(p => p.ini <= prox + 30);
         const semCob = pend.filter(p => !p.cobertura);
+        const naoConf = pend.filter(p => p.cobertura && !p.planilha && !p.confirmada).length;
         const falta = prox - t;
         const nomeSala = p => p.local.replace(/plen[aá]rio/i, 'Pl.');
         if (falta <= 0) {
@@ -1785,7 +1801,7 @@ function atualizarRelogio() {
         } else if (falta <= aviso) {
             al.className = semCob.length ? 'urgente' : 'preparar';
             al.innerHTML = `⏰ Pausa às ${fmt(prox)} — faltam ${dur(falta)}. ${doBloco.length} sala(s) neste horário.` +
-                `<div class="sub">${semCob.length ? `❗ ${semCob.length} SEM COBERTURA: ${esc(semCob.map(nomeSala).join(', '))} — resolva agora.` : '✔ Todas com cobertura. Confira e avise quem vai cobrir.'}</div>`;
+                `<div class="sub">${semCob.length ? `❗ ${semCob.length} SEM COBERTURA: ${esc(semCob.map(nomeSala).join(', '))} — resolva agora.` : '✔ Todas com cobertura. Confira e avise quem vai cobrir.'}${naoConf ? ` · ${naoConf} ainda sem ✔ confirmar` : ' · todas confirmadas'}</div>`;
             titulo = `${semCob.length ? '❗' : '⏰'} ${dur(falta)} — Pausas`;
             notificar(`${escala.data}|${prox}|30`, `Pausa às ${fmt(prox)} (faltam ${dur(falta)})`, semCob.length ? `${semCob.length} sala(s) sem cobertura!` : `${doBloco.length} sala(s), todas com cobertura.`);
             if (falta <= 10) notificar(`${escala.data}|${prox}|10`, `Pausa em ${dur(falta)}!`, `${doBloco.length} sala(s) às ${fmt(prox)}.`);
@@ -1802,9 +1818,36 @@ function copiarTexto() {
     navigator.clipboard.writeText(t.value).then(() => setProgress('📋 Copiado.'), () => { t.select(); document.execCommand('copy'); });
 }
 function salvarManual() { manual.chave = escala ? escala.titulo : ''; gravarLS(LS.manual, manual); }
+// Ordem fixa: plenários numerados (decrescente por padrão), depois Ulysses (sempre junto), depois as outras salas
+function ordenarPorSala(pausas) {
+    const desc = (cfg.ordemSalas || 'desc') === 'desc';
+    const chave = p => {
+        const loc = (p.local || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        if (/ulyss|ulisses/.test(loc)) return [1, 0, ''];
+        const m = /plen\w*\s*0*(\d+)/.exec(loc);
+        if (m) { const nums = [...loc.matchAll(/plen\w*\s*0*(\d+)/g)].map(x => +x[1]); const n = desc ? Math.max(...nums) : Math.min(...nums); return [0, desc ? -n : n, '']; }
+        return [2, 0, loc];
+    };
+    return pausas.slice().sort((a, b) => {
+        const ka = chave(a), kb = chave(b);
+        return ka[0] - kb[0] || ka[1] - kb[1] || ka[2].localeCompare(kb[2]) || a.operador.localeCompare(b.operador);
+    });
+}
+function inverterOrdemSalas() {
+    cfg.ordemSalas = (cfg.ordemSalas || 'desc') === 'desc' ? 'asc' : 'desc';
+    gravarLS(LS.cfg, cfg);
+    document.getElementById('pz-ordem-ico').textContent = cfg.ordemSalas === 'desc' ? '↓' : '↑';
+    gerar();
+}
+function confirmarCob(id, nome) {
+    manual.confirmadas = manual.confirmadas || {};
+    if (nome) { manual.confirmadas[id] = nome; manual.travas[id] = nome; }
+    else delete manual.confirmadas[id];            // editar: destrava, mantendo a pessoa escolhida
+    salvarManual(); gerar();
+}
 function dispensar(id, sim) {
     manual.dispensadas = manual.dispensadas || {};
-    if (sim) { manual.dispensadas[id] = true; delete manual.travas[id]; } else delete manual.dispensadas[id];
+    if (sim) { manual.dispensadas[id] = true; delete manual.travas[id]; if (manual.confirmadas) delete manual.confirmadas[id]; } else delete manual.dispensadas[id];
     salvarManual(); gerar();
 }
 function travar(id, nome) { if (nome) manual.travas[id] = nome; else delete manual.travas[id]; salvarManual(); gerar(); }
@@ -1954,6 +1997,7 @@ if (escala && manual.chave !== escala.titulo) manual = { chave: escala.titulo, t
 mostrarInfoEscala();
 marcarUlyModo();
 mostrarLinhaChefe();
+document.getElementById('pz-ordem-ico').textContent = (cfg.ordemSalas || 'desc') === 'desc' ? '↓' : '↑';
 mostrarColadoReun();
 definirPeriodo(periodo, false);
 iniciarGoogle();
