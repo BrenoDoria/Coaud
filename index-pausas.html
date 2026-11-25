@@ -687,7 +687,7 @@ const PausasCore = (() => {
         const cels = (linha || []).map(c => (c == null ? '' : String(c)).trim());
         let cob = null, propria = null;
         cels.forEach(c => {
-            const m = /^intervalo\s*(?:[aà]s\s*)?(\d{1,2}[:h]\d{2})?\s*\.?$/i.exec(c);
+            const m = /^intervalo\s*(?:[aà]s\s*)?(\d{1,2}[:h]\d{2})?\s*(?:\(\s*\d+\s*(?:min)?\s*\))?\s*\.?$/i.exec(c);
             if (m && !cob) cob = { hora: m[1] ? hm(m[1]) : null };
             const t = /(tirar|tira|fazer|faz)\s+(o\s+)?intervalo\s*(?:[aà]s\s*)?(\d{1,2}[:h]\d{2})?/i.exec(c);
             if (t && !propria) propria = { hora: t[3] ? hm(t[3]) : null };
@@ -968,14 +968,9 @@ const PausasCore = (() => {
                 delete travas[id];
             }
         });
-        necessidades.filter(n => travas[n.id] && !dispensadas[n.id]).forEach(n => {
-            const c = candidatos.find(x => x.nome === travas[n.id]) || null;
-            const ini = c ? Math.max(n.pref, c.livreEm) : n.pref;
-            if (c) usar(c, n, ini);
-            pausas.push({ ...n, ini, fim: ini + n.dur, cobertura: travas[n.id], manual: true });
-        });
         // 3b) coberturas já lançadas na planilha (linhas com INTERVALO)
-        const feitas = new Set(necessidades.filter(n => travas[n.id] && !dispensadas[n.id]).map(n => n.id));
+        // O INTERVALO lançado na planilha vale mais que escolha manual/confirmação: é processado antes
+        const feitas = new Set();
         const intervalos = new Map();   // nome → [{ local, hora }]
         const porSalaPre = new Map();
         preCob.forEach(x => {
@@ -1017,6 +1012,15 @@ const PausasCore = (() => {
             });
         });
 
+        // 3b') escolhas manuais / confirmadas (só onde a planilha não lançou INTERVALO)
+        necessidades.filter(n => travas[n.id] && !dispensadas[n.id] && !feitas.has(n.id)).forEach(n => {
+            const c = candidatos.find(x => x.nome === travas[n.id]) || null;
+            const ini = c ? Math.max(n.pref, c.livreEm) : n.pref;
+            if (c) usar(c, n, ini);
+            feitas.add(n.id);
+            pausas.push({ ...n, ini, fim: ini + n.dur, cobertura: travas[n.id], manual: true });
+        });
+
         // 3c) cobertura dispensada à mão (ex.: os do Ulysses se revezam sozinhos)
         necessidades.filter(n => dispensadas[n.id] && !feitas.has(n.id)).forEach(n => {
             feitas.add(n.id);
@@ -1024,7 +1028,7 @@ const PausasCore = (() => {
         });
 
         // 3d) restante automático
-        necessidades.filter(n => !travas[n.id] && !feitas.has(n.id)).forEach(n => {
+        necessidades.filter(n => !feitas.has(n.id)).forEach(n => {
             let melhor = null, melhorPts = Infinity, melhorIni = null;
             candidatos.forEach(c => {
                 if (c.nome === n.operador || c.soIntervalo) return;   // em reunião: só faz o INTERVALO lançado
@@ -1664,12 +1668,13 @@ function gerar() {
     manual.confirmadas = manual.confirmadas || {};
     Object.keys(manual.confirmadas).forEach(id => {
         const p = res.pausas.find(x => x.id === id);
+        if (p && p.planilha) { delete manual.confirmadas[id]; delete manual.travas[id]; return; }   // a planilha lançou: vale ela
         if (p && (p.dispensada || p.cobertura !== manual.confirmadas[id])) {
             res.avisos.push({ tipo: 'alerta', txt: `A cobertura confirmada de ${p.operador} (${manual.confirmadas[id]}) deixou de valer — confirme de novo.` });
             delete manual.confirmadas[id];
         }
     });
-    res.pausas.forEach(p => { p.confirmada = !!manual.confirmadas[p.id] && !p.planilha; });
+    res.pausas.forEach(p => { if (p.planilha && manual.travas[p.id]) delete manual.travas[p.id]; p.confirmada = !!manual.confirmadas[p.id] && !p.planilha; });
     res.pausas = ordenarPorSala(res.pausas);
     ultimo = { res, pessoas };
     salvarManual();
