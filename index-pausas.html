@@ -883,7 +883,7 @@ const PausasCore = (() => {
                 const loc = infoLocal(r.local), k = salaKey(r.local);
                 let n = porPessoa.get(p.nome);
                 if (!n) {
-                    n = { id: p.nome + '|' + k, operador: p.nome, equipe: p.equipe, aConfirmar: p.aConfirmar, dur: p.pausaMin, pref,
+                    n = { id: p.nome + '|' + k, operador: p.nome, equipe: p.equipe, aConfirmar: p.aConfirmar, dur: p.pausaMin, pref, inicioTurno: p.inicio, fimTurno: p.fim,
                           local: r.local, evento: r.evento, salas: [k], ...loc };
                     porPessoa.set(p.nome, n);
                     necessidades.push(n);
@@ -905,7 +905,7 @@ const PausasCore = (() => {
                 const pref = e.horaPausa != null ? e.horaPausa : p.pausaInicio;
                 if (pref == null) return;
                 if (!ocupados.has(p.nome)) ocupados.set(p.nome, 0);   // está no Ulysses: não cobre outros
-                necessidades.push({ id: p.nome + '|ulysses', operador: p.nome, equipe: p.equipe, aConfirmar: p.aConfirmar,
+                necessidades.push({ id: p.nome + '|ulysses', operador: p.nome, equipe: p.equipe, aConfirmar: p.aConfirmar, inicioTurno: p.inicio, fimTurno: p.fim,
                     dur: p.pausaMin, pref, local: 'Plenário Ulysses Guimarães', evento: 'Escala do Ulysses (PDF)',
                     ulysses: true, numero: null, bloco: 'ulysses', salas: ['ulysses'] });
             });
@@ -989,9 +989,16 @@ const PausasCore = (() => {
             }
             return c;
         };
-        porSalaPre.forEach((lista, k) => {
+        porSalaPre.forEach((todos, k) => {
+            // só vale o INTERVALO lançado por alguém do turno que está sendo planejado
+            // (ex.: "Intervalo 11:10" de quem é da manhã não cobre a pausa da tarde)
+            const lista = todos.filter(x => x.p.periodo === periodo);
+            if (!lista.length) return;
             const nomes = new Set(lista.map(x => x.p.nome));
-            const daSala = necessidades.filter(x => !feitas.has(x.id) && (x.salas || [salaKey(x.local)]).includes(k) && !nomes.has(x.operador));
+            // ...e só para quem já está no turno no horário do INTERVALO
+            const noTurnoNaHora = x => lista.some(q => q.r.intervaloHora == null ||
+                ((x.inicioTurno == null || x.inicioTurno <= q.r.intervaloHora) && (x.fimTurno == null || q.r.intervaloHora < x.fimTurno)));
+            const daSala = necessidades.filter(x => !feitas.has(x.id) && (x.salas || [salaKey(x.local)]).includes(k) && !nomes.has(x.operador) && noTurnoNaHora(x));
             if (!daSala.length) {
                 lista.forEach(({ r, p }) => {
                     const c = acharCand(p), ini = r.intervaloHora != null ? r.intervaloHora : 0;
